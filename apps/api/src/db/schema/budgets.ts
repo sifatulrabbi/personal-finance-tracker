@@ -21,9 +21,9 @@ export const budgets = pgTable("budgets", {
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  categoryId: uuid("category_id")
-    .notNull()
-    .references(() => categories.id, { onDelete: "cascade" }),
+  categoryId: uuid("category_id").references(() => categories.id, {
+    onDelete: "cascade",
+  }), // Nullable to allow "All Categories" budgets
   name: varchar("name", { length: 255 }).notNull(),
   amount: decimal("amount", { precision: 19, scale: 4 }).notNull(),
   period: budgetPeriodEnum("period").notNull().default("monthly"),

@@ -114,22 +114,27 @@ export class BudgetsRepository {
       ? budget.endDate
       : this.calculateEndDate(budget.startDate, budget.period);
 
-    // Get transactions for the budget period and category
+    // Build query conditions
+    const conditions = [
+      eq(transactions.userId, userId),
+      eq(transactions.type, "expense"),
+      gte(transactions.date, budget.startDate),
+      lte(transactions.date, effectiveEndDate),
+    ];
+
+    // If categoryId is null, track ALL expenses; otherwise track specific category
+    if (budget.categoryId) {
+      conditions.push(eq(transactions.categoryId, budget.categoryId));
+    }
+
+    // Get transactions for the budget period and category (or all categories)
     const budgetTransactions = await db
       .select({
         amount: transactions.amount,
         currency: transactions.currency,
       })
       .from(transactions)
-      .where(
-        and(
-          eq(transactions.userId, userId),
-          eq(transactions.categoryId, budget.categoryId),
-          eq(transactions.type, "expense"),
-          gte(transactions.date, budget.startDate),
-          lte(transactions.date, effectiveEndDate),
-        ),
-      );
+      .where(and(...conditions));
 
     // Get exchange rates to BDT
     const rates = await db

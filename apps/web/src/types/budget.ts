@@ -3,7 +3,7 @@ export type BudgetPeriod = "weekly" | "monthly" | "yearly";
 export interface Budget {
   id: string;
   userId: string;
-  categoryId: string;
+  categoryId: string | null;
   name: string;
   amount: string;
   currency: string;
@@ -26,7 +26,7 @@ export interface BudgetWithSpending {
 }
 
 export interface CreateBudgetRequest {
-  categoryId: string;
+  categoryId: string | null;
   name: string;
   amount: string;
   currency?: string;
@@ -39,7 +39,7 @@ export interface CreateBudgetRequest {
 }
 
 export interface UpdateBudgetRequest {
-  categoryId?: string;
+  categoryId?: string | null;
   name?: string;
   amount?: string;
   currency?: string;

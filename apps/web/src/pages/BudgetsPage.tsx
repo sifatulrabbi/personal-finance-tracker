@@ -26,7 +26,7 @@ export function BudgetsPage() {
   );
 
   const [formData, setFormData] = useState<CreateBudgetRequest>({
-    categoryId: "",
+    categoryId: null,
     name: "",
     amount: "0",
     currency: "BDT",
@@ -51,9 +51,6 @@ export function BudgetsPage() {
       ]);
       setBudgets(budgetsData);
       setCategories(categoriesData);
-      if (categoriesData.length > 0 && !formData.categoryId) {
-        setFormData((prev) => ({ ...prev, categoryId: categoriesData[0].id }));
-      }
     } catch (err: any) {
       setError(err.message || "Failed to load data");
     } finally {
@@ -80,7 +77,7 @@ export function BudgetsPage() {
     } else {
       setEditingBudget(null);
       setFormData({
-        categoryId: categories[0]?.id || "",
+        categoryId: null,
         name: "",
         amount: "0",
         currency: "BDT",
@@ -144,7 +141,8 @@ export function BudgetsPage() {
     return "bg-danger-600";
   };
 
-  const getCategoryName = (categoryId: string): string => {
+  const getCategoryName = (categoryId: string | null): string => {
+    if (!categoryId) return "All Categories";
     const category = categories.find((c) => c.id === categoryId);
     return category?.name || "Unknown";
   };
@@ -201,7 +199,9 @@ export function BudgetsPage() {
             return (
               <div
                 key={budget.id}
-                className="card hover:shadow-lg transition-shadow"
+                className={`card hover:shadow-lg transition-shadow ${
+                  !budget.categoryId ? "border-2 border-primary-200" : ""
+                }`}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
@@ -213,6 +213,11 @@ export function BudgetsPage() {
                       {budget.period.charAt(0).toUpperCase() +
                         budget.period.slice(1)}
                     </p>
+                    {!budget.categoryId && (
+                      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-primary-100 text-primary-700 rounded">
+                        Tracking all expenses
+                      </span>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -351,18 +356,24 @@ export function BudgetsPage() {
             </label>
             <select
               className="input"
-              value={formData.categoryId}
+              value={formData.categoryId || ""}
               onChange={(e) =>
-                setFormData({ ...formData, categoryId: e.target.value })
+                setFormData({
+                  ...formData,
+                  categoryId: e.target.value === "" ? null : e.target.value,
+                })
               }
-              required
             >
+              <option value="">📊 All Categories</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.icon} {category.name}
                 </option>
               ))}
             </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Select a specific category or track all expenses
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

@@ -4,7 +4,7 @@ import { BudgetsRepository } from "../repositories/budgets.repository";
 import { getAuthUser } from "../middleware/auth.middleware";
 
 const createBudgetSchema = z.object({
-  categoryId: z.string().uuid("Invalid category ID"),
+  categoryId: z.string().uuid("Invalid category ID").nullable().optional(),
   name: z.string().min(1, "Name is required"),
   amount: z.string().regex(/^-?\d+(\.\d{1,4})?$/, "Invalid amount format"),
   currency: z.string().length(3).default("BDT"),
@@ -159,7 +159,10 @@ export class BudgetsController {
       const updateData: any = {};
 
       // Only include fields that are actually being updated
-      if (validation.data.categoryId) updateData.categoryId = validation.data.categoryId;
+      if (validation.data.categoryId !== undefined) {
+        // Allow setting to null for "All Categories"
+        updateData.categoryId = validation.data.categoryId;
+      }
       if (validation.data.name) updateData.name = validation.data.name;
       if (validation.data.amount) updateData.amount = validation.data.amount;
       if (validation.data.currency) updateData.currency = validation.data.currency;
