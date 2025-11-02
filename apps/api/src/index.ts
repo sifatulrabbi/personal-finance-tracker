@@ -9,6 +9,8 @@ import { testConnection } from "./db/connection";
 import { authRouter } from "./routes/auth.routes";
 import { transactionsRouter } from "./routes/transactions.routes";
 import { accountsRouter } from "./routes/accounts.routes";
+import { budgetsRouter } from "./routes/budgets.routes";
+import { categoriesRouter } from "./routes/categories.routes";
 
 const app = new Hono();
 
@@ -44,6 +46,8 @@ app.get("/api", (c) => {
 app.route("/api/auth", authRouter);
 app.route("/api/transactions", transactionsRouter);
 app.route("/api/accounts", accountsRouter);
+app.route("/api/budgets", budgetsRouter);
+app.route("/api/categories", categoriesRouter);
 
 // 404 handler
 app.notFound((c) => {

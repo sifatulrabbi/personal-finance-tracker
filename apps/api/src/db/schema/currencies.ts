@@ -1,4 +1,10 @@
-import { pgTable, varchar, decimal, timestamp, primaryKey } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  varchar,
+  decimal,
+  timestamp,
+  primaryKey,
+} from "drizzle-orm/pg-core";
 
 export const currencies = pgTable("currencies", {
   code: varchar("code", { length: 3 }).primaryKey(), // ISO 4217 code (USD, EUR, etc.)
@@ -12,19 +18,23 @@ export const currencies = pgTable("currencies", {
 });
 
 // Exchange rates table for currency conversion
-export const exchangeRates = pgTable("exchange_rates", {
-  fromCurrency: varchar("from_currency", { length: 3 })
-    .notNull()
-    .references(() => currencies.code),
-  toCurrency: varchar("to_currency", { length: 3 })
-    .notNull()
-    .references(() => currencies.code),
-  rate: decimal("rate", { precision: 19, scale: 8 }).notNull(),
-  date: timestamp("date").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.fromCurrency, table.toCurrency] }),
-}));
+export const exchangeRates = pgTable(
+  "exchange_rates",
+  {
+    fromCurrency: varchar("from_currency", { length: 3 })
+      .notNull()
+      .references(() => currencies.code),
+    toCurrency: varchar("to_currency", { length: 3 })
+      .notNull()
+      .references(() => currencies.code),
+    rate: decimal("rate", { precision: 19, scale: 8 }).notNull(),
+    date: timestamp("date").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.fromCurrency, table.toCurrency] }),
+  }),
+);
 
 export type Currency = typeof currencies.$inferSelect;
 export type NewCurrency = typeof currencies.$inferInsert;

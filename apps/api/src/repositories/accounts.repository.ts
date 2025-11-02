@@ -1,6 +1,11 @@
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/connection";
-import { accounts, exchangeRates, type Account, type NewAccount } from "../db/schema";
+import {
+  accounts,
+  exchangeRates,
+  type Account,
+  type NewAccount,
+} from "../db/schema";
 
 export class AccountsRepository {
   /**
