@@ -1,22 +1,22 @@
-import { useState, FormEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useState, FormEvent } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export function LoginPage() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = (location.state as any)?.from?.pathname || '/';
+  const from = (location.state as any)?.from?.pathname || "/";
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setIsLoading(true);
 
     try {
@@ -24,8 +24,8 @@ export function LoginPage() {
       // Redirect to the page they were trying to access or home
       navigate(from, { replace: true });
     } catch (err: any) {
-      console.error('Login error:', err);
-      setError(err.message || 'Invalid username or password');
+      console.error("Login error:", err);
+      setError(err.message || "Invalid username or password");
     } finally {
       setIsLoading(false);
     }
@@ -65,7 +65,10 @@ export function LoginPage() {
             )}
 
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="username"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Username
               </label>
               <input
@@ -82,7 +85,10 @@ export function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Password
               </label>
               <input
@@ -126,7 +132,7 @@ export function LoginPage() {
                   Signing in...
                 </span>
               ) : (
-                'Sign In'
+                "Sign In"
               )}
             </button>
           </form>

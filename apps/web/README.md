@@ -29,17 +29,20 @@ Modern React frontend for the Finance Tracker application with Tailwind CSS and 
 ### Installation
 
 1. Install dependencies:
+
 ```bash
 bun install
 ```
 
 2. Configure environment:
+
 ```bash
 cp .env.example .env
 # Update VITE_API_URL if your API runs on a different port
 ```
 
 3. Start development server:
+
 ```bash
 bun run dev
 ```
@@ -89,11 +92,13 @@ src/
 ## Tailwind Configuration
 
 Custom color palette:
+
 - **Primary** - Blue theme for main actions
 - **Success** - Green for income and positive actions
 - **Danger** - Red for expenses and destructive actions
 
 Custom component classes:
+
 - `.btn` - Base button styles
 - `.btn-primary` - Primary button
 - `.btn-secondary` - Secondary button
@@ -130,6 +135,7 @@ Authorization: Bearer <token>
 ### Login Credentials
 
 Use the credentials configured in the backend .env file:
+
 - Username: `admin` (default, from AUTH_USERNAME)
 - Password: Your password from AUTH_PASSWORD
 
@@ -148,6 +154,7 @@ Use the credentials configured in the backend .env file:
 3. Wrap with `<ProtectedRoute>` if authentication required
 
 Example:
+
 ```tsx
 <Route
   path="/accounts"
@@ -164,7 +171,7 @@ Example:
 Access auth state with the `useAuth` hook:
 
 ```tsx
-import { useAuth } from './contexts/AuthContext';
+import { useAuth } from "./contexts/AuthContext";
 
 function MyComponent() {
   const { user, isAuthenticated, login, logout } = useAuth();
@@ -182,6 +189,7 @@ bun run build
 Output will be in the `dist/` directory.
 
 Preview production build:
+
 ```bash
 bun run preview
 ```

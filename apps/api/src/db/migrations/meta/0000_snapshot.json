@@ -61,9 +61,7 @@
         "users_username_unique": {
           "name": "users_username_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "username"
-          ]
+          "columns": ["username"]
         }
       },
       "policies": {},
@@ -162,12 +160,8 @@
           "name": "accounts_user_id_users_id_fk",
           "tableFrom": "accounts",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -261,12 +255,8 @@
           "name": "categories_user_id_users_id_fk",
           "tableFrom": "categories",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -274,12 +264,8 @@
           "name": "categories_parent_id_categories_id_fk",
           "tableFrom": "categories",
           "tableTo": "categories",
-          "columnsFrom": [
-            "parent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["parent_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -339,12 +325,8 @@
           "name": "transaction_splits_transaction_id_transactions_id_fk",
           "tableFrom": "transaction_splits",
           "tableTo": "transactions",
-          "columnsFrom": [
-            "transaction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["transaction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -352,12 +334,8 @@
           "name": "transaction_splits_category_id_categories_id_fk",
           "tableFrom": "transaction_splits",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -500,12 +478,8 @@
           "name": "transactions_user_id_users_id_fk",
           "tableFrom": "transactions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -513,12 +487,8 @@
           "name": "transactions_account_id_accounts_id_fk",
           "tableFrom": "transactions",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -526,12 +496,8 @@
           "name": "transactions_category_id_categories_id_fk",
           "tableFrom": "transactions",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -539,12 +505,8 @@
           "name": "transactions_to_account_id_accounts_id_fk",
           "tableFrom": "transactions",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "to_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["to_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -552,12 +514,8 @@
           "name": "transactions_recurring_transaction_id_transactions_id_fk",
           "tableFrom": "transactions",
           "tableTo": "transactions",
-          "columnsFrom": [
-            "recurring_transaction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["recurring_transaction_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -679,12 +637,8 @@
           "name": "budgets_user_id_users_id_fk",
           "tableFrom": "budgets",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -692,12 +646,8 @@
           "name": "budgets_category_id_categories_id_fk",
           "tableFrom": "budgets",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -816,12 +766,8 @@
           "name": "goals_user_id_users_id_fk",
           "tableFrom": "goals",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -829,12 +775,8 @@
           "name": "goals_account_id_accounts_id_fk",
           "tableFrom": "goals",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -902,12 +844,8 @@
           "name": "tags_user_id_users_id_fk",
           "tableFrom": "tags",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -955,12 +893,8 @@
           "name": "transaction_tags_transaction_id_transactions_id_fk",
           "tableFrom": "transaction_tags",
           "tableTo": "transactions",
-          "columnsFrom": [
-            "transaction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["transaction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -968,12 +902,8 @@
           "name": "transaction_tags_tag_id_tags_id_fk",
           "tableFrom": "transaction_tags",
           "tableTo": "tags",
-          "columnsFrom": [
-            "tag_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tag_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1116,12 +1046,8 @@
           "name": "recurring_transactions_user_id_users_id_fk",
           "tableFrom": "recurring_transactions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1129,12 +1055,8 @@
           "name": "recurring_transactions_account_id_accounts_id_fk",
           "tableFrom": "recurring_transactions",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1142,12 +1064,8 @@
           "name": "recurring_transactions_category_id_categories_id_fk",
           "tableFrom": "recurring_transactions",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1253,12 +1171,8 @@
           "name": "exchange_rates_from_currency_currencies_code_fk",
           "tableFrom": "exchange_rates",
           "tableTo": "currencies",
-          "columnsFrom": [
-            "from_currency"
-          ],
-          "columnsTo": [
-            "code"
-          ],
+          "columnsFrom": ["from_currency"],
+          "columnsTo": ["code"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1266,12 +1180,8 @@
           "name": "exchange_rates_to_currency_currencies_code_fk",
           "tableFrom": "exchange_rates",
           "tableTo": "currencies",
-          "columnsFrom": [
-            "to_currency"
-          ],
-          "columnsTo": [
-            "code"
-          ],
+          "columnsFrom": ["to_currency"],
+          "columnsTo": ["code"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1300,28 +1210,17 @@
     "public.category_type": {
       "name": "category_type",
       "schema": "public",
-      "values": [
-        "income",
-        "expense"
-      ]
+      "values": ["income", "expense"]
     },
     "public.transaction_type": {
       "name": "transaction_type",
       "schema": "public",
-      "values": [
-        "income",
-        "expense",
-        "transfer"
-      ]
+      "values": ["income", "expense", "transfer"]
     },
     "public.budget_period": {
       "name": "budget_period",
       "schema": "public",
-      "values": [
-        "weekly",
-        "monthly",
-        "yearly"
-      ]
+      "values": ["weekly", "monthly", "yearly"]
     },
     "public.recurring_frequency": {
       "name": "recurring_frequency",

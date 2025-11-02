@@ -1,12 +1,17 @@
-import { apiClient } from './api';
-import type { LoginRequest, LoginResponse, User } from '../types/auth';
+import { apiClient } from "./api";
+import type { LoginRequest, LoginResponse, User } from "../types/auth";
 
-const TOKEN_KEY = 'auth_token';
-const USER_KEY = 'auth_user';
+const TOKEN_KEY = "auth_token";
+const USER_KEY = "auth_user";
 
 export class AuthService {
-  static async login(credentials: LoginRequest): Promise<{ token: string; user: User }> {
-    const response = await apiClient.post<LoginResponse>('/api/auth/login', credentials);
+  static async login(
+    credentials: LoginRequest,
+  ): Promise<{ token: string; user: User }> {
+    const response = await apiClient.post<LoginResponse>(
+      "/api/auth/login",
+      credentials,
+    );
 
     if (response.success && response.data) {
       this.setToken(response.data.token);
@@ -14,18 +19,20 @@ export class AuthService {
       return response.data;
     }
 
-    throw new Error('Login failed');
+    throw new Error("Login failed");
   }
 
   static async getCurrentUser(): Promise<User> {
-    const response = await apiClient.get<{ success: boolean; data: User }>('/api/auth/me');
+    const response = await apiClient.get<{ success: boolean; data: User }>(
+      "/api/auth/me",
+    );
 
     if (response.success && response.data) {
       this.setUser(response.data);
       return response.data;
     }
 
-    throw new Error('Failed to get current user');
+    throw new Error("Failed to get current user");
   }
 
   static logout(): void {

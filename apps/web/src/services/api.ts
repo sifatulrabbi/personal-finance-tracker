@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -17,22 +17,22 @@ class ApiClient {
 
   private getHeaders(): HeadersInit {
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     };
 
-    const token = localStorage.getItem('auth_token');
+    const token = localStorage.getItem("auth_token");
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers["Authorization"] = `Bearer ${token}`;
     }
 
     return headers;
   }
 
   private async handleResponse<T>(response: Response): Promise<T> {
-    const contentType = response.headers.get('content-type');
+    const contentType = response.headers.get("content-type");
 
-    if (!contentType || !contentType.includes('application/json')) {
-      throw new Error('Invalid response format');
+    if (!contentType || !contentType.includes("application/json")) {
+      throw new Error("Invalid response format");
     }
 
     const data = await response.json();
@@ -49,7 +49,7 @@ class ApiClient {
 
   async get<T>(endpoint: string): Promise<T> {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'GET',
+      method: "GET",
       headers: this.getHeaders(),
     });
 
@@ -58,7 +58,7 @@ class ApiClient {
 
   async post<T>(endpoint: string, body?: unknown): Promise<T> {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'POST',
+      method: "POST",
       headers: this.getHeaders(),
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -68,7 +68,7 @@ class ApiClient {
 
   async patch<T>(endpoint: string, body?: unknown): Promise<T> {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'PATCH',
+      method: "PATCH",
       headers: this.getHeaders(),
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -78,7 +78,7 @@ class ApiClient {
 
   async delete<T>(endpoint: string): Promise<T> {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: this.getHeaders(),
     });
 
