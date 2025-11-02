@@ -134,6 +134,11 @@ Complete schema for all features:
 - `/api/budgets` - Full CRUD for budgets
 - `/api/budgets/:id` - Get budget with spending info
 - `/api/categories` - Get categories by type
+- `/api/recurring` - Full CRUD for recurring transactions
+- `/api/recurring/active` - Get active recurring transactions
+- `/api/recurring/:id/toggle` - Toggle active/inactive status
+- `/api/recurring/:id/create-now` - Manually create transaction from template
+- `/api/recurring/process-due` - Process all due recurring transactions
 
 #### ✅ Features Implemented
 
@@ -149,6 +154,11 @@ Complete schema for all features:
 - **Budget tracking** - Category-specific or "All Categories" budgets
 - **Budget alerts** - Configurable thresholds with visual indicators
 - **Budget periods** - Weekly, monthly, and yearly budget periods
+- **Recurring transactions** - Full CRUD for subscriptions and recurring expenses
+- **Recurring frequencies** - Daily, weekly, biweekly, monthly, quarterly, yearly
+- **Auto-create transactions** - Automatically create transactions when due
+- **Manual transaction creation** - "Create Now" from recurring templates
+- **Recurring transaction management** - Toggle active/inactive, process due
 - Categories management - Filter by income/expense type
 - Data validation with Zod schemas
 - Error handling and logging
@@ -186,7 +196,8 @@ See [SETUP.md](./SETUP.md) for detailed documentation.
 - [x] Build frontend UI for budgets
 - [x] Implement currency conversion to BDT
 - [x] Build categories management
-- [ ] Implement remaining endpoints (tags, recurring)
+- [x] Implement recurring transactions feature
+- [ ] Implement remaining endpoints (goals, tags)
 - [ ] Add data import/export functionality
 - [ ] Implement reporting and analytics
 - [ ] Add automated tests

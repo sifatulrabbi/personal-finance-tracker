@@ -113,6 +113,34 @@ The Finance Tracker is now a fully functional application with a complete backen
   - Danger (Red) - expenses, destructive actions
   - Warning (Yellow) - alerts, thresholds
 
+### 🔄 Recurring Transactions
+
+- **Full CRUD operations** for recurring transactions
+- **Six frequency options**:
+  - Daily 📅
+  - Weekly 🗓️
+  - Bi-weekly 📆
+  - Monthly 🗓️
+  - Quarterly 📊
+  - Yearly 📅
+- **Auto-create functionality** - Automatically create transactions when due
+- **Manual triggers**:
+  - "Create Now" button - Manually create transaction from template
+  - "Process Due" button - Process all due recurring transactions
+- **Flexible scheduling**:
+  - Day of month selector (for monthly/quarterly/yearly)
+  - Day of week selector (for weekly/biweekly)
+- **Optional end dates** - Indefinite or time-limited
+- **Active/Inactive toggle** - Easy enable/disable without deletion
+- **Visual status indicators**:
+  - Active/Inactive badges
+  - Auto-create badge
+  - Due warning badge (⚠️) for overdue transactions
+  - Grayed out cards for inactive recurring
+  - Yellow border for due transactions
+- **Rich recurring cards** with all details
+- **Use cases**: Subscriptions, rent, bills, salary, and more
+
 ### 📊 Coming Soon Pages
 
 - **Reports** - Placeholder ready
@@ -273,7 +301,7 @@ PostgreSQL Database
 7. **goals** - Financial goals (schema ready)
 8. **tags** - Custom tags (schema ready)
 9. **transaction_tags** - Tag relationships (schema ready)
-10. **recurring_transactions** - Recurring transactions (schema ready)
+10. **recurring_transactions** - Recurring transactions (✅ FULLY IMPLEMENTED)
 11. **currencies** - Supported currencies
 12. **exchange_rates** - Exchange rates with composite primary key (✅ FULLY IMPLEMENTED)
 
@@ -298,6 +326,7 @@ PostgreSQL Database
 - **AccountsPage** - Account management
 - **TransactionsPage** - Transaction management
 - **BudgetsPage** - Budget management with full CRUD (✅ FULLY IMPLEMENTED)
+- **RecurringTransactionsPage** - Recurring transactions management (✅ FULLY IMPLEMENTED)
 - **ReportsPage** - Placeholder
 
 ### Tailwind Utility Classes
@@ -393,6 +422,10 @@ You can:
 - ✅ **Set budget alerts and thresholds**
 - ✅ **View budget progress with visual indicators**
 - ✅ **Track "All Categories" budgets**
+- ✅ **Create and manage recurring transactions**
+- ✅ **Auto-create transactions from recurring templates**
+- ✅ **Manage subscriptions and recurring bills**
+- ✅ **Toggle recurring transactions active/inactive**
 - ✅ Navigate between pages
 - ✅ Use on any device (responsive)
 

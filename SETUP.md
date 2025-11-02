@@ -345,7 +345,8 @@ docker-compose restart postgres
 - [x] Implement budgeting feature
 - [x] Implement multi-currency conversion to BDT
 - [x] Build accounts and transactions management
-- [ ] Implement remaining features (goals, tags, recurring transactions)
+- [x] Implement recurring transactions feature
+- [ ] Implement remaining features (goals, tags)
 - [ ] Add reports and analytics with charts
 - [ ] Add data import/export functionality
 - [ ] Set up production deployment

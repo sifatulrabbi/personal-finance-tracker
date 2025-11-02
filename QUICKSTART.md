@@ -249,7 +249,8 @@ The following features are fully implemented:
 4. ✅ Multi-currency support with BDT conversion
 5. ✅ **Budgets management** - Create, track, and manage budgets
 6. ✅ **Budget tracking** - Monitor spending against budgets
-7. ✅ Categories management
+7. ✅ **Recurring transactions** - Manage subscriptions and recurring bills
+8. ✅ Categories management
 
 You can now:
 
@@ -258,14 +259,15 @@ You can now:
 3. Transfer between accounts
 4. Create budgets (category-specific or "All Categories")
 5. Track spending against budgets
-6. View real-time statistics in BDT
+6. Set up recurring transactions for subscriptions and bills
+7. Auto-create transactions from recurring templates
+8. View real-time statistics in BDT
 
 Next features to add:
 
 - Reports and analytics with charts
 - Goals tracking
 - Tags system
-- Recurring transactions
 - Data import/export
 
 ## Need Help?

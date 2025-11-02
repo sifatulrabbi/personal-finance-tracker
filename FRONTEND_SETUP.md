@@ -105,6 +105,29 @@ The Finance Tracker frontend has been successfully configured with Tailwind CSS,
 - Real-time spending tracking
 - Over-budget alerts and warnings
 
+### ✅ 7. Recurring Transactions Page
+
+**Files Created:**
+
+- `src/pages/RecurringTransactionsPage.tsx` - Full recurring transactions management interface
+- `src/types/recurring.ts` - Recurring transaction type definitions
+- `src/services/recurring.service.ts` - Recurring transactions API service
+
+**Features:**
+
+- Full CRUD operations for recurring transactions
+- Modal forms for create/edit with comprehensive fields
+- Six frequency options (daily, weekly, biweekly, monthly, quarterly, yearly)
+- Day of month/week selectors for flexible scheduling
+- Account and category dropdowns
+- Auto-create toggle for automatic transaction generation
+- Visual status indicators (Active/Inactive/Due badges)
+- "Create Now" button for manual transaction creation
+- "Process Due" button for batch processing
+- Grayed out cards for inactive recurring transactions
+- Yellow border for due/overdue transactions
+- Optional end dates for time-limited recurring transactions
+
 ## How to Use
 
 ### Start the Application
@@ -177,6 +200,7 @@ apps/web/
 │   │   ├── AccountsPage.tsx          # Accounts management
 │   │   ├── TransactionsPage.tsx      # Transactions management
 │   │   ├── BudgetsPage.tsx           # Budgets management
+│   │   ├── RecurringTransactionsPage.tsx # Recurring transactions management
 │   │   └── ReportsPage.tsx           # Reports (placeholder)
 │   ├── services/
 │   │   ├── api.ts                    # API client
@@ -184,13 +208,15 @@ apps/web/
 │   │   ├── accounts.service.ts       # Accounts API
 │   │   ├── transactions.service.ts   # Transactions API
 │   │   ├── budgets.service.ts        # Budgets API
-│   │   └── categories.service.ts     # Categories API
+│   │   ├── categories.service.ts     # Categories API
+│   │   └── recurring.service.ts      # Recurring transactions API
 │   ├── types/
 │   │   ├── auth.ts                   # Auth types
 │   │   ├── account.ts                # Account types
 │   │   ├── transaction.ts            # Transaction types
 │   │   ├── budget.ts                 # Budget types
-│   │   └── category.ts               # Category types
+│   │   ├── category.ts               # Category types
+│   │   └── recurring.ts              # Recurring transaction types
 │   ├── App.tsx                       # Routing config
 │   ├── main.tsx                      # Entry point
 │   └── index.css                     # Global styles
