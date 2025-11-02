@@ -3,6 +3,7 @@ import { db } from "../db/connection";
 import {
   transactions,
   transactionSplits,
+  accounts,
   type Transaction,
   type NewTransaction,
   type TransactionSplit,
@@ -269,9 +270,11 @@ export class TransactionsRepository {
     amount: number,
     operation: "add" | "subtract",
   ): Promise<void> {
-    const account = await db.query.accounts.findFirst({
-      where: eq(transactions.accountId, accountId),
-    });
+    const [account] = await db
+      .select()
+      .from(accounts)
+      .where(eq(accounts.id, accountId))
+      .limit(1);
 
     if (!account) return;
 
