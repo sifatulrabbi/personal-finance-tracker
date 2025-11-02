@@ -1,4 +1,4 @@
-import { pgTable, varchar, decimal, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, varchar, decimal, timestamp, primaryKey } from "drizzle-orm/pg-core";
 
 export const currencies = pgTable("currencies", {
   code: varchar("code", { length: 3 }).primaryKey(), // ISO 4217 code (USD, EUR, etc.)
@@ -22,7 +22,9 @@ export const exchangeRates = pgTable("exchange_rates", {
   rate: decimal("rate", { precision: 19, scale: 8 }).notNull(),
   date: timestamp("date").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  pk: primaryKey({ columns: [table.fromCurrency, table.toCurrency] }),
+}));
 
 export type Currency = typeof currencies.$inferSelect;
 export type NewCurrency = typeof currencies.$inferInsert;

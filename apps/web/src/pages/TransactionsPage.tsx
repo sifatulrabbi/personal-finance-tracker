@@ -38,7 +38,7 @@ export function TransactionsPage() {
     accountId: "",
     type: "expense",
     amount: "0",
-    currency: "USD",
+    currency: "BDT",
     date: new Date().toISOString().split("T")[0],
     description: "",
   });
@@ -84,7 +84,7 @@ export function TransactionsPage() {
         accountId: accounts[0]?.id || "",
         type: "expense",
         amount: "0",
-        currency: "USD",
+        currency: "BDT",
         date: new Date().toISOString().split("T")[0],
         description: "",
       });

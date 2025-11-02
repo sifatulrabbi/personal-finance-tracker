@@ -1,5 +1,5 @@
 import { db } from "./connection";
-import { currencies, categories, users } from "./schema";
+import { currencies, categories, users, exchangeRates } from "./schema";
 import { config } from "../config/env";
 
 // Hash password using Bun's built-in password hashing
@@ -47,7 +47,27 @@ async function seedDatabase() {
       ])
       .onConflictDoNothing();
 
-    // 2. Create default user
+    // 2. Seed exchange rates (to BDT - Bangladeshi Taka)
+    console.log("💱 Seeding exchange rates...");
+    await db
+      .insert(exchangeRates)
+      .values([
+        // BDT to BDT
+        { fromCurrency: "BDT", toCurrency: "BDT", rate: "1.0" },
+        // Major currencies to BDT (approximate rates)
+        { fromCurrency: "USD", toCurrency: "BDT", rate: "110.0" },
+        { fromCurrency: "EUR", toCurrency: "BDT", rate: "120.0" },
+        { fromCurrency: "GBP", toCurrency: "BDT", rate: "140.0" },
+        { fromCurrency: "JPY", toCurrency: "BDT", rate: "0.75" },
+        { fromCurrency: "CAD", toCurrency: "BDT", rate: "80.0" },
+        { fromCurrency: "AUD", toCurrency: "BDT", rate: "72.0" },
+        { fromCurrency: "CHF", toCurrency: "BDT", rate: "125.0" },
+        { fromCurrency: "CNY", toCurrency: "BDT", rate: "15.2" },
+        { fromCurrency: "INR", toCurrency: "BDT", rate: "1.32" },
+      ])
+      .onConflictDoNothing();
+
+    // 3. Create default user
     console.log("👤 Creating default user...");
     const passwordHash = await hashPassword(config.auth.password);
     const [user] = await db
@@ -59,7 +79,7 @@ async function seedDatabase() {
       })
       .returning();
 
-    // 3. Seed default expense categories
+    // 4. Seed default expense categories
     console.log("📁 Seeding default categories...");
     const expenseCategories = [
       { name: "Groceries", icon: "🛒", color: "#10b981" },
@@ -93,7 +113,7 @@ async function seedDatabase() {
         .onConflictDoNothing();
     }
 
-    // 4. Seed default income categories
+    // 5. Seed default income categories
     const incomeCategories = [
       { name: "Salary", icon: "💰", color: "#22c55e" },
       { name: "Freelance", icon: "💼", color: "#84cc16" },

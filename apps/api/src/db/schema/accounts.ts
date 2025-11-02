@@ -25,7 +25,7 @@ export const accounts = pgTable("accounts", {
     .references(() => users.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   type: accountTypeEnum("type").notNull(),
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  currency: varchar("currency", { length: 3 }).notNull().default("BDT"),
   initialBalance: decimal("initial_balance", { precision: 19, scale: 4 })
     .notNull()
     .default("0"),

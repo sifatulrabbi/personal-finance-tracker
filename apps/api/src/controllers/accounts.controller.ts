@@ -14,7 +14,7 @@ const createAccountSchema = z.object({
     "loan",
     "other",
   ]),
-  currency: z.string().length(3).default("USD"),
+  currency: z.string().length(3).default("BDT"),
   initialBalance: z
     .string()
     .regex(/^-?\d+(\.\d{1,4})?$/, "Invalid amount format")

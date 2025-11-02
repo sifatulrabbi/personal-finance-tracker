@@ -1,6 +1,6 @@
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/connection";
-import { accounts, type Account, type NewAccount } from "../db/schema";
+import { accounts, exchangeRates, type Account, type NewAccount } from "../db/schema";
 
 export class AccountsRepository {
   /**
@@ -94,22 +94,39 @@ export class AccountsRepository {
   }
 
   /**
-   * Get total balance across all accounts (by currency)
+   * Get total balance across all accounts (converted to BDT)
    */
   static async getTotalBalances(userId: string): Promise<Map<string, string>> {
     const userAccounts = await this.findByUserId(userId);
-    const balances = new Map<string, string>();
 
+    // Get all exchange rates to BDT
+    const rates = await db
+      .select({
+        fromCurrency: exchangeRates.fromCurrency,
+        rate: exchangeRates.rate,
+      })
+      .from(exchangeRates)
+      .where(eq(exchangeRates.toCurrency, "BDT"));
+
+    // Create a map for quick lookup
+    const exchangeRateMap = new Map<string, number>();
+    for (const rate of rates) {
+      exchangeRateMap.set(rate.fromCurrency, parseFloat(rate.rate));
+    }
+
+    let totalInBDT = 0;
+
+    // Convert each account balance to BDT and sum
     for (const account of userAccounts) {
       if (account.isActive === "true") {
-        const current = balances.get(account.currency) || "0";
-        const total = (
-          parseFloat(current) + parseFloat(account.currentBalance)
-        ).toFixed(4);
-        balances.set(account.currency, total);
+        const balance = parseFloat(account.currentBalance);
+        const rate = exchangeRateMap.get(account.currency) || 1;
+        totalInBDT += balance * rate;
       }
     }
 
+    const balances = new Map<string, string>();
+    balances.set("BDT", totalInBDT.toFixed(4));
     return balances;
   }
 }

@@ -8,7 +8,7 @@ const createTransactionSchema = z.object({
   categoryId: z.string().uuid("Invalid category ID").optional(),
   type: z.enum(["income", "expense", "transfer"]),
   amount: z.string().regex(/^-?\d+(\.\d{1,4})?$/, "Invalid amount format"),
-  currency: z.string().length(3).default("USD"),
+  currency: z.string().length(3).default("BDT"),
   date: z.string().optional(),
   description: z.string().optional(),
   notes: z.string().optional(),

@@ -4,6 +4,7 @@ import {
   transactions,
   transactionSplits,
   accounts,
+  exchangeRates,
   type Transaction,
   type NewTransaction,
   type TransactionSplit,
@@ -286,7 +287,7 @@ export class TransactionsRepository {
   }
 
   /**
-   * Get transactions summary for a date range
+   * Get transactions summary for a date range (converted to BDT)
    */
   static async getSummary(
     userId: string,
@@ -298,11 +299,12 @@ export class TransactionsRepository {
     netIncome: string;
     transactionCount: number;
   }> {
-    const result = await db
+    // Get all transactions in the date range
+    const allTransactions = await db
       .select({
         type: transactions.type,
-        total: sql<string>`COALESCE(SUM(${transactions.amount}), 0)`,
-        count: sql<number>`COUNT(*)`,
+        amount: transactions.amount,
+        currency: transactions.currency,
       })
       .from(transactions)
       .where(
@@ -312,20 +314,38 @@ export class TransactionsRepository {
           lte(transactions.date, endDate),
           isNull(transactions.recurringTransactionId), // Exclude recurring transaction templates
         ),
-      )
-      .groupBy(transactions.type);
+      );
+
+    // Get all exchange rates to BDT
+    const rates = await db
+      .select({
+        fromCurrency: exchangeRates.fromCurrency,
+        rate: exchangeRates.rate,
+      })
+      .from(exchangeRates)
+      .where(eq(exchangeRates.toCurrency, "BDT"));
+
+    // Create a map for quick lookup
+    const exchangeRateMap = new Map<string, number>();
+    for (const rate of rates) {
+      exchangeRateMap.set(rate.fromCurrency, parseFloat(rate.rate));
+    }
 
     let totalIncome = 0;
     let totalExpense = 0;
-    let transactionCount = 0;
+    let transactionCount = allTransactions.length;
 
-    for (const row of result) {
-      if (row.type === "income") {
-        totalIncome = parseFloat(row.total);
-      } else if (row.type === "expense") {
-        totalExpense = parseFloat(row.total);
+    // Convert each transaction to BDT and sum
+    for (const transaction of allTransactions) {
+      const amount = parseFloat(transaction.amount);
+      const rate = exchangeRateMap.get(transaction.currency) || 1;
+      const amountInBDT = amount * rate;
+
+      if (transaction.type === "income") {
+        totalIncome += amountInBDT;
+      } else if (transaction.type === "expense") {
+        totalExpense += amountInBDT;
       }
-      transactionCount += row.count;
     }
 
     return {

@@ -30,7 +30,7 @@ export const transactions = pgTable("transactions", {
   }),
   type: transactionTypeEnum("type").notNull(),
   amount: decimal("amount", { precision: 19, scale: 4 }).notNull(),
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  currency: varchar("currency", { length: 3 }).notNull().default("BDT"),
   date: timestamp("date").notNull().defaultNow(),
   description: varchar("description", { length: 500 }),
   notes: text("notes"),

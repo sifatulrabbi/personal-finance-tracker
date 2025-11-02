@@ -23,7 +23,7 @@ export const goals = pgTable("goals", {
   currentAmount: decimal("current_amount", { precision: 19, scale: 4 })
     .notNull()
     .default("0"),
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  currency: varchar("currency", { length: 3 }).notNull().default("BDT"),
   targetDate: timestamp("target_date"),
   color: varchar("color", { length: 7 }).default("#10b981"),
   icon: varchar("icon", { length: 50 }),

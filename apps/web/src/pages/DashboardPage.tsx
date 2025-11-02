@@ -69,7 +69,7 @@ export function DashboardPage() {
     }
   };
 
-  const formatCurrency = (amount: string, currency: string = "USD") => {
+  const formatCurrency = (amount: string, currency: string = "BDT") => {
     const num = parseFloat(amount);
     return new Intl.NumberFormat("en-US", {
       style: "currency",

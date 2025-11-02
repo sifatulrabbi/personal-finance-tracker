@@ -1,0 +1,1 @@
+ALTER TABLE "exchange_rates" ADD CONSTRAINT "exchange_rates_from_currency_to_currency_pk" PRIMARY KEY("from_currency","to_currency");

@@ -18,6 +18,7 @@ const ACCOUNT_TYPES: { value: AccountType; label: string; icon: string }[] = [
 ];
 
 const CURRENCY_OPTIONS = [
+  "BDT",
   "USD",
   "EUR",
   "GBP",
@@ -27,7 +28,6 @@ const CURRENCY_OPTIONS = [
   "CHF",
   "CNY",
   "INR",
-  "BDT",
 ];
 
 export function AccountsPage() {
@@ -41,7 +41,7 @@ export function AccountsPage() {
   const [formData, setFormData] = useState<CreateAccountRequest>({
     name: "",
     type: "checking",
-    currency: "USD",
+    currency: "BDT",
     initialBalance: "0",
     description: "",
     color: "#3b82f6",
@@ -79,7 +79,7 @@ export function AccountsPage() {
       setFormData({
         name: "",
         type: "checking",
-        currency: "USD",
+        currency: "BDT",
         initialBalance: "0",
         description: "",
         color: "#3b82f6",

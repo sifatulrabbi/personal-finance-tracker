@@ -27,7 +27,7 @@ export const budgets = pgTable("budgets", {
   name: varchar("name", { length: 255 }).notNull(),
   amount: decimal("amount", { precision: 19, scale: 4 }).notNull(),
   period: budgetPeriodEnum("period").notNull().default("monthly"),
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  currency: varchar("currency", { length: 3 }).notNull().default("BDT"),
 
   // Period specifics
   startDate: timestamp("start_date").notNull(),

@@ -35,7 +35,7 @@ export const recurringTransactions = pgTable("recurring_transactions", {
   name: varchar("name", { length: 255 }).notNull(),
   description: varchar("description", { length: 500 }),
   amount: decimal("amount", { precision: 19, scale: 4 }).notNull(),
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  currency: varchar("currency", { length: 3 }).notNull().default("BDT"),
 
   frequency: recurringFrequencyEnum("frequency").notNull(),
   startDate: timestamp("start_date").notNull(),
