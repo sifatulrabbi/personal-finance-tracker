@@ -7,6 +7,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { AccountsPage } from "./pages/AccountsPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 import { BudgetsPage } from "./pages/BudgetsPage";
+import { RecurringTransactionsPage } from "./pages/RecurringTransactionsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 
 function App() {
@@ -51,6 +52,16 @@ function App() {
               <ProtectedRoute>
                 <AppLayout>
                   <BudgetsPage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/recurring"
+            element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <RecurringTransactionsPage />
                 </AppLayout>
               </ProtectedRoute>
             }
