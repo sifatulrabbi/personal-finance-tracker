@@ -1,0 +1,20 @@
+{
+  "name": "finance-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter='./apps/*' dev",
+    "build": "bun run --filter='./apps/*' build",
+    "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules",
+    "type-check": "bun run --filter='*' type-check"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prettier": "3.6.2",
+    "typescript": "^5.3.3"
+  }
+}
