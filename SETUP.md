@@ -85,8 +85,11 @@ bun run db:seed
 This creates:
 
 - Default user (credentials from .env)
-- 10+ default currencies
-- Default income/expense categories
+- 10 default currencies (USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY, INR, BDT)
+- Exchange rates to BDT for all currencies
+- Default income/expense categories (15 expense, 7 income)
+
+**Important**: BDT is the primary currency for all statistics and totals.
 
 ### 6. Start Development Servers
 
@@ -267,6 +270,17 @@ bun run clean
 bun install
 ```
 
+### Foreign Key Violation After Database Reset
+
+If you see errors like "violates foreign key constraint" after reseeding:
+
+**Problem**: Your JWT token contains an old user ID that no longer exists in the database.
+
+**Solution**:
+1. Logout from the web application
+2. Login again to get a fresh JWT token
+3. The new token will contain the correct user ID from the reseeded database
+
 ## Development Workflow
 
 ### Making Database Changes
@@ -327,8 +341,12 @@ docker-compose restart postgres
 
 ## Next Steps
 
-- [ ] Configure frontend to connect to API
-- [ ] Implement remaining features (budgets, goals, tags, etc.)
+- [x] Configure frontend to connect to API
+- [x] Implement budgeting feature
+- [x] Implement multi-currency conversion to BDT
+- [x] Build accounts and transactions management
+- [ ] Implement remaining features (goals, tags, recurring transactions)
+- [ ] Add reports and analytics with charts
 - [ ] Add data import/export functionality
 - [ ] Set up production deployment
 - [ ] Add automated tests

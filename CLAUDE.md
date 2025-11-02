@@ -128,9 +128,12 @@ Complete schema for all features:
 - `/api/auth/login` - Login
 - `/api/auth/me` - Get current user
 - `/api/accounts` - Full CRUD for accounts
-- `/api/accounts/balances` - Get balances by currency
+- `/api/accounts/balances` - Get balances by currency (converted to BDT)
 - `/api/transactions` - Full CRUD for transactions
-- `/api/transactions/summary` - Get transaction summary
+- `/api/transactions/summary` - Get transaction summary (converted to BDT)
+- `/api/budgets` - Full CRUD for budgets
+- `/api/budgets/:id` - Get budget with spending info
+- `/api/categories` - Get categories by type
 
 #### ✅ Features Implemented
 
@@ -140,6 +143,13 @@ Complete schema for all features:
 - Transaction filtering and pagination
 - Category system with default categories
 - Multi-currency support with 10+ default currencies
+- **Currency conversion to BDT** - All totals and statistics converted to BDT
+- **Exchange rates system** - Composite primary key (fromCurrency, toCurrency)
+- **Budget management** - Full CRUD with automatic expense tracking
+- **Budget tracking** - Category-specific or "All Categories" budgets
+- **Budget alerts** - Configurable thresholds with visual indicators
+- **Budget periods** - Weekly, monthly, and yearly budget periods
+- Categories management - Filter by income/expense type
 - Data validation with Zod schemas
 - Error handling and logging
 
@@ -156,7 +166,7 @@ apps/api/
 │   │   ├── connection.ts
 │   │   ├── migrate.ts
 │   │   └── seed.ts
-│   ├── middleware/      # Auth middleware
+│   ├── middleware/      # Middlewares (e.g. auth)
 │   ├── repositories/    # Data access layer
 │   ├── routes/          # API routes
 │   ├── services/        # Business logic
@@ -172,8 +182,11 @@ See [SETUP.md](./SETUP.md) for detailed documentation.
 
 #### 📝 Next Steps
 
-- [ ] Implement remaining endpoints (budgets, goals, tags, recurring)
-- [ ] Build frontend UI components
+- [x] Implement budgeting feature
+- [x] Build frontend UI for budgets
+- [x] Implement currency conversion to BDT
+- [x] Build categories management
+- [ ] Implement remaining endpoints (tags, recurring)
 - [ ] Add data import/export functionality
 - [ ] Implement reporting and analytics
 - [ ] Add automated tests

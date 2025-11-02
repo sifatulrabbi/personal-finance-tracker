@@ -14,10 +14,11 @@ The Finance Tracker frontend has been successfully configured with Tailwind CSS,
 
 **Features:**
 
-- Custom color palette (primary, success, danger)
+- Custom color palette (primary, success, danger, warning)
 - Reusable component classes (btn, input, card)
 - Responsive design utilities
 - Modern gradient backgrounds
+- Warning colors for budget alerts and thresholds
 
 ### ✅ 2. React Router Setup
 
@@ -69,15 +70,40 @@ The Finance Tracker frontend has been successfully configured with Tailwind CSS,
 
 **Files Created:**
 
-- `src/pages/DashboardPage.tsx` - Dashboard with placeholder content
+- `src/pages/DashboardPage.tsx` - Dashboard with real data
 
 **Features:**
 
 - Welcome message with user info
-- Stats cards (balance, income, expenses)
+- Stats cards (balance, income, expenses) - all converted to BDT
+- Recent transactions list
 - Getting started guide
 - Logout functionality
 - Responsive header
+
+### ✅ 6. Budgets Page
+
+**Files Created:**
+
+- `src/pages/BudgetsPage.tsx` - Full budget management interface
+- `src/types/budget.ts` - Budget type definitions
+- `src/services/budgets.service.ts` - Budget API service
+- `src/services/categories.service.ts` - Categories API service
+- `src/types/category.ts` - Category type definitions
+
+**Features:**
+
+- Full CRUD operations for budgets
+- Modal forms for create/edit
+- Budget cards with progress visualization
+- Color-coded progress bars (green → yellow → red)
+- Category dropdown with "All Categories" option
+- Visual indicators for "All Categories" budgets
+- Budget period selection (weekly/monthly/yearly)
+- Alert threshold configuration
+- Budget rollover option
+- Real-time spending tracking
+- Over-budget alerts and warnings
 
 ## How to Use
 
@@ -138,25 +164,40 @@ apps/web/
 │   ├── components/
 │   │   ├── auth/
 │   │   │   └── ProtectedRoute.tsx    # Route protection
-│   │   └── layout/                    # (Future layout components)
+│   │   ├── common/
+│   │   │   └── Modal.tsx             # Modal component
+│   │   └── layout/
+│   │       └── AppLayout.tsx         # App layout with sidebar
 │   ├── contexts/
-│   │   └── AuthContext.tsx            # Auth state management
-│   ├── hooks/                         # (Future custom hooks)
+│   │   └── AuthContext.tsx           # Auth state management
+│   ├── hooks/                        # (Future custom hooks)
 │   ├── pages/
-│   │   ├── LoginPage.tsx              # Login page
-│   │   └── DashboardPage.tsx          # Dashboard
+│   │   ├── LoginPage.tsx             # Login page
+│   │   ├── DashboardPage.tsx         # Dashboard
+│   │   ├── AccountsPage.tsx          # Accounts management
+│   │   ├── TransactionsPage.tsx      # Transactions management
+│   │   ├── BudgetsPage.tsx           # Budgets management
+│   │   └── ReportsPage.tsx           # Reports (placeholder)
 │   ├── services/
-│   │   ├── api.ts                     # API client
-│   │   └── auth.service.ts            # Auth service
+│   │   ├── api.ts                    # API client
+│   │   ├── auth.service.ts           # Auth service
+│   │   ├── accounts.service.ts       # Accounts API
+│   │   ├── transactions.service.ts   # Transactions API
+│   │   ├── budgets.service.ts        # Budgets API
+│   │   └── categories.service.ts     # Categories API
 │   ├── types/
-│   │   └── auth.ts                    # Auth types
-│   ├── App.tsx                        # Routing config
-│   ├── main.tsx                       # Entry point
-│   └── index.css                      # Global styles
-├── tailwind.config.js                 # Tailwind config
-├── postcss.config.js                  # PostCSS config
-├── .env                               # Environment variables
-└── package.json                       # Dependencies
+│   │   ├── auth.ts                   # Auth types
+│   │   ├── account.ts                # Account types
+│   │   ├── transaction.ts            # Transaction types
+│   │   ├── budget.ts                 # Budget types
+│   │   └── category.ts               # Category types
+│   ├── App.tsx                       # Routing config
+│   ├── main.tsx                      # Entry point
+│   └── index.css                     # Global styles
+├── tailwind.config.js                # Tailwind config
+├── postcss.config.js                 # PostCSS config
+├── .env                              # Environment variables
+└── package.json                      # Dependencies
 ```
 
 ## Key Features
@@ -218,30 +259,33 @@ Change `VITE_API_URL` if your backend runs on a different port.
 
 ## Next Steps
 
-Now that authentication is set up, you can:
+Now that the application has authentication, accounts, transactions, and budgeting, you can:
 
 1. **Add more pages:**
-   - Accounts page
-   - Transactions page
-   - Budgets page
-   - Reports page
+   - ✅ Accounts page (implemented)
+   - ✅ Transactions page (implemented)
+   - ✅ Budgets page (implemented)
+   - Reports page with charts and analytics
 
-2. **Enhance the dashboard:**
-   - Fetch real data from API
-   - Add charts and graphs
-   - Show recent transactions
+2. **Enhance existing features:**
+   - Add data import/export functionality
+   - Implement advanced filtering and search
+   - Add charts and graphs to reports
+   - Implement recurring transactions
 
 3. **Build more components:**
-   - Account cards
-   - Transaction list
-   - Budget progress bars
-   - Navigation menu
+   - ✅ Account cards (implemented)
+   - ✅ Transaction list (implemented)
+   - ✅ Budget progress bars (implemented)
+   - ✅ Navigation menu (implemented)
+   - Notification/toast system
+   - Advanced data tables with sorting/filtering
 
 4. **Add more features:**
-   - Form components for creating/editing
-   - Modals and dialogs
-   - Notifications/toasts
-   - Data tables with sorting/filtering
+   - Goals tracking
+   - Tags system
+   - Recurring transactions management
+   - Data visualization and analytics
 
 ## Troubleshooting
 
@@ -267,6 +311,15 @@ Now that authentication is set up, you can:
 - Ensure Tailwind is configured: check `tailwind.config.js`
 - Verify PostCSS config: check `postcss.config.js`
 - Check that `index.css` has Tailwind directives
+
+### "Foreign key violation after database reset"
+
+If you see errors like "violates foreign key constraint" after reseeding the database:
+
+- Your JWT token contains an old user ID
+- **Solution**: Logout and login again to get a fresh token
+- The database seed creates a new user with a new ID
+- Your old token still references the previous user ID
 
 ## Documentation
 

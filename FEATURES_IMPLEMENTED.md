@@ -17,11 +17,12 @@ The Finance Tracker is now a fully functional application with a complete backen
 ### 🏠 Dashboard
 
 - **Real-time data** from API
-- **Total balance** across all accounts
-- **Monthly income/expense summary** with transaction count
+- **Total balance** across all accounts (converted to BDT)
+- **Monthly income/expense summary** with transaction count (converted to BDT)
 - **Recent transactions** list (last 5)
 - **Quick action links** to common tasks
 - **Responsive design** - works on all screen sizes
+- **Multi-currency aggregation** - All balances shown in BDT
 
 ### 💳 Accounts Management
 
@@ -56,6 +57,46 @@ The Finance Tracker is now a fully functional application with a complete backen
 - **Color-coded** by type (green=income, red=expense, blue=transfer)
 - **Filter support** (ready for future implementation)
 
+### 💰 Budgets Management
+
+- **Full CRUD operations** for budgets
+- **Multiple budget periods**:
+  - Weekly 📅
+  - Monthly 📆
+  - Yearly 📊
+- **Category-specific budgets** - Track spending by category
+- **"All Categories" budgets** - Track total expenses across all categories
+- **Automatic expense calculation** - Real-time spending tracking
+- **Visual progress indicators**:
+  - Color-coded progress bars (green → yellow → red)
+  - Percentage display
+  - Remaining amount display
+- **Budget alerts**:
+  - Configurable threshold (0-100%)
+  - Warning alerts at threshold
+  - Over-budget alerts
+- **Currency support** - Multi-currency budgets
+- **Date range tracking** - Automatic calculation based on period
+- **Budget rollover** - Optional rollover of unused budget
+- **Rich budget cards** with spending visualization
+
+### 🏷️ Categories Management
+
+- **Category filtering** by type (income/expense)
+- **15 expense categories** (pre-seeded)
+- **7 income categories** (pre-seeded)
+- **Category icons** for visual identification
+- **Integration with budgets** - Track spending by category
+
+### 💱 Multi-Currency Support
+
+- **10+ currencies** supported (USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY, INR, BDT)
+- **BDT as primary currency** - All statistics converted to BDT
+- **Exchange rates system** with composite primary key
+- **Automatic conversion** - Total balances converted to BDT
+- **Per-transaction currency** - Each transaction maintains its currency
+- **Monthly statistics in BDT** - Income and expenses converted for summaries
+
 ### 🎨 Modern UI/UX
 
 - **Tailwind CSS** with custom color scheme
@@ -70,10 +111,10 @@ The Finance Tracker is now a fully functional application with a complete backen
   - Primary (Blue) - main actions
   - Success (Green) - income, positive actions
   - Danger (Red) - expenses, destructive actions
+  - Warning (Yellow) - alerts, thresholds
 
 ### 📊 Coming Soon Pages
 
-- **Budgets** - Placeholder ready
 - **Reports** - Placeholder ready
 
 ## 📁 Project Structure
@@ -228,13 +269,13 @@ PostgreSQL Database
 3. **categories** - Transaction categories (15 expense, 7 income defaults)
 4. **transactions** - All transactions
 5. **transaction_splits** - Split transactions
-6. **budgets** - Budget tracking (schema ready)
+6. **budgets** - Budget tracking (✅ FULLY IMPLEMENTED)
 7. **goals** - Financial goals (schema ready)
 8. **tags** - Custom tags (schema ready)
 9. **transaction_tags** - Tag relationships (schema ready)
 10. **recurring_transactions** - Recurring transactions (schema ready)
 11. **currencies** - Supported currencies
-12. **exchange_rates** - Exchange rates (schema ready)
+12. **exchange_rates** - Exchange rates with composite primary key (✅ FULLY IMPLEMENTED)
 
 ### Default Data
 
@@ -253,10 +294,10 @@ PostgreSQL Database
 ### Page Components
 
 - **LoginPage** - Beautiful login form
-- **DashboardPage** - Overview with real data
+- **DashboardPage** - Overview with real data (BDT-converted)
 - **AccountsPage** - Account management
 - **TransactionsPage** - Transaction management
-- **BudgetsPage** - Placeholder
+- **BudgetsPage** - Budget management with full CRUD (✅ FULLY IMPLEMENTED)
 - **ReportsPage** - Placeholder
 
 ### Tailwind Utility Classes
@@ -344,9 +385,14 @@ You can:
 - ✅ Create and manage accounts
 - ✅ Add income and expenses
 - ✅ Transfer between accounts
-- ✅ View real-time balances
-- ✅ See monthly summaries
+- ✅ View real-time balances (converted to BDT)
+- ✅ See monthly summaries (converted to BDT)
 - ✅ Track transaction history
+- ✅ **Create and manage budgets**
+- ✅ **Track spending against budgets**
+- ✅ **Set budget alerts and thresholds**
+- ✅ **View budget progress with visual indicators**
+- ✅ **Track "All Categories" budgets**
 - ✅ Navigate between pages
 - ✅ Use on any device (responsive)
 

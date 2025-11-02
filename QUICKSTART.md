@@ -76,14 +76,20 @@ bun run db:seed
 
 You'll see:
 
-- ✅ Default currencies added
-- ✅ Default categories created
+- ✅ Default currencies added (USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY, INR, BDT)
+- ✅ Exchange rates to BDT configured
+- ✅ Default categories created (15 expense, 7 income)
 - ✅ Admin user created
 
 **Default Login Credentials:**
 
 - Username: `admin` (from .env AUTH_USERNAME)
 - Password: (what you set in .env AUTH_PASSWORD)
+
+**Important Note:**
+
+- **BDT is the primary currency** - All statistics and totals are converted to BDT
+- Exchange rates are pre-configured for 10 currencies
 
 ### 5. Start Development Servers (30 seconds)
 
@@ -198,6 +204,16 @@ bun run db:migrate
 bun run db:seed
 ```
 
+### "Foreign key violation" errors
+
+If you see errors like "violates foreign key constraint" after reseeding the database:
+
+```bash
+# Your JWT token contains an old user ID
+# Solution: Logout from the web app and login again
+# This will generate a fresh token with the new user ID
+```
+
 ## Quick Commands Reference
 
 ```bash
@@ -223,14 +239,34 @@ bun run db:seed
 
 ## Next Steps
 
-✅ Your backend is ready!
+✅ Your application is ready!
 
-Now you can:
+The following features are fully implemented:
 
-1. Configure the frontend to connect to the API
-2. Build the UI components
-3. Add more features (budgets, goals, tags, etc.)
-4. Customize categories and settings
+1. ✅ Authentication with JWT
+2. ✅ Accounts management
+3. ✅ Transactions management
+4. ✅ Multi-currency support with BDT conversion
+5. ✅ **Budgets management** - Create, track, and manage budgets
+6. ✅ **Budget tracking** - Monitor spending against budgets
+7. ✅ Categories management
+
+You can now:
+
+1. Create accounts in different currencies
+2. Add income and expenses
+3. Transfer between accounts
+4. Create budgets (category-specific or "All Categories")
+5. Track spending against budgets
+6. View real-time statistics in BDT
+
+Next features to add:
+
+- Reports and analytics with charts
+- Goals tracking
+- Tags system
+- Recurring transactions
+- Data import/export
 
 ## Need Help?
 
