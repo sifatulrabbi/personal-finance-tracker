@@ -161,14 +161,21 @@ export function TransactionsPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-6 lg:p-8">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Transactions</h1>
-          <p className="text-gray-600 mt-1">Track your income and expenses</p>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Transactions
+          </h1>
+          <p className="text-sm md:text-base text-gray-600 mt-1">
+            Track your income and expenses
+          </p>
         </div>
-        <button onClick={() => handleOpenModal()} className="btn btn-primary">
+        <button
+          onClick={() => handleOpenModal()}
+          className="btn btn-primary w-full sm:w-auto"
+        >
           <svg
             className="w-5 h-5 mr-2 inline"
             fill="none"
@@ -195,21 +202,26 @@ export function TransactionsPage() {
       {/* Transactions List */}
       {transactions.length === 0 ? (
         <div className="text-center py-12">
-          <div className="text-6xl mb-4">📝</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
+          <div className="text-5xl md:text-6xl mb-4">📝</div>
+          <h3 className="text-base md:text-lg font-medium text-gray-900 mb-2">
             No transactions yet
           </h3>
-          <p className="text-gray-600 mb-4">
+          <p className="text-sm md:text-base text-gray-600 mb-4">
             Start tracking by adding your first transaction
           </p>
-          <button onClick={() => handleOpenModal()} className="btn btn-primary">
+          <button
+            onClick={() => handleOpenModal()}
+            className="btn btn-primary w-full sm:w-auto"
+          >
             Add Transaction
           </button>
         </div>
       ) : (
-        <div className="card">
-          <div className="overflow-x-auto">
-            <table className="w-full">
+        <>
+          {/* Desktop Table View */}
+          <div className="hidden md:block card">
+            <div className="overflow-x-auto">
+              <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">
@@ -314,6 +326,85 @@ export function TransactionsPage() {
             </table>
           </div>
         </div>
+
+        {/* Mobile Card View */}
+        <div className="md:hidden space-y-4">
+          {transactions.map((transaction) => {
+            const typeInfo = getTransactionTypeInfo(transaction.type);
+            return (
+              <div key={transaction.id} className="card">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center">
+                    <span className="text-2xl mr-3">{typeInfo.icon}</span>
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        {transaction.description || "No description"}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {formatDate(transaction.date)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleOpenModal(transaction)}
+                      className="text-gray-400 hover:text-primary-600 p-1"
+                    >
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleDelete(transaction.id)}
+                      className="text-gray-400 hover:text-danger-600 p-1"
+                    >
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+                  <div>
+                    <p className="text-xs text-gray-500">Account</p>
+                    <p className="text-sm text-gray-700">
+                      {getAccountName(transaction.accountId)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Amount</p>
+                    <p className={`text-lg font-semibold ${typeInfo.color}`}>
+                      {transaction.type === "expense" && "- "}
+                      {transaction.type === "income" && "+ "}
+                      {formatCurrency(transaction.amount, transaction.currency)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>
       )}
 
       {/* Add/Edit Modal */}
@@ -392,7 +483,7 @@ export function TransactionsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Amount
@@ -440,15 +531,18 @@ export function TransactionsPage() {
             />
           </div>
 
-          <div className="flex justify-end space-x-3 pt-4">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
             <button
               type="button"
               onClick={handleCloseModal}
-              className="btn btn-secondary"
+              className="btn btn-secondary order-2 sm:order-1"
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
+            <button
+              type="submit"
+              className="btn btn-primary order-1 sm:order-2"
+            >
               {editingTransaction ? "Update" : "Create"} Transaction
             </button>
           </div>

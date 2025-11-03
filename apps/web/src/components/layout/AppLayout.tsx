@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -15,6 +15,7 @@ interface NavItem {
 export function AppLayout({ children }: AppLayoutProps) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navItems: NavItem[] = [
     {
@@ -137,10 +138,77 @@ export function AppLayout({ children }: AppLayoutProps) {
     return location.pathname === path;
   };
 
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white shadow-md">
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center">
+            <div className="flex items-center justify-center w-8 h-8 bg-primary-600 rounded-lg mr-2">
+              <svg
+                className="w-5 h-5 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <h1 className="text-lg font-bold text-gray-900">Finance</h1>
+          </div>
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-2 text-gray-600 hover:text-gray-900 focus:outline-none"
+          >
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              {isMobileMenuOpen ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              )}
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black bg-opacity-50"
+          onClick={closeMobileMenu}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-white shadow-lg flex flex-col">
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white shadow-lg flex flex-col transform transition-transform duration-300 ease-in-out ${
+          isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+      >
         {/* Logo */}
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center">
@@ -173,6 +241,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <li key={item.path}>
                 <Link
                   to={item.path}
+                  onClick={closeMobileMenu}
                   className={`flex items-center px-4 py-3 rounded-lg transition-colors ${
                     isActive(item.path)
                       ? "bg-primary-50 text-primary-700 font-medium"
@@ -233,7 +302,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto pt-16 lg:pt-0">{children}</main>
     </div>
   );
 }

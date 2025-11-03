@@ -230,25 +230,28 @@ export function RecurringTransactionsPage() {
   }
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 md:p-6 lg:p-8">
+      <div className="flex flex-col gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
             Recurring Transactions
           </h1>
-          <p className="text-gray-600 mt-1">
+          <p className="text-sm md:text-base text-gray-600 mt-1">
             Manage your subscriptions and recurring expenses
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={handleProcessDue}
-            className="btn btn-secondary"
+            className="btn btn-secondary w-full sm:w-auto"
             title="Process all due recurring transactions"
           >
             ⚡ Process Due
           </button>
-          <button onClick={() => handleOpenModal()} className="btn btn-primary">
+          <button
+            onClick={() => handleOpenModal()}
+            className="btn btn-primary w-full sm:w-auto"
+          >
             <span className="text-xl mr-2">+</span> Add Recurring
           </button>
         </div>
@@ -262,20 +265,23 @@ export function RecurringTransactionsPage() {
 
       {recurring.length === 0 ? (
         <div className="card text-center py-12">
-          <div className="text-6xl mb-4">🔄</div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+          <div className="text-5xl md:text-6xl mb-4">🔄</div>
+          <h3 className="text-lg md:text-xl font-semibold text-gray-900 mb-2">
             No recurring transactions yet
           </h3>
-          <p className="text-gray-600 mb-6">
+          <p className="text-sm md:text-base text-gray-600 mb-6">
             Set up recurring transactions for subscriptions, rent, bills, and
             more
           </p>
-          <button onClick={() => handleOpenModal()} className="btn btn-primary">
+          <button
+            onClick={() => handleOpenModal()}
+            className="btn btn-primary w-full sm:w-auto"
+          >
             Create Recurring Transaction
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           {recurring.map((item) => {
             const isActive = item.isActive === "true";
             const autoCreate = item.autoCreate === "true";
@@ -500,7 +506,7 @@ export function RecurringTransactionsPage() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Amount
@@ -591,7 +597,7 @@ export function RecurringTransactionsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Start Date
@@ -663,15 +669,18 @@ export function RecurringTransactionsPage() {
             </div>
           )}
 
-          <div className="flex gap-3 pt-4">
+          <div className="flex flex-col sm:flex-row gap-3 pt-4">
             <button
               type="button"
               onClick={handleCloseModal}
-              className="btn btn-secondary flex-1"
+              className="btn btn-secondary flex-1 order-2 sm:order-1"
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary flex-1">
+            <button
+              type="submit"
+              className="btn btn-primary flex-1 order-1 sm:order-2"
+            >
               {editingRecurring ? "Update" : "Create"}
             </button>
           </div>

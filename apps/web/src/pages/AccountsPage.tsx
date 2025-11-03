@@ -143,14 +143,21 @@ export function AccountsPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-6 lg:p-8">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Accounts</h1>
-          <p className="text-gray-600 mt-1">Manage your financial accounts</p>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Accounts
+          </h1>
+          <p className="text-sm md:text-base text-gray-600 mt-1">
+            Manage your financial accounts
+          </p>
         </div>
-        <button onClick={() => handleOpenModal()} className="btn btn-primary">
+        <button
+          onClick={() => handleOpenModal()}
+          className="btn btn-primary w-full sm:w-auto"
+        >
           <svg
             className="w-5 h-5 mr-2 inline"
             fill="none"
@@ -177,19 +184,22 @@ export function AccountsPage() {
       {/* Accounts Grid */}
       {accounts.length === 0 ? (
         <div className="text-center py-12">
-          <div className="text-6xl mb-4">💳</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
+          <div className="text-5xl md:text-6xl mb-4">💳</div>
+          <h3 className="text-base md:text-lg font-medium text-gray-900 mb-2">
             No accounts yet
           </h3>
-          <p className="text-gray-600 mb-4">
+          <p className="text-sm md:text-base text-gray-600 mb-4">
             Get started by creating your first account
           </p>
-          <button onClick={() => handleOpenModal()} className="btn btn-primary">
+          <button
+            onClick={() => handleOpenModal()}
+            className="btn btn-primary w-full sm:w-auto"
+          >
             Create Account
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           {accounts.map((account) => (
             <div
               key={account.id}
@@ -324,7 +334,7 @@ export function AccountsPage() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Currency
@@ -391,15 +401,18 @@ export function AccountsPage() {
             />
           </div>
 
-          <div className="flex justify-end space-x-3 pt-4">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
             <button
               type="button"
               onClick={handleCloseModal}
-              className="btn btn-secondary"
+              className="btn btn-secondary order-2 sm:order-1"
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
+            <button
+              type="submit"
+              className="btn btn-primary order-1 sm:order-2"
+            >
               {editingAccount ? "Update" : "Create"} Account
             </button>
           </div>

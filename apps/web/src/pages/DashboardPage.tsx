@@ -93,31 +93,33 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-6 lg:p-8">
       {/* Welcome Section */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+      <div className="mb-6 md:mb-8">
+        <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">
           Welcome back, {user?.displayName || user?.username}!
         </h2>
-        <p className="text-gray-600">Here's your financial overview</p>
+        <p className="text-sm md:text-base text-gray-600">
+          Here's your financial overview
+        </p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
         <div className="card">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Total Balance</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">
+            <div className="flex-1">
+              <p className="text-xs md:text-sm text-gray-600">Total Balance</p>
+              <p className="text-xl md:text-2xl font-bold text-gray-900 mt-1">
                 {getTotalBalance()}
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 {accounts.length} accounts
               </p>
             </div>
-            <div className="p-3 bg-primary-100 rounded-lg">
+            <div className="p-2 md:p-3 bg-primary-100 rounded-lg flex-shrink-0">
               <svg
-                className="w-6 h-6 text-primary-600"
+                className="w-5 h-5 md:w-6 md:h-6 text-primary-600"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -135,18 +137,20 @@ export function DashboardPage() {
 
         <div className="card">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Income (This Month)</p>
-              <p className="text-2xl font-bold text-success-600 mt-1">
+            <div className="flex-1">
+              <p className="text-xs md:text-sm text-gray-600">
+                Income (This Month)
+              </p>
+              <p className="text-xl md:text-2xl font-bold text-success-600 mt-1">
                 {formatCurrency(monthStats.income)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 {monthStats.count} transactions
               </p>
             </div>
-            <div className="p-3 bg-success-100 rounded-lg">
+            <div className="p-2 md:p-3 bg-success-100 rounded-lg flex-shrink-0">
               <svg
-                className="w-6 h-6 text-success-600"
+                className="w-5 h-5 md:w-6 md:h-6 text-success-600"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -164,18 +168,20 @@ export function DashboardPage() {
 
         <div className="card">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Expenses (This Month)</p>
-              <p className="text-2xl font-bold text-danger-600 mt-1">
+            <div className="flex-1">
+              <p className="text-xs md:text-sm text-gray-600">
+                Expenses (This Month)
+              </p>
+              <p className="text-xl md:text-2xl font-bold text-danger-600 mt-1">
                 {formatCurrency(monthStats.expense)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 {monthStats.count} transactions
               </p>
             </div>
-            <div className="p-3 bg-danger-100 rounded-lg">
+            <div className="p-2 md:p-3 bg-danger-100 rounded-lg flex-shrink-0">
               <svg
-                className="w-6 h-6 text-danger-600"
+                className="w-5 h-5 md:w-6 md:h-6 text-danger-600"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -193,16 +199,16 @@ export function DashboardPage() {
       </div>
 
       {/* Recent Transactions & Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8">
         {/* Recent Transactions */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-base md:text-lg font-semibold text-gray-900">
               Recent Transactions
             </h3>
             <Link
               to="/transactions"
-              className="text-sm text-primary-600 hover:text-primary-700"
+              className="text-xs md:text-sm text-primary-600 hover:text-primary-700"
             >
               View all →
             </Link>
@@ -268,7 +274,7 @@ export function DashboardPage() {
 
         {/* Quick Actions */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-4">
             Quick Actions
           </h3>
           <div className="space-y-3">
@@ -330,7 +336,7 @@ export function DashboardPage() {
 
       {/* Getting Started */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-4">
           Getting Started
         </h3>
         <div className="space-y-4">

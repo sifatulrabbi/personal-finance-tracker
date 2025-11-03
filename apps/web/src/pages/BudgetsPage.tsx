@@ -156,15 +156,20 @@ export function BudgetsPage() {
   }
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 md:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Budgets</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Budgets
+          </h1>
+          <p className="text-sm md:text-base text-gray-600 mt-1">
             Track your spending against your budget goals
           </p>
         </div>
-        <button onClick={() => handleOpenModal()} className="btn btn-primary">
+        <button
+          onClick={() => handleOpenModal()}
+          className="btn btn-primary w-full sm:w-auto"
+        >
           <span className="text-xl mr-2">+</span> Add Budget
         </button>
       </div>
@@ -177,19 +182,22 @@ export function BudgetsPage() {
 
       {budgets.length === 0 ? (
         <div className="card text-center py-12">
-          <div className="text-6xl mb-4">📊</div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+          <div className="text-5xl md:text-6xl mb-4">📊</div>
+          <h3 className="text-lg md:text-xl font-semibold text-gray-900 mb-2">
             No budgets yet
           </h3>
-          <p className="text-gray-600 mb-6">
+          <p className="text-sm md:text-base text-gray-600 mb-6">
             Create your first budget to start tracking your spending
           </p>
-          <button onClick={() => handleOpenModal()} className="btn btn-primary">
+          <button
+            onClick={() => handleOpenModal()}
+            className="btn btn-primary w-full sm:w-auto"
+          >
             Create Budget
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           {budgets.map((item) => {
             const { budget, spent, remaining, percentage } = item;
             const isOverBudget = parseFloat(remaining) < 0;
@@ -376,7 +384,7 @@ export function BudgetsPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Amount
@@ -416,7 +424,7 @@ export function BudgetsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Start Date
@@ -501,15 +509,18 @@ export function BudgetsPage() {
             </div>
           )}
 
-          <div className="flex gap-3 pt-4">
+          <div className="flex flex-col sm:flex-row gap-3 pt-4">
             <button
               type="button"
               onClick={handleCloseModal}
-              className="btn btn-secondary flex-1"
+              className="btn btn-secondary flex-1 order-2 sm:order-1"
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary flex-1">
+            <button
+              type="submit"
+              className="btn btn-primary flex-1 order-1 sm:order-2"
+            >
               {editingBudget ? "Update Budget" : "Create Budget"}
             </button>
           </div>
