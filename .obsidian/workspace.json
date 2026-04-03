@@ -1,0 +1,210 @@
+{
+  "main": {
+    "id": "8d7af23bc797b990",
+    "type": "split",
+    "children": [
+      {
+        "id": "9a5a5c537faebbfa",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "3e4cef93b6806914",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "project/tickets-codex/02-epic-auth-access.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "02-epic-auth-access"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "398eeaa127fa0400",
+    "type": "split",
+    "children": [
+      {
+        "id": "6390a7cf0d2a5d0d",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "317ad93bae921ac7",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "f3cafc3714d2c24d",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "8ec822b56b9bdfd9",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "0eb46fcb7cf3a52f",
+    "type": "split",
+    "children": [
+      {
+        "id": "090c9b5b35b99ce2",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "3c0dab9c93b60e7b",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "project/tickets-codex/02-epic-auth-access.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for 02-epic-auth-access"
+            }
+          },
+          {
+            "id": "020305bbc7b3f211",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "project/tickets-codex/02-epic-auth-access.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from 02-epic-auth-access"
+            }
+          },
+          {
+            "id": "563fedd6a77dd037",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "cbe25672479443f9",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "d272e2670be2e06d",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "project/tickets-codex/02-epic-auth-access.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of 02-epic-auth-access"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "3e4cef93b6806914",
+  "lastOpenFiles": [
+    "project/tickets-codex/01-epic-foundation.md",
+    "project/tickets-codex/00-discovery.md",
+    "README.md",
+    "project/tickets-codex/06-dependency-graph.md",
+    "project/tickets-codex/05-epic-transactions.md",
+    "project/tickets-codex/04-epic-accounts.md",
+    "project/tickets-codex/03-epic-household-members.md",
+    "project/tickets-codex/02-epic-auth-access.md",
+    "project/tickets-claude/06-dependency-graph.md",
+    "project/tickets-claude/05-epic-transactions.md",
+    "project/tickets-claude/04-epic-accounts.md",
+    "project/tickets-claude/03-epic-household.md",
+    "project/tickets-claude/02-epic-auth.md",
+    "project/tickets-claude/01-epic-foundation.md",
+    "project/tickets-claude/00-discovery.md",
+    "project/tickets-codex",
+    "project/tickets-claude",
+    "project",
+    "Untitled/Untitled.md",
+    "tickets",
+    "REQUIREMENTS.md"
+  ]
+}
