@@ -4,21 +4,21 @@
     "type": "split",
     "children": [
       {
-        "id": "9a5a5c537faebbfa",
+        "id": "76219e14f072f1ea",
         "type": "tabs",
         "children": [
           {
-            "id": "3e4cef93b6806914",
+            "id": "19b57992dee8f92a",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "project/tickets-codex/02-epic-auth-access.md",
+                "file": "project/tickets-codex/01-epic-foundation.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "02-epic-auth-access"
+              "title": "01-epic-foundation"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "project/tickets-codex/02-epic-auth-access.md",
+                "file": "project/tickets-codex/01-epic-foundation.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for 02-epic-auth-access"
+              "title": "Backlinks for 01-epic-foundation"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "project/tickets-codex/02-epic-auth-access.md",
+                "file": "project/tickets-codex/01-epic-foundation.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from 02-epic-auth-access"
+              "title": "Outgoing links from 01-epic-foundation"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "project/tickets-codex/02-epic-auth-access.md",
+                "file": "project/tickets-codex/01-epic-foundation.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of 02-epic-auth-access"
+              "title": "Outline of 01-epic-foundation"
             }
           }
         ]
@@ -183,28 +183,53 @@
       "bases:Create new base": false
     }
   },
-  "active": "3e4cef93b6806914",
+  "active": "19b57992dee8f92a",
   "lastOpenFiles": [
-    "project/tickets-codex/01-epic-foundation.md",
-    "project/tickets-codex/00-discovery.md",
-    "README.md",
-    "project/tickets-codex/06-dependency-graph.md",
-    "project/tickets-codex/05-epic-transactions.md",
-    "project/tickets-codex/04-epic-accounts.md",
-    "project/tickets-codex/03-epic-household-members.md",
-    "project/tickets-codex/02-epic-auth-access.md",
-    "project/tickets-claude/06-dependency-graph.md",
-    "project/tickets-claude/05-epic-transactions.md",
-    "project/tickets-claude/04-epic-accounts.md",
-    "project/tickets-claude/03-epic-household.md",
-    "project/tickets-claude/02-epic-auth.md",
-    "project/tickets-claude/01-epic-foundation.md",
-    "project/tickets-claude/00-discovery.md",
-    "project/tickets-codex",
-    "project/tickets-claude",
-    "project",
-    "Untitled/Untitled.md",
-    "tickets",
-    "REQUIREMENTS.md"
+    "components.json",
+    "node_modules/is-weakset/test/index.js",
+    "node_modules/is-weakset/index.d.ts",
+    "node_modules/is-weakset/index.js",
+    "node_modules/is-weakset/test",
+    "node_modules/is-weakset/tsconfig.json",
+    "node_modules/is-weakset/package.json",
+    "node_modules/is-weakset/CHANGELOG.md",
+    "node_modules/is-weakset/README.md",
+    "node_modules/is-weakset/LICENSE",
+    "node_modules/is-weakset",
+    "node_modules/is-weakmap/test/index.js",
+    "node_modules/is-weakmap/index.js",
+    "node_modules/is-weakmap/README.md",
+    "node_modules/is-weakmap/CHANGELOG.md",
+    "node_modules/is-map/README.md",
+    "node_modules/is-map/CHANGELOG.md",
+    "node_modules/generator-function/README.md",
+    "node_modules/generator-function/LICENSE.md",
+    "node_modules/generator-function/CHANGELOG.md",
+    "node_modules/async-function/README.md",
+    "node_modules/async-function/CHANGELOG.md",
+    "node_modules/which-collection/README.md",
+    "node_modules/which-collection/CHANGELOG.md",
+    "node_modules/is-generator-function/README.md",
+    "node_modules/is-generator-function/CHANGELOG.md",
+    "node_modules/is-finalizationregistry/README.md",
+    "node_modules/is-finalizationregistry/CHANGELOG.md",
+    "node_modules/is-async-function/README.md",
+    "node_modules/is-async-function/CHANGELOG.md",
+    "node_modules/is-number/README.md",
+    "node_modules/escalade/readme.md",
+    "node_modules/is-number-object/README.md",
+    "node_modules/is-number-object/CHANGELOG.md",
+    "node_modules/is-boolean-object/README.md",
+    "node_modules/is-boolean-object/CHANGELOG.md",
+    "public/window.svg",
+    "public/vercel.svg",
+    "public/next.svg",
+    "public/globe.svg",
+    "public/file.svg",
+    "tmp-t001/public/next.svg",
+    "tmp-t001/public/window.svg",
+    "tmp-t001/public/vercel.svg",
+    "tmp-t001/public/globe.svg",
+    "tmp-t001/public/file.svg"
   ]
 }
