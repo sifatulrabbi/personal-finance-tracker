@@ -146,6 +146,7 @@ Use UUIDs as text primary keys (SQLite doesn't have a native UUID type). Store t
 
 **Agent Instructions**
 Create numbered SQL migration files in `migrations/`:
+
 - `001_create_households.sql`
 - `002_create_users.sql`
 - `003_create_persons.sql`

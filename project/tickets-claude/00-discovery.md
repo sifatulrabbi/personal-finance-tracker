@@ -10,14 +10,14 @@ A household can collaboratively track all income and expenses across multiple ac
 
 ## Systems Touched
 
-| System       | Details                                              |
-| ------------ | ---------------------------------------------------- |
-| Frontend     | Next.js App Router, React, Tailwind CSS, shadcn/ui   |
-| Backend      | Next.js API Route Handlers (no separate server)       |
-| Database     | SQLite via Bun's built-in `bun:sqlite` client         |
-| Auth         | WorkOS + Google OAuth (via next-auth integration)      |
-| Third-party  | WorkOS (auth), Google (OAuth provider)                 |
-| Deployment   | Vercel (future — not in scope for this decomposition) |
+| System      | Details                                               |
+| ----------- | ----------------------------------------------------- |
+| Frontend    | Next.js App Router, React, Tailwind CSS, shadcn/ui    |
+| Backend     | Next.js API Route Handlers (no separate server)       |
+| Database    | SQLite via Bun's built-in `bun:sqlite` client         |
+| Auth        | WorkOS + Google OAuth (via next-auth integration)     |
+| Third-party | WorkOS (auth), Google (OAuth provider)                |
+| Deployment  | Vercel (future — not in scope for this decomposition) |
 
 ## Explicit Constraints
 
@@ -32,12 +32,12 @@ A household can collaboratively track all income and expenses across multiple ac
 
 ## Cross-Cutting Concerns
 
-| Concern              | Notes                                                              |
-| -------------------- | ------------------------------------------------------------------ |
-| Auth                 | WorkOS integration, middleware for protected routes                 |
-| Database migrations  | Must be isolated, safe seed that won't overwrite prod data          |
-| Error handling       | User-facing errors for auth rejection (non-invited users)           |
-| Mobile responsiveness| Every UI ticket must consider mobile-first                          |
+| Concern               | Notes                                                      |
+| --------------------- | ---------------------------------------------------------- |
+| Auth                  | WorkOS integration, middleware for protected routes        |
+| Database migrations   | Must be isolated, safe seed that won't overwrite prod data |
+| Error handling        | User-facing errors for auth rejection (non-invited users)  |
+| Mobile responsiveness | Every UI ticket must consider mobile-first                 |
 
 ## Explicitly OUT of Scope
 
@@ -65,10 +65,10 @@ A household can collaboratively track all income and expenses across multiple ac
 
 ## Known Unknowns (Spikes Required)
 
-| Unknown                                    | Risk                                                      |
-| ------------------------------------------ | --------------------------------------------------------- |
-| Bun's SQLite client in Next.js on Vercel   | `bun:sqlite` may not work in Vercel's serverless runtime  |
-| WorkOS + next-auth with App Router         | Integration specifics, session handling, callback flow     |
+| Unknown                                  | Risk                                                     |
+| ---------------------------------------- | -------------------------------------------------------- |
+| Bun's SQLite client in Next.js on Vercel | `bun:sqlite` may not work in Vercel's serverless runtime |
+| WorkOS + next-auth with App Router       | Integration specifics, session handling, callback flow   |
 
 ## Target Output Format
 

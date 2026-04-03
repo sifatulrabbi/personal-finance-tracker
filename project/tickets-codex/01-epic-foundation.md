@@ -15,16 +15,17 @@
 **Agent-Executable**: Yes
 **Blocked By**: -
 **Blocks**: T-002, T-003, T-004, T-008, T-009
+**Status**: Completed (2026-04-03)
 
 **Context**
 The repo currently holds requirements and planning artifacts, not a working application. This ticket creates the baseline runtime and UI tooling the rest of the backlog depends on.
 
 **Acceptance Criteria**
 
-- [ ] Given a clean checkout, when a developer runs the install and dev commands with Bun, then a Next.js App Router app starts successfully.
-- [ ] Tailwind CSS and shadcn/ui are installed and wired into the project without leftover starter boilerplate.
-- [ ] Core scripts for local development, testing, and linting are present and documented in `package.json`.
-- [ ] Edge case: the generated app structure leaves room for route handlers and server-side utilities without forcing a monorepo or a second service.
+- [x] Given a clean checkout, when a developer runs the install and dev commands with Bun, then a Next.js App Router app starts successfully.
+- [x] Tailwind CSS and shadcn/ui are installed and wired into the project without leftover starter boilerplate.
+- [x] Core scripts for local development, testing, and linting are present and documented in `package.json`.
+- [x] Edge case: the generated app structure leaves room for route handlers and server-side utilities without forcing a monorepo or a second service.
 
 **Out of Scope**
 

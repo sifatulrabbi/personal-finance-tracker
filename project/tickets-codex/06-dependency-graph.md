@@ -1,8 +1,14 @@
 # Dependency Order (Execution DAG)
 
+## Progress Snapshot (as of 2026-04-03)
+
+- Completed: T-001
+- Ready to start next: T-002, T-003, T-009
+- Remaining tickets are still blocked by downstream dependencies in this DAG.
+
 ## Layer 0 (no blockers - can start immediately)
 
-- T-001 -> Bootstrap the Next.js app with Bun, Tailwind, and shadcn/ui
+- T-001 -> Bootstrap the Next.js app with Bun, Tailwind, and shadcn/ui (completed)
 
 ## Layer 1 (blocked by Layer 0)
 
