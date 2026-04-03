@@ -50,16 +50,17 @@ Initialize the app with App Router, TypeScript, Tailwind, and shadcn/ui. Remove 
 **Agent-Executable**: Yes
 **Blocked By**: T-001
 **Blocks**: T-008, T-013, T-016, T-019, T-022, T-025, T-028, T-032, T-035
+**Status**: Completed (2026-04-03)
 
 **Context**
 The requirements are unusually explicit about the product look and feel: dark mode only, `#0077ff` accent, and no gradients. This needs to be centralized early so every later page inherits the same system.
 
 **Acceptance Criteria**
 
-- [ ] Given the global styles and theme tokens, when the app loads, then it renders in dark mode by default with no light-mode toggle or fallback.
-- [ ] Accent, border, surface, text, and focus-ring tokens are derived from `#0077ff` plus dark neutrals and are available to shadcn/ui components.
-- [ ] No gradients are introduced in the shared CSS or starter layout patterns.
-- [ ] Edge case: the theme remains readable and touch-friendly on small screens without needing page-specific overrides for basic controls.
+- [x] Given the global styles and theme tokens, when the app loads, then it renders in dark mode by default with no light-mode toggle or fallback.
+- [x] Accent, border, surface, text, and focus-ring tokens are derived from `#0077ff` plus dark neutrals and are available to shadcn/ui components.
+- [x] No gradients are introduced in the shared CSS or starter layout patterns.
+- [x] Edge case: the theme remains readable and touch-friendly on small screens without needing page-specific overrides for basic controls.
 
 **Out of Scope**
 

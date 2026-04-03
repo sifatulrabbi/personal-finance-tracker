@@ -2,8 +2,8 @@
 
 ## Progress Snapshot (as of 2026-04-03)
 
-- Completed: T-001
-- Ready to start next: T-002, T-003, T-009
+- Completed: T-001, T-002
+- Ready to start next: T-003, T-008, T-009
 - Remaining tickets are still blocked by downstream dependencies in this DAG.
 
 ## Layer 0 (no blockers - can start immediately)
@@ -12,7 +12,7 @@
 
 ## Layer 1 (blocked by Layer 0)
 
-- T-002 -> blocked by T-001
+- T-002 -> blocked by T-001 (completed)
 - T-003 -> blocked by T-001
 - T-009 -> blocked by T-001
 
