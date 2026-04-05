@@ -24,8 +24,8 @@ A personal finance tracking app for sharing with my household and tracking finan
 - The app needs to be mobile first but also OK in the desktop mode.
 - The preferred tech stack is Next.js, WorkOS, TailwindCSS, chadcn, a well performant and light weight charts library, bun 1.3.11, typescript 6.x.
 - The color theme for the application is dark. Use `#0077ff` as the accent color. I have 0 need for a light theme or multi theme support. Use different shades of the primary color to prepare the color palette. DO NOT use gradients in the UI.
-- For the database we'll use the SQLite.
-- We'll also heavily use bun. It will be the runtime, package manager, and testing suite for us. Also, use bun's sqlite client instead of other sqlite clients. Try using bun as much as possible. Bun is feature rich and would remove a lot of the dependencies that we have e.g. dotenv, feature flags, testing, database adapter, etc.
+- For the database we'll use PostgreSQL.
+- We'll also heavily use bun. It will be the runtime, package manager, and testing suite for us. Also, use Bun's SQL client for PostgreSQL instead of pulling in another database client unless we have a strong reason. Try using bun as much as possible. Bun is feature rich and would remove a lot of the dependencies that we have e.g. dotenv, feature flags, testing, and database adapters.
 - Right now I don't think we'd require a dedicated server thus put everything in the next.js's app router and use the next.js's API building strategy to implement all the CRUD logic.
 - The app will also be served thru vercel. But you do not have to tackle any deployment work. For now just keep that in mind.
 

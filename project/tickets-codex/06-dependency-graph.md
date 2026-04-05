@@ -1,9 +1,9 @@
 # Dependency Order (Execution DAG)
 
-## Progress Snapshot (as of 2026-04-03)
+## Progress Snapshot (as of 2026-04-04)
 
-- Completed: T-001, T-002
-- Ready to start next: T-003, T-008, T-009
+- Completed: T-001, T-002, T-003, T-004
+- Ready to start next: T-005, T-007, T-008, T-009
 - Remaining tickets are still blocked by downstream dependencies in this DAG.
 
 ## Layer 0 (no blockers - can start immediately)
@@ -13,12 +13,12 @@
 ## Layer 1 (blocked by Layer 0)
 
 - T-002 -> blocked by T-001 (completed)
-- T-003 -> blocked by T-001
+- T-003 -> blocked by T-001 (completed)
 - T-009 -> blocked by T-001
 
 ## Layer 2 (blocked by Layer 1)
 
-- T-004 -> blocked by T-001, T-003
+- T-004 -> blocked by T-001, T-003 (completed)
 - T-008 -> blocked by T-001, T-002
 
 ## Layer 3 (blocked by Layer 2)

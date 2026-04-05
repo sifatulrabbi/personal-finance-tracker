@@ -75,7 +75,7 @@ Define the dark palette and global CSS variables once, make the root layout cons
 
 ---
 
-### [SPIKE] T-003 Validate Bun SQLite runtime assumptions for Next.js and future Vercel hosting
+### [SPIKE] T-003 Validate Bun SQL Postgres runtime assumptions for local Docker development and Vercel hosting
 
 **Parent**: Epic - Foundation & Platform Backbone
 **Type**: Spike
@@ -84,31 +84,33 @@ Define the dark palette and global CSS variables once, make the root layout cons
 **Agent-Executable**: Partial
 **Blocked By**: T-001
 **Blocks**: T-004
+**Status**: Completed (2026-04-04)
 
 **Context**
-The product direction prefers Bun's built-in SQLite client and later Vercel hosting. That combination may be acceptable for local development but risky in production, so we should capture the truth before building around it.
+The project is pivoting early from SQLite to PostgreSQL so the database strategy matches Vercel-friendly production hosting. We still want to lean on Bun, but we need a written decision covering local Docker development, Bun SQL usage, and remote Postgres connections in hosted environments.
 
 **Acceptance Criteria**
 
-- [ ] A written spike note explains what is safe locally, what is risky on Vercel, and what assumptions the implementation can proceed with for now.
-- [ ] The spike explicitly answers whether `bun:sqlite` can be used inside the app runtime, only in scripts, or not at all under the expected hosting model.
-- [ ] A fallback recommendation is recorded in case the deploy target cannot support the preferred persistence model later.
-- [ ] Edge case: the spike calls out whether seed/migration scripts can still use Bun even if request-time DB access later needs a different path.
+- [x] A written spike note explains the local Docker Postgres workflow, the Vercel-safe production assumption, and how Bun SQL will be used in the app and scripts.
+- [x] The spike explicitly answers how the app, migrations, and tests should connect to Postgres in local development and in hosted environments.
+- [x] The spike records PostgreSQL as the current direction and notes that remote Vercel-compatible Postgres connections remove the local-filesystem persistence concern.
+- [x] Edge case: the spike calls out how the dev and test databases are separated so migrations and integration tests do not interfere with each other.
 
 **Out of Scope**
 
 - Deploying to Vercel.
-- Replacing SQLite in this planning pass.
+- Choosing the final managed Postgres vendor.
 
 **Technical Notes**
 This is a risk-reduction ticket, not an implementation ticket. The point is to remove ambiguity before it spreads into the domain layer.
+The decision memo is recorded in `project/tickets-codex/07-spike-postgres-runtime.md`.
 
 **Agent Instructions**
-Review the relevant Bun, Next.js, and hosting constraints and write the decision memo to a short spike doc that later tickets can cite.
+Review the relevant Bun, Docker, and hosting constraints and write the decision memo to a short spike doc that later tickets can cite.
 
 ---
 
-### [CHORE] T-004 Build the SQLite access layer, migration runner, and shared domain helpers
+### [CHORE] T-004 Build the Postgres connection layer, migration runner, and shared domain helpers
 
 **Parent**: Epic - Foundation & Platform Backbone
 **Type**: Chore
@@ -117,16 +119,17 @@ Review the relevant Bun, Next.js, and hosting constraints and write the decision
 **Agent-Executable**: Yes
 **Blocked By**: T-001, T-003
 **Blocks**: T-005, T-006, T-007
+**Status**: Completed (2026-04-04)
 
 **Context**
-Before writing feature APIs, the project needs a deterministic database entry point, migration runner, and helper utilities for IDs, timestamps, and money handling.
+Before writing feature APIs, the project needs a deterministic Postgres entry point, migration runner, and helper utilities for IDs, timestamps, and money handling.
 
 **Acceptance Criteria**
 
-- [ ] Given a configured DB path, when the app or scripts initialize the database, then foreign keys are enforced and the connection strategy is consistent.
-- [ ] A migration runner can apply ordered SQL files once and record what has already been executed.
-- [ ] Shared helpers exist for UUID generation, UTC timestamp creation, and money conversion between display values and integer minor units.
-- [ ] Edge case: rerunning the migration command on an already migrated database does not corrupt state or apply duplicate work.
+- [x] Given a configured Postgres connection string, when the app or scripts initialize the database, then they reuse a consistent Bun SQL connection strategy without reconnecting on every invocation.
+- [x] A migration runner can apply ordered SQL files once and record what has already been executed.
+- [x] Shared helpers exist for UUID generation, UTC timestamp creation, and money conversion between display values and integer minor units.
+- [x] Edge case: rerunning the migration command on an already migrated database does not corrupt state, apply duplicate work, or ignore checksum drift.
 
 **Out of Scope**
 
@@ -134,10 +137,10 @@ Before writing feature APIs, the project needs a deterministic database entry po
 - Seed content.
 
 **Technical Notes**
-Store money as integer minor units from day one. Keeping that decision centralized avoids future ledger rewrites.
+Store money as integer minor units from day one. Keep repository and service factories DI-friendly by accepting `db` in their factory context rather than reaching for env or connection globals directly.
 
 **Agent Instructions**
-Create the DB singleton and migration infrastructure, then add the minimal shared helpers needed by later route handlers and scripts.
+Create the shared Bun SQL connection module, the migration infrastructure, and the minimal shared helpers needed by later route handlers and scripts.
 
 ---
 

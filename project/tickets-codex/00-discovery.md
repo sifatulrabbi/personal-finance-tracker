@@ -14,7 +14,7 @@ A household can sign in through Google via WorkOS, manage who belongs to the hou
 | ------------------ | ---------------------------------------------------------------------------------- |
 | Frontend           | Next.js App Router web app, mobile-first UI, Tailwind CSS, shadcn/ui               |
 | Backend            | Next.js route handlers and server utilities inside the same app                    |
-| Database           | SQLite accessed through Bun's built-in SQLite client                               |
+| Database           | PostgreSQL accessed through Bun's built-in SQL client                              |
 | Auth               | WorkOS-backed + NextAuth.js Google login with invitation-only local access control |
 | Data / Domain      | Households, users, people, categories, accounts, origins, transactions, transfers  |
 | Hosting Constraint | Expected to run on Vercel later, but deployment work is explicitly out of scope    |
@@ -25,8 +25,8 @@ A household can sign in through Google via WorkOS, manage who belongs to the hou
 - Dark theme only with `#0077ff` as the accent color.
 - No gradients and no light-theme support.
 - Preferred stack is Next.js, WorkOS, Tailwind CSS, shadcn/ui, Bun `1.3.11`, and TypeScript.
-- Use Bun as runtime, package manager, test runner, and SQLite client where practical.
-- Use SQLite instead of a separate server database.
+- Use Bun as runtime, package manager, test runner, and PostgreSQL client where practical.
+- Use PostgreSQL with local Docker-based development and remote connections in hosted environments.
 - Keep CRUD logic inside the Next.js app rather than introducing a separate API service.
 - Use `income` and `expense` terminology consistently in UI and code instead of banking `credit` / `debit` language.
 - Sign-in is invite-only; there is no open registration flow.
@@ -65,16 +65,15 @@ A household can sign in through Google via WorkOS, manage who belongs to the hou
 7. `Origin` is required for income entries, not for expense entries. The line saying every transaction requires an origin is treated as shorthand for the income flow, because it conflicts with the earlier income-specific origin rules.
 8. Transfers are modeled as a linked pair of ledger entries: one `expense` from the source account and one `income` into the destination account, both sharing a transfer group identifier.
 9. Transfer-generated income entries do not require an external origin, because the money came from another in-app account.
-10. Monetary values should be stored as integer minor units rather than SQLite `REAL` fields to avoid rounding drift.
+10. Monetary values should be stored as integer minor units rather than floating-point Postgres fields to avoid rounding drift.
 11. Household creation is seed-driven in v1; there is no household self-service creation UI.
 12. Seed data must be strictly idempotent and append-only in practice: insert missing records, never mutate or overwrite existing prod records.
 
 ## Known Unknowns / Spikes Needed
 
-| Unknown                                                               | Why It Needs a Spike                                                                                                         |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Bun SQLite in a Next.js App Router app that is later hosted on Vercel | Local development is straightforward, but deploy/runtime guarantees are unclear and persistence may be unsuitable for Vercel |
-| Exact WorkOS integration path with modern Next.js auth handling       | We need a precise callback/session design before building invitation gating and drafted-user activation                      |
+| Unknown                                                         | Why It Needs a Spike                                                                                    |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Exact WorkOS integration path with modern Next.js auth handling | We need a precise callback/session design before building invitation gating and drafted-user activation |
 
 ## Target Output Format
 
