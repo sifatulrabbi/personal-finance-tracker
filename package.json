@@ -13,7 +13,7 @@
     "db:migrate": "bun run src/scripts/db-migrate.ts",
     "db:migrate:test": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://finance_tracker:finance_tracker@localhost:54329/finance_tracker_test} bun run src/scripts/db-migrate.ts --test",
     "lint": "eslint .",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "format": "prettier --write \"**/*.{ts,tsx,md,yml}\"",
     "test": "bun test src/lib",
     "test:integration": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://finance_tracker:finance_tracker@localhost:54329/finance_tracker_test} bun test src/test/integration",
     "typecheck": "bun --bun next typegen && tsc --noEmit"
@@ -32,7 +32,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/bun": "^1.3.11",
+    "@types/bun": "1.3.11",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
