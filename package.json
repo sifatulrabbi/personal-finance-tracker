@@ -4,13 +4,19 @@
   "private": true,
   "packageManager": "bun@1.3.11",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build --webpack",
-    "start": "next start",
+    "dev": "bun --bun next dev",
+    "build": "bun --bun next build --webpack",
+    "start": "bun --bun next start",
+    "db:dev:up": "docker compose -f docker-compose.dev.yml up -d",
+    "db:dev:down": "docker compose -f docker-compose.dev.yml down",
+    "db:dev:logs": "docker compose -f docker-compose.dev.yml logs -f postgres",
+    "db:migrate": "bun run scripts/db-migrate.ts",
+    "db:migrate:test": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://finance_tracker:finance_tracker@localhost:54329/finance_tracker_test} bun run scripts/db-migrate.ts --test",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "test": "bun test lib",
+    "test:integration": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://finance_tracker:finance_tracker@localhost:54329/finance_tracker_test} bun test test/integration",
+    "typecheck": "bun --bun next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "1.3.0",
@@ -26,6 +32,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/bun": "^1.3.11",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
