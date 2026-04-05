@@ -18,6 +18,7 @@
 - Testability is a must, include unit tests and integration tests in your plan
 - Use bun skill to utilize bun's standard lib and built in tool chain
 - Include code formatting with `bun run format` as chore after the main work
+- The plan you prepare should always be put in the [tickets](./project/codex/tickets/) directory with a proper name along with a date stamp
 
 ## Git Committing Your Work
 
