@@ -63,7 +63,7 @@ This is the core auth implementation. WorkOS handles Google OAuth, and we wrap i
 - [ ] If email found and user is active (`is_drafted = 0`) → allow sign-in normally
 - [ ] Session includes: our internal user ID, email, name, household_id
 - [ ] Environment variables documented in `.env.example`: `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
-- [ ] Auth configuration in `lib/auth.ts` or `app/api/auth/[...nextauth]/route.ts`
+- [ ] Auth configuration in `src/lib/auth.ts` or `src/app/api/auth/[...nextauth]/route.ts`
 
 **Out of Scope**
 
@@ -110,7 +110,7 @@ The app has a single sign-in page (no sign-up page). It shows a "Sign in with Go
 - "Forgot password" flow
 
 **Agent Instructions**
-Create `app/sign-in/page.tsx`. Use shadcn Button for the Google sign-in action. Call `signIn("workos", { callbackUrl: "/" })` from next-auth. Handle error query params (next-auth appends `?error=...` on rejection). Style with Tailwind — dark background, centered card, `#0077ff` accent on button.
+Create `src/app/sign-in/page.tsx`. Use shadcn Button for the Google sign-in action. Call `signIn("workos", { callbackUrl: "/" })` from next-auth. Handle error query params (next-auth appends `?error=...` on rejection). Style with Tailwind — dark background, centered card, `#0077ff` accent on button.
 
 ---
 
@@ -146,7 +146,7 @@ When a drafted user successfully signs in via Google for the first time, their p
 This logic lives inside the `signIn` or `jwt` callback in the auth configuration. It runs on every sign-in attempt, but the UPDATE only fires when `is_drafted = 1`. Use a single atomic UPDATE with a WHERE clause.
 
 **Agent Instructions**
-In the auth config (`lib/auth.ts`), within the `signIn` callback: after confirming the email exists, check `is_drafted`. If drafted, run `UPDATE users SET is_drafted = 0, workos_user_id = ?, name = ?, updated_at = ? WHERE id = ? AND is_drafted = 1`. Write a test in `__tests__/auth-activation.test.ts` that seeds a drafted user, simulates the callback, and asserts the user is now active.
+In the auth config (`src/lib/auth.ts`), within the `signIn` callback: after confirming the email exists, check `is_drafted`. If drafted, run `UPDATE users SET is_drafted = 0, workos_user_id = ?, name = ?, updated_at = ? WHERE id = ? AND is_drafted = 1`. Write a test in `src/test/auth-activation.test.ts` that seeds a drafted user, simulates the callback, and asserts the user is now active.
 
 ---
 

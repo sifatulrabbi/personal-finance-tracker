@@ -39,7 +39,7 @@ Accounts represent money sources — credit cards, debit cards, virtual wallets,
 The `current_balance` field is denormalized for performance — it's updated atomically whenever a transaction is created or deleted against this account. The initial_amount is immutable after creation (it represents the starting point).
 
 **Agent Instructions**
-Create `app/api/accounts/route.ts` for GET and POST. Create `app/api/accounts/[id]/route.ts` for GET, PATCH, DELETE. Use prepared statements from `lib/db.ts`. Validate inputs. For DELETE, check: `SELECT COUNT(*) FROM transactions WHERE account_id = ?`. Scope all queries with `household_id`.
+Create `src/app/api/accounts/route.ts` for GET and POST. Create `src/app/api/accounts/[id]/route.ts` for GET, PATCH, DELETE. Use prepared statements from `src/lib/db.ts`. Validate inputs. For DELETE, check: `SELECT COUNT(*) FROM transactions WHERE account_id = ?`. Scope all queries with `household_id`.
 
 ---
 
@@ -76,7 +76,7 @@ Users need a page to view all their accounts, see balances, and create/edit/dele
 - Account filtering or search
 
 **Agent Instructions**
-Create `app/(app)/accounts/page.tsx`. Create reusable components: `components/accounts/account-card.tsx`, `components/accounts/account-form.tsx`. Use `fetch('/api/accounts')` for data. Use shadcn Dialog for create/edit forms. Calculate total balance client-side from the accounts list. Use `Intl.NumberFormat` for currency display.
+Create `src/app/(app)/accounts/page.tsx`. Create reusable components: `src/components/accounts/account-card.tsx`, `src/components/accounts/account-form.tsx`. Use `fetch('/api/accounts')` for data. Use shadcn Dialog for create/edit forms. Calculate total balance client-side from the accounts list. Use `Intl.NumberFormat` for currency display.
 
 ---
 
@@ -116,7 +116,7 @@ Users can transfer money between accounts. Per requirements, a transfer creates 
 Use SQLite's transaction support: `db.transaction(() => { ... })()`. Generate a UUID for `transfer_id` to link the pair. The `person_id` on both transactions should be the same (whoever initiated the transfer). `origin_id` is null for both since transfers are not income from an external source — but wait, the income side of a transfer doesn't have an external origin. Let's set `origin_id = null` for transfer-created income records. The type check constraint allows this since origin_id is nullable.
 
 **Agent Instructions**
-Create `app/api/transfers/route.ts` for POST. Generate a UUID for the transfer_id. In a SQLite transaction: validate inputs, insert expense record, insert income record, update source balance (`current_balance = current_balance - amount`), update destination balance (`current_balance = current_balance + amount`). Return both transaction records. Write a test that creates a transfer and verifies both balances changed correctly.
+Create `src/app/api/transfers/route.ts` for POST. Generate a UUID for the transfer_id. In a SQLite transaction: validate inputs, insert expense record, insert income record, update source balance (`current_balance = current_balance - amount`), update destination balance (`current_balance = current_balance + amount`). Return both transaction records. Write a test that creates a transfer and verifies both balances changed correctly.
 
 ---
 
@@ -148,4 +148,4 @@ Users need a way to initiate transfers between accounts from the UI. This could 
 - Recurring transfers
 
 **Agent Instructions**
-Add a "Transfer" button to the accounts page that opens a shadcn Dialog. Create `components/accounts/transfer-form.tsx`. Fetch accounts for dropdowns. Fetch persons for the person dropdown. POST to `/api/transfers`. On success, close dialog and refetch accounts to update balances.
+Add a "Transfer" button to the accounts page that opens a shadcn Dialog. Create `src/components/accounts/transfer-form.tsx`. Fetch accounts for dropdowns. Fetch persons for the person dropdown. POST to `/api/transfers`. On success, close dialog and refetch accounts to update balances.

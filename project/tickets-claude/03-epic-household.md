@@ -39,7 +39,7 @@ Since this is a household-focused finance app, there needs to be a settings page
 Query: `SELECT id, name, email, is_drafted FROM users WHERE household_id = ?`. The current user's `household_id` comes from the session.
 
 **Agent Instructions**
-Create `app/(app)/settings/page.tsx`. Create API route `app/api/household/members/route.ts` that returns all users in the authenticated user's household. Use shadcn Card and Badge components. Show a loading skeleton while fetching. Pending members (`is_drafted = 1`) get a yellow/muted badge.
+Create `src/app/(app)/settings/page.tsx`. Create API route `src/app/api/household/members/route.ts` that returns all users in the authenticated user's household. Use shadcn Card and Badge components. Show a loading skeleton while fetching. Pending members (`is_drafted = 1`) get a yellow/muted badge.
 
 ---
 
@@ -75,7 +75,7 @@ The invitation mechanism creates a drafted user profile with the invited person'
 API: `POST /api/household/members` with body `{ email }`. Insert: `INSERT INTO users (id, household_id, email, is_drafted, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)`. Check uniqueness first with `SELECT id FROM users WHERE email = ?`.
 
 **Agent Instructions**
-Add an invite dialog to the settings page using shadcn Dialog and Input components. Create the POST handler in `app/api/household/members/route.ts`. Validate email format. Check for existing email. Insert drafted user. Return the new member. On the frontend, optimistically add to the list or refetch after success.
+Add an invite dialog to the settings page using shadcn Dialog and Input components. Create the POST handler in `src/app/api/household/members/route.ts`. Validate email format. Check for existing email. Insert drafted user. Return the new member. On the frontend, optimistically add to the list or refetch after success.
 
 ---
 
@@ -111,4 +111,4 @@ Transactions are tagged with a "person" — a household member who initiated the
 Persons are lightweight — just a name and a household_id. They are NOT the same as users. A household member (user) might also be a person, but persons can represent anyone (e.g., a child who doesn't have an app account).
 
 **Agent Instructions**
-Create `app/api/persons/route.ts` for GET and POST. Create `app/api/persons/[id]/route.ts` for DELETE. Use the session's `household_id` to scope all queries. For POST, check uniqueness: `SELECT id FROM persons WHERE household_id = ? AND name = ?`. For DELETE, check `is_default` before deleting. Return 400 if attempting to delete the default person.
+Create `src/app/api/persons/route.ts` for GET and POST. Create `src/app/api/persons/[id]/route.ts` for DELETE. Use the session's `household_id` to scope all queries. For POST, check uniqueness: `SELECT id FROM persons WHERE household_id = ? AND name = ?`. For DELETE, check `is_default` before deleting. Return 400 if attempting to delete the default person.

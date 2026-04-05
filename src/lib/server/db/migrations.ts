@@ -5,7 +5,12 @@ import { join } from "node:path";
 import type { BunSqlDatabase } from "@/lib/server/db/client";
 import { createMigrationRepository } from "@/lib/server/db/migration-repository";
 
-export const MIGRATIONS_DIRECTORY = join(process.cwd(), "db", "migrations");
+export const MIGRATIONS_DIRECTORY = join(
+  process.cwd(),
+  "src",
+  "db",
+  "migrations",
+);
 
 export type MigrationFile = {
   filename: string;

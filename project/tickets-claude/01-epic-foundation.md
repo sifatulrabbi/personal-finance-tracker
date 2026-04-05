@@ -36,7 +36,7 @@ The entire app is being rewritten from a Hono + Vite + PostgreSQL monorepo to a 
 - App layout/navigation (T-006)
 
 **Agent Instructions**
-Run `bun create next-app` with TypeScript and Tailwind options enabled. Use App Router. Then run `bunx shadcn@latest init` to set up shadcn/ui. Verify `bun run dev` works. Remove boilerplate content from `app/page.tsx`. Ensure `package.json` scripts use `bun` where possible.
+Run `bun create next-app` with TypeScript and Tailwind options enabled. Use App Router. Then run `bunx shadcn@latest init` to set up shadcn/ui. Verify `bun run dev` works. Remove boilerplate content from `src/app/page.tsx`. Ensure `package.json` scripts use `bun` where possible.
 
 ---
 
@@ -87,7 +87,7 @@ The app uses SQLite via Bun's built-in `bun:sqlite` module instead of PostgreSQL
 
 **Acceptance Criteria**
 
-- [ ] Database utility module at `lib/db.ts` (or similar) that initializes a SQLite database using `bun:sqlite`
+- [ ] Database utility module at `src/lib/db.ts` (or similar) that initializes a SQLite database using `bun:sqlite`
 - [ ] Database file stored at a configurable path (e.g., `./data/finance.db` with env override)
 - [ ] WAL mode enabled for better concurrent read performance
 - [ ] A lightweight migration runner that executes numbered SQL files from a `migrations/` directory in order
@@ -106,7 +106,7 @@ The app uses SQLite via Bun's built-in `bun:sqlite` module instead of PostgreSQL
 Bun's `bun:sqlite` is synchronous and very fast. Use `Database` class from `bun:sqlite`. Consider a thin helper for common patterns (e.g., `db.query<T>(sql, params)`) but keep it minimal. The database file should be gitignored.
 
 **Agent Instructions**
-Create `lib/db.ts` that exports a singleton `Database` instance. Create `lib/migrate.ts` that reads `*.sql` files from `migrations/` sorted by filename, checks against `_migrations` table, and applies pending ones in a transaction. Add `"db:migrate": "bun run lib/migrate.ts"` to package.json scripts. Create `migrations/` directory with a `.gitkeep`. Add `data/` to `.gitignore`.
+Create `src/lib/db.ts` that exports a singleton `Database` instance. Create `src/lib/migrate.ts` that reads `*.sql` files from `src/db/migrations/` sorted by filename, checks against `_migrations` table, and applies pending ones in a transaction. Add `"db:migrate": "bun run src/lib/migrate.ts"` to package.json scripts. Create `src/db/migrations/` directory with a `.gitkeep`. Add `data/` to `.gitignore`.
 
 ---
 
@@ -173,7 +173,7 @@ The app needs two seeded households (prod and test) with initial users and defau
 
 **Acceptance Criteria**
 
-- [ ] Seed script at `lib/seed.ts` (or `scripts/seed.ts`)
+- [ ] Seed script at `src/lib/seed.ts` (or `src/scripts/seed.ts`)
 - [ ] Creates household "Rabbi Family" (prod) with user `mdsifatulislam.rabbi@gmail.com` if not already present
 - [ ] Creates household "Test Household" with user `sifatuli.r@gmail.com` if not already present
 - [ ] Creates a default person named "Household" for each household (with `is_default = 1`)
@@ -191,7 +191,7 @@ The app needs two seeded households (prod and test) with initial users and defau
 The seed is critical for safety. Use transactions and existence checks. The prod household email `mdsifatulislam.rabbi@gmail.com` is the app maintainer's real email. The test household email `sifatuli.r@gmail.com` is for development.
 
 **Agent Instructions**
-Create `scripts/seed.ts`. Use the `db` singleton from `lib/db.ts`. Wrap all operations in a transaction. For each household: check if it exists by name, skip if found. For each user: check if email exists, skip if found. For each default person: check if a default person exists for the household, skip if found. Add `"db:seed": "bun run scripts/seed.ts"` to package.json.
+Create `src/scripts/seed.ts`. Use the `db` singleton from `src/lib/db.ts`. Wrap all operations in a transaction. For each household: check if it exists by name, skip if found. For each user: check if email exists, skip if found. For each default person: check if a default person exists for the household, skip if found. Add `"db:seed": "bun run src/scripts/seed.ts"` to package.json.
 
 ---
 
@@ -210,7 +210,7 @@ The app needs a consistent shell — navigation, header, content area — that w
 
 **Acceptance Criteria**
 
-- [ ] Root layout (`app/layout.tsx`) sets up the HTML structure with dark theme class and meta viewport
+- [ ] Root layout (`src/app/layout.tsx`) sets up the HTML structure with dark theme class and meta viewport
 - [ ] A sidebar/bottom navigation component with links to: Dashboard, Accounts, Transactions, Settings
 - [ ] On mobile (< 768px): bottom tab bar navigation
 - [ ] On desktop (>= 768px): sidebar navigation
@@ -226,4 +226,4 @@ The app needs a consistent shell — navigation, header, content area — that w
 - Dashboard page content
 
 **Agent Instructions**
-Create `components/layout/app-shell.tsx` with responsive navigation. Use Next.js `usePathname()` for active route detection. Use shadcn Button or custom nav items. Mobile: fixed bottom bar. Desktop: fixed left sidebar. Wrap authenticated pages in this shell via a layout group `app/(app)/layout.tsx`.
+Create `src/components/layout/app-shell.tsx` with responsive navigation. Use Next.js `usePathname()` for active route detection. Use shadcn Button or custom nav items. Mobile: fixed bottom bar. Desktop: fixed left sidebar. Wrap authenticated pages in this shell via a layout group `src/app/(app)/layout.tsx`.

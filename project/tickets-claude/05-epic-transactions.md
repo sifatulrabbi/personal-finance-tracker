@@ -42,7 +42,7 @@ Expenses are the most common transaction type. Each expense must be recorded aga
 The `created_by` field tracks which authenticated user created the transaction. The `person_id` field tracks which household member the expense is attributed to — these may differ (e.g., user A records an expense that person B made).
 
 **Agent Instructions**
-Create `app/api/transactions/route.ts` for POST (will also handle GET in T-024). Validate the type field. For expenses: validate account_id and person_id exist in household, insert transaction, update `accounts SET current_balance = current_balance - ? WHERE id = ?`. Wrap in `db.transaction()`. Return the created record with a JOIN to get account name and person name.
+Create `src/app/api/transactions/route.ts` for POST (will also handle GET in T-024). Validate the type field. For expenses: validate account_id and person_id exist in household, insert transaction, update `accounts SET current_balance = current_balance - ? WHERE id = ?`. Wrap in `db.transaction()`. Return the created record with a JOIN to get account name and person name.
 
 ---
 
@@ -78,7 +78,7 @@ Users need a form to quickly record expenses. Since this is the most common acti
 - Filtering (T-025)
 
 **Agent Instructions**
-Create `app/(app)/transactions/page.tsx`. Create `components/transactions/expense-form.tsx`. Fetch accounts via `/api/accounts` and persons via `/api/persons` for dropdowns. Use shadcn Select for dropdowns. POST to `/api/transactions` with `type: 'expense'`. After success, refetch the transaction list.
+Create `src/app/(app)/transactions/page.tsx`. Create `src/components/transactions/expense-form.tsx`. Fetch accounts via `/api/accounts` and persons via `/api/persons` for dropdowns. Use shadcn Select for dropdowns. POST to `/api/transactions` with `type: 'expense'`. After success, refetch the transaction list.
 
 ---
 
@@ -115,7 +115,7 @@ Income transactions increase an account balance and must have an origin (client,
 The auto-create logic: if `origin_name` is provided, first try `SELECT id FROM origins WHERE household_id = ? AND name = ?`. If found, use that ID. If not found, insert a new origin. This is a common "find or create" pattern. Wrap the whole thing in a transaction for atomicity.
 
 **Agent Instructions**
-Extend the POST handler in `app/api/transactions/route.ts` to handle `type = 'income'`. Add origin resolution logic: if `origin_name` provided, find-or-create the origin. Validate that income transactions have either `origin_id` or `origin_name`. Insert transaction with resolved origin_id. Update `accounts SET current_balance = current_balance + ? WHERE id = ?`. All in a single `db.transaction()`.
+Extend the POST handler in `src/app/api/transactions/route.ts` to handle `type = 'income'`. Add origin resolution logic: if `origin_name` provided, find-or-create the origin. Validate that income transactions have either `origin_id` or `origin_name`. Insert transaction with resolved origin_id. Update `accounts SET current_balance = current_balance + ? WHERE id = ?`. All in a single `db.transaction()`.
 
 ---
 
@@ -149,7 +149,7 @@ Users need a form to record income. The key differentiator from expenses is the 
 - Bulk income entry
 
 **Agent Instructions**
-Create `components/transactions/income-form.tsx`. Fetch origins via `/api/origins` for the combobox. Use shadcn Combobox (or Popover + Command) for the origin field — it should show existing origins as suggestions and allow free-text input. POST to `/api/transactions` with `type: 'income'` and either `origin_id` or `origin_name`. Reuse the same Dialog pattern as the expense form.
+Create `src/components/transactions/income-form.tsx`. Fetch origins via `/api/origins` for the combobox. Use shadcn Combobox (or Popover + Command) for the origin field — it should show existing origins as suggestions and allow free-text input. POST to `/api/transactions` with `type: 'income'` and either `origin_id` or `origin_name`. Reuse the same Dialog pattern as the expense form.
 
 ---
 
@@ -182,7 +182,7 @@ Origins represent where income comes from (a client, an employer, a side gig, et
 - Origin merge/deduplication
 
 **Agent Instructions**
-Create `app/api/origins/route.ts` for GET and POST. Create `app/api/origins/[id]/route.ts` for DELETE. For POST, handle the unique constraint violation gracefully (catch the SQLite error and return 409). For DELETE, check: `SELECT COUNT(*) FROM transactions WHERE origin_id = ?`. Scope all queries with `household_id`.
+Create `src/app/api/origins/route.ts` for GET and POST. Create `src/app/api/origins/[id]/route.ts` for DELETE. For POST, handle the unique constraint violation gracefully (catch the SQLite error and return 409). For DELETE, check: `SELECT COUNT(*) FROM transactions WHERE origin_id = ?`. Scope all queries with `household_id`.
 
 ---
 
@@ -220,7 +220,7 @@ Users need to see their transaction history and filter it by person. This is the
 Use JOINs to get account name, person name, and origin name in a single query. Build the WHERE clause dynamically based on which filters are provided. Use `COUNT(*)` over the filtered set (without LIMIT) for the total.
 
 **Agent Instructions**
-Add GET handler to `app/api/transactions/route.ts`. Parse query params from `request.nextUrl.searchParams`. Build a SQL query with optional WHERE clauses for person_id, type, account_id. JOIN accounts, persons, and origins (LEFT JOIN for origins since it's nullable). Add `LIMIT ? OFFSET ?` for pagination. Run a parallel count query for total. Return the paginated response.
+Add GET handler to `src/app/api/transactions/route.ts`. Parse query params from `request.nextUrl.searchParams`. Build a SQL query with optional WHERE clauses for person_id, type, account_id. JOIN accounts, persons, and origins (LEFT JOIN for origins since it's nullable). Add `LIMIT ? OFFSET ?` for pagination. Run a parallel count query for total. Return the paginated response.
 
 ---
 
@@ -257,4 +257,4 @@ Users need to see their full transaction history with the ability to filter by p
 - Charts or visualizations
 
 **Agent Instructions**
-Create `components/transactions/transaction-list.tsx` and `components/transactions/transaction-filters.tsx`. Fetch transactions from `/api/transactions` with query params based on active filters. Use shadcn Select for the person filter dropdown. Use shadcn Badge for type indicators (green for income, red for expense). Implement "Load more" by incrementing the page param and appending results. On the transactions page, compose the add buttons (expense/income), filters, and list together.
+Create `src/components/transactions/transaction-list.tsx` and `src/components/transactions/transaction-filters.tsx`. Fetch transactions from `/api/transactions` with query params based on active filters. Use shadcn Select for the person filter dropdown. Use shadcn Badge for type indicators (green for income, red for expense). Implement "Load more" by incrementing the page param and appending results. On the transactions page, compose the add buttons (expense/income), filters, and list together.
