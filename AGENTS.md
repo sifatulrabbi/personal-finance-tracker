@@ -26,3 +26,8 @@
 - Use short forms, feat instead of feature, ref instead of refactor, etc and keep the commit message short
 - Add descriptions to the commits mentioning the changes you did in your coding session
 - Instead huge code changes under one single commit split them up, follow the conventional commits
+
+## Important Notes
+
+- The project is still a greenfield project with 0 active users
+- You can make any changes to the database schema or existing migrations without worrying for repercussions
