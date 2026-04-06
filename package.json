@@ -12,6 +12,8 @@
     "db:dev:logs": "docker compose -f docker-compose.dev.yml logs -f postgres",
     "db:migrate": "bun run src/scripts/db-migrate.ts",
     "db:migrate:test": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://finance_tracker:finance_tracker@localhost:54329/finance_tracker_test} bun run src/scripts/db-migrate.ts --test",
+    "db:seed": "bun run src/scripts/db-seed.ts",
+    "db:seed:test": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://finance_tracker:finance_tracker@localhost:54329/finance_tracker_test} bun run src/scripts/db-seed.ts --test",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx,md,yml}\"",
     "test": "bun test src/libs",

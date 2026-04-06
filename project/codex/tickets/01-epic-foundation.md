@@ -189,16 +189,17 @@ Author numbered SQL migrations, run them on a fresh database, and verify the res
 **Agent-Executable**: Yes
 **Blocked By**: T-005
 **Blocks**: T-012, T-015, T-016
+**Status**: Completed (2026-04-06)
 
 **Context**
 The seed data is unusually sensitive because the prod household seed is meant to stay safe even after the app begins holding real financial data.
 
 **Acceptance Criteria**
 
-- [ ] Running the seed script creates the real household, the test household, the two specified seed users, and the default `Household` person only when they do not already exist.
-- [ ] Re-running the seed script is idempotent and does not overwrite or mutate existing production records.
-- [ ] The seeded `Household` person is present in each household and can support shared expenses immediately.
-- [ ] Edge case: partial prior seed state is repaired safely by inserting only the missing records.
+- [x] Running the seed script creates the real household, the test household, the two specified seed users, and the default `Household` person only when they do not already exist.
+- [x] Re-running the seed script is idempotent and does not overwrite or mutate existing production records.
+- [x] The seeded `Household` person is present in each household and can support shared expenses immediately.
+- [x] Edge case: partial prior seed state is repaired safely by inserting only the missing records.
 
 **Out of Scope**
 
@@ -207,6 +208,8 @@ The seed data is unusually sensitive because the prod household seed is meant to
 
 **Technical Notes**
 This ticket should be treated as data safety work, not sample-data work.
+Implemented with an explicit `db:seed` / `db:seed:test` Bun script, deterministic seed IDs, drafted seed users, append-only `ON CONFLICT (id) DO NOTHING` inserts that do not overwrite existing seed-ID rows, and a household-name preflight because `households.name` is not unique.
+Final verification completed on 2026-04-06 with formatting, unit tests, typecheck, lint, Postgres integration tests, `db:migrate:test`, and two `db:seed:test` runs proving first-run inserts and second-run skips.
 
 **Agent Instructions**
 Implement the seed as an explicit Bun script, use existence checks or upsert-safe logic, and verify it remains no-op on subsequent runs.
