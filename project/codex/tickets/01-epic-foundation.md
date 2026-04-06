@@ -225,16 +225,17 @@ Implement the seed as an explicit Bun script, use existence checks or upsert-saf
 **Agent-Executable**: Yes
 **Blocked By**: T-004
 **Blocks**: T-011, T-015, T-018, T-021, T-024, T-027, T-030, T-031, T-034, T-037
+**Status**: Completed (2026-04-06)
 
 **Context**
 Most of the remaining work is API-heavy. If each route handler invents its own validation and error shape, the codebase will become inconsistent before the first feature is complete.
 
 **Acceptance Criteria**
 
-- [ ] A standard pattern exists for validating request bodies, parsing IDs and dates, and normalizing money inputs before DB writes.
-- [ ] API routes can return a consistent JSON error structure that separates user-safe messaging from developer diagnostics.
-- [ ] Basic developer logging hooks exist for high-risk flows such as auth callbacks, seeds, and transfer writes.
-- [ ] Edge case: validation failures and domain conflicts produce predictable HTTP responses rather than generic 500s.
+- [x] A standard pattern exists for validating request bodies, parsing IDs and dates, and normalizing money inputs before DB writes.
+- [x] API routes can return a consistent JSON error structure that separates user-safe messaging from developer diagnostics.
+- [x] Basic developer logging hooks exist for high-risk flows such as auth callbacks, seeds, and transfer writes.
+- [x] Edge case: validation failures and domain conflicts produce predictable HTTP responses rather than generic 500s.
 
 **Out of Scope**
 
@@ -243,6 +244,7 @@ Most of the remaining work is API-heavy. If each route handler invents its own v
 
 **Technical Notes**
 Keep this lightweight. The win here is shared discipline, not a large framework.
+Implemented lightweight helpers in `src/libs/server/api/errors.ts`, `src/libs/server/api/validation.ts`, and `src/libs/server/logger.ts`. Route handlers can parse JSON with Zod schemas, parse UUID/date/money inputs, convert validation and conflict errors into user-safe JSON envelopes, and log developer diagnostics through structured auth, seed, and transfer event hooks.
 
 **Agent Instructions**
 Create the minimal helpers and examples needed so later route tickets can follow one obvious pattern.
