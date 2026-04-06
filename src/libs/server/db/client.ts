@@ -1,13 +1,17 @@
 import { SQL } from "bun";
 
-import { readDatabaseUrl, readTestDatabaseUrl } from "@/libs/server/db/config";
+import {
+  createAppConfig,
+  createTestAppConfig,
+  type EnvironmentMap,
+} from "@/libs/server/config";
 
 type ClosableDatabase = {
   close: () => Promise<unknown> | unknown;
 };
 
 type DatabaseManagerDependencies<TDatabase extends ClosableDatabase> = {
-  env?: Record<string, string | undefined>;
+  env?: EnvironmentMap;
   createConnection?: (connectionString: string) => TDatabase;
 };
 
@@ -44,7 +48,7 @@ export function createDatabaseManager<TDatabase extends ClosableDatabase>(
   return {
     getDb(): TDatabase {
       if (!cachedDb) {
-        const connectionString = readDatabaseUrl(env);
+        const connectionString = createAppConfig({ env }).database.url;
 
         cachedDb = createConnection
           ? createConnection(connectionString)
@@ -81,9 +85,9 @@ export function getDb(): BunSqlDatabase {
  * should not reuse the app runtime singleton.
  */
 export function createTestDb(
-  env: Record<string, string | undefined> = process.env,
+  env: EnvironmentMap = process.env,
 ): BunSqlDatabase {
-  return createDatabaseConnection(readTestDatabaseUrl(env));
+  return createDatabaseConnection(createTestAppConfig({ env }).database.url);
 }
 
 export async function resetDbForTests(): Promise<void> {

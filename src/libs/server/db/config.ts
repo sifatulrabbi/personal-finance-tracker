@@ -1,40 +1,19 @@
-const DATABASE_URL_ENV_KEY = "DATABASE_URL";
-const TEST_DATABASE_URL_ENV_KEY = "TEST_DATABASE_URL";
-
-type EnvironmentMap = Record<string, string | undefined>;
-
-function readRequiredEnvironmentValue(
-  env: EnvironmentMap,
-  key: string,
-  message: string,
-): string {
-  const value = env[key];
-
-  if (!value) {
-    throw new Error(message);
-  }
-
-  return value;
-}
+import {
+  createAppConfig,
+  createTestAppConfig,
+  type EnvironmentMap,
+} from "@/libs/server/config";
 
 /**
- * Reads the primary application database URL.
+ * Reads the primary application database URL through the central server config.
  */
 export function readDatabaseUrl(env: EnvironmentMap = process.env): string {
-  return readRequiredEnvironmentValue(
-    env,
-    DATABASE_URL_ENV_KEY,
-    "DATABASE_URL is required to connect to the application database.",
-  );
+  return createAppConfig({ env }).database.url;
 }
 
 /**
- * Reads the dedicated test database URL used by integration tests.
+ * Reads the dedicated test database URL through the central server config.
  */
 export function readTestDatabaseUrl(env: EnvironmentMap = process.env): string {
-  return readRequiredEnvironmentValue(
-    env,
-    TEST_DATABASE_URL_ENV_KEY,
-    "TEST_DATABASE_URL is required to connect to the integration test database.",
-  );
+  return createTestAppConfig({ env }).database.url;
 }
