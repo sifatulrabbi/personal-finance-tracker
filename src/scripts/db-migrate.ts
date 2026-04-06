@@ -1,5 +1,5 @@
-import { createTestDb, getDb } from "@/lib/server/db/client";
-import { applyMigrations } from "@/lib/server/db/migrations";
+import { createTestDb, getDb } from "@/libs/server/db/client";
+import { applyMigrations } from "@/libs/server/db/migrations";
 
 const useTestDatabase = Bun.argv.includes("--test");
 

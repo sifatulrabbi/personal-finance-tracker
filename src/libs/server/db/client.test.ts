@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 
-import { createDatabaseManager } from "@/lib/server/db/client";
+import { createDatabaseManager } from "@/libs/server/db/client";
 
 describe("database manager", () => {
   test("reuses one cached connection for repeated getDb calls", () => {

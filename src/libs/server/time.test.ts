@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { getUtcTimestamp } from "@/lib/server/helpers/time";
+import { getUtcTimestamp } from "@/libs/server/time";
 
 describe("time helpers", () => {
   test("formats UTC timestamps as ISO strings", () => {

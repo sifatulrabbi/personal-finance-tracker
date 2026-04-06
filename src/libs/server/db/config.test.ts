@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { readDatabaseUrl, readTestDatabaseUrl } from "@/lib/server/db/config";
+import { readDatabaseUrl, readTestDatabaseUrl } from "@/libs/server/db/config";
 
 describe("database config", () => {
   test("reads DATABASE_URL when present", () => {

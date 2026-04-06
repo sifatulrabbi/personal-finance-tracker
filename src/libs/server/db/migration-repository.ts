@@ -1,4 +1,4 @@
-import type { BunSqlDatabase } from "@/lib/server/db/client";
+import type { BunSqlDatabase } from "@/libs/server/db/client";
 
 export type AppliedMigration = {
   filename: string;

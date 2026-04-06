@@ -1,6 +1,6 @@
 import { SQL } from "bun";
 
-import { readDatabaseUrl, readTestDatabaseUrl } from "@/lib/server/db/config";
+import { readDatabaseUrl, readTestDatabaseUrl } from "@/libs/server/db/config";
 
 type ClosableDatabase = {
   close: () => Promise<unknown> | unknown;

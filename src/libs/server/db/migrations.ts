@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { BunSqlDatabase } from "@/lib/server/db/client";
-import { createMigrationRepository } from "@/lib/server/db/migration-repository";
+import type { BunSqlDatabase } from "@/libs/server/db/client";
+import { createMigrationRepository } from "@/libs/server/db/migration-repository";
 
 export const MIGRATIONS_DIRECTORY = join(
   process.cwd(),

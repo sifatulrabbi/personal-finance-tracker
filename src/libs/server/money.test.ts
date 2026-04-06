@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { fromMinorUnits, toMinorUnits } from "@/lib/server/helpers/money";
+import { fromMinorUnits, toMinorUnits } from "@/libs/server/money";
 
 describe("money helpers", () => {
   test("converts decimal values into minor units", () => {

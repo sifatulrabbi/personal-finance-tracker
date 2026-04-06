@@ -153,16 +153,17 @@ Create the shared Bun SQL connection module, the migration infrastructure, and t
 **Agent-Executable**: Yes
 **Blocked By**: T-004
 **Blocks**: T-006, T-011, T-015, T-018, T-021, T-024, T-027, T-030, T-031, T-034, T-037
+**Status**: Completed (2026-04-05)
 
 **Context**
 The requirements imply a small but important domain model: households, users, people, categories, accounts, origins, and transactions. This should land as isolated migrations rather than being hidden inside feature tickets.
 
 **Acceptance Criteria**
 
-- [ ] The schema includes tables for households, users, people, categories, accounts, origins, and transactions, each with household scoping where appropriate.
-- [ ] Account and transaction money fields are stored in integer minor units and supported by the right indexes and foreign keys.
-- [ ] Users support invitation/draft state plus `workos_user_id` lookup; transactions support category attribution, `income` / `expense` typing, and transfer grouping.
-- [ ] Edge case: the schema prevents duplicate origin names and duplicate category names per household and protects required references from becoming orphaned.
+- [x] The schema includes tables for households, users, people, categories, accounts, origins, and transactions, each with household scoping where appropriate.
+- [x] Account and transaction money fields are stored in integer minor units and supported by the right indexes and foreign keys.
+- [x] Users support invitation/draft state plus `workos_user_id` lookup; transactions support category attribution, `income` / `expense` typing, and transfer grouping.
+- [x] Edge case: the schema prevents duplicate origin names and duplicate category names per household and protects required references from becoming orphaned.
 
 **Out of Scope**
 
@@ -171,6 +172,8 @@ The requirements imply a small but important domain model: households, users, pe
 
 **Technical Notes**
 Keep migrations fine-grained and reviewable. Prefer explicit names such as `transfer_group_id` over overloaded fields that later confuse history queries.
+Application code now owns ID generation through the shared ULID-backed helper in `src/libs/id.ts`, while the database stores those values in `uuid` columns.
+Final verification completed on 2026-04-06 with formatting, unit tests, typecheck, lint, production build, Postgres integration tests, and `db:migrate:test`.
 
 **Agent Instructions**
 Author numbered SQL migrations, run them on a fresh database, and verify the resulting schema matches the planned domain model.
