@@ -7,11 +7,19 @@ const CONFIG_ERROR =
 const TEST_CONFIG_ERROR =
   "Invalid server config: TEST_DATABASE_URL must be a valid Postgres connection URL.";
 
+const VALID_WORKOS_ENV = {
+  WORKOS_API_KEY: "sk_test_123",
+  WORKOS_CLIENT_ID: "client_123",
+  WORKOS_COOKIE_PASSWORD: "a".repeat(32),
+  NEXT_PUBLIC_WORKOS_REDIRECT_URI: "http://localhost:3000/callback",
+};
+
 describe("database config", () => {
   test("reads DATABASE_URL when present", () => {
     expect(
       readDatabaseUrl({
         DATABASE_URL: "postgres://example/app",
+        ...VALID_WORKOS_ENV,
       }),
     ).toBe("postgres://example/app");
   });
@@ -20,6 +28,7 @@ describe("database config", () => {
     expect(
       readDatabaseUrl({
         DATABASE_URL: "postgres://example/app",
+        ...VALID_WORKOS_ENV,
       }),
     ).toBe("postgres://example/app");
   });

@@ -2,6 +2,14 @@ import { z } from "zod";
 
 const POSTGRES_URL_ERROR = "must be a valid Postgres connection URL.";
 
+const ENV_VAR_ERROR_MAP: Record<string, string> = {
+  DATABASE_URL: POSTGRES_URL_ERROR,
+  TEST_DATABASE_URL: POSTGRES_URL_ERROR,
+  WORKOS_COOKIE_PASSWORD: "must be at least 32 characters.",
+};
+
+const DEFAULT_ENV_ERROR = "is required.";
+
 export type EnvironmentMap = Record<string, string | undefined>;
 
 /**
@@ -10,6 +18,12 @@ export type EnvironmentMap = Record<string, string | undefined>;
 export type AppConfig = Readonly<{
   database: Readonly<{
     url: string;
+  }>;
+  auth: Readonly<{
+    workosApiKey: string;
+    workosClientId: string;
+    workosCookiePassword: string;
+    workosRedirectUri: string;
   }>;
 }>;
 
@@ -35,8 +49,14 @@ const postgresConnectionUrlSchema = z
   .min(1)
   .refine(isPostgresConnectionUrl);
 
+const requiredStringSchema = z.string().trim().min(1);
+
 const appConfigEnvSchema = z.object({
   DATABASE_URL: postgresConnectionUrlSchema,
+  WORKOS_API_KEY: requiredStringSchema,
+  WORKOS_CLIENT_ID: requiredStringSchema,
+  WORKOS_COOKIE_PASSWORD: z.string().min(32),
+  NEXT_PUBLIC_WORKOS_REDIRECT_URI: requiredStringSchema,
 });
 
 const testAppConfigEnvSchema = z.object({
@@ -62,7 +82,7 @@ function formatConfigError(error: z.ZodError): string {
       ? firstIssue.path[0]
       : "UNKNOWN_ENV";
 
-  return `Invalid server config: ${envKey} ${POSTGRES_URL_ERROR}`;
+  return `Invalid server config: ${envKey} ${ENV_VAR_ERROR_MAP[envKey] ?? DEFAULT_ENV_ERROR}`;
 }
 
 function parseConfigEnv<TSchema extends z.ZodType>(
@@ -90,6 +110,12 @@ export function createAppConfig({
   return {
     database: {
       url: parsedEnv.DATABASE_URL,
+    },
+    auth: {
+      workosApiKey: parsedEnv.WORKOS_API_KEY,
+      workosClientId: parsedEnv.WORKOS_CLIENT_ID,
+      workosCookiePassword: parsedEnv.WORKOS_COOKIE_PASSWORD,
+      workosRedirectUri: parsedEnv.NEXT_PUBLIC_WORKOS_REDIRECT_URI,
     },
   };
 }
