@@ -260,15 +260,16 @@ Create the minimal helpers and examples needed so later route tickets can follow
 **Agent-Executable**: Partial
 **Blocked By**: T-001, T-002
 **Blocks**: T-013, T-016, T-019, T-022, T-025, T-028, T-032, T-035, T-038
+**Status**: Partially Completed (2026-04-08)
 
 **Context**
 Even before feature pages are complete, the app needs a stable shell so every flow lands inside a mobile-first navigation pattern instead of one-off page layouts.
 
 **Acceptance Criteria**
 
-- [ ] Signed-in routes live under a shared layout that supports mobile navigation first and a comfortable desktop fallback.
-- [ ] The shell exposes clear destinations for dashboard, accounts, transactions, and settings.
-- [ ] Page scaffolds exist so feature teams can build into stable route locations rather than inventing paths ad hoc.
+- [x] Signed-in routes live under a shared layout that supports mobile navigation first and a comfortable desktop fallback.
+- [x] The shell exposes clear destinations for dashboard, accounts, transactions, and settings.
+- [x] Page scaffolds exist so feature teams can build into stable route locations rather than inventing paths ad hoc.
 - [ ] Edge case: the shell remains usable on narrow screens without relying on hover-only interactions.
 
 **Out of Scope**
@@ -278,6 +279,7 @@ Even before feature pages are complete, the app needs a stable shell so every fl
 
 **Technical Notes**
 A bottom-tab mobile pattern plus a desktop sidebar is likely the cleanest fit for the stated usage pattern.
+Route group `(authenticated)/` with placeholder pages created during T-011 auth implementation. The shared layout includes the auth gate via `resolveSessionUser()`. Mobile navigation shell (bottom tabs, sidebar) still needs to be built.
 
 **Agent Instructions**
 Build the shared layout, navigation primitives, and route group scaffolding, leaving room for the auth gate to wrap these routes later.

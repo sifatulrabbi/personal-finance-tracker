@@ -1,10 +1,10 @@
 # Dependency Order (Execution DAG)
 
-## Progress Snapshot (as of 2026-04-05)
+## Progress Snapshot (as of 2026-04-08)
 
-- Completed: T-001, T-002, T-003, T-004, T-005
-- Ready to start next: T-006, T-007, T-008, T-009
-- Remaining tickets are still blocked by downstream dependencies in this DAG.
+- Completed: T-001, T-002, T-003, T-004, T-005, T-006, T-007, T-008 (partial), T-009, T-010, T-011, T-012, T-013
+- Ready to start next: T-015, T-018, T-021, T-030, T-037 (core household and ledger APIs — all unblocked by T-010 completion)
+- T-008 partially complete: route group and placeholder pages exist, mobile navigation shell still needed.
 
 ## Layer 0 (no blockers - can start immediately)
 
@@ -14,12 +14,12 @@
 
 - T-002 -> blocked by T-001 (completed)
 - T-003 -> blocked by T-001 (completed)
-- T-009 -> blocked by T-001
+- T-009 -> blocked by T-001 (completed)
 
 ## Layer 2 (blocked by Layer 1)
 
 - T-004 -> blocked by T-001, T-003 (completed)
-- T-008 -> blocked by T-001, T-002
+- T-008 -> blocked by T-001, T-002 (partially completed)
 
 ## Layer 3 (blocked by Layer 2)
 
@@ -27,21 +27,21 @@
 
 ## Layer 4 (blocked by Layer 3)
 
-- T-006 -> blocked by T-005
-- T-007 -> blocked by T-004
+- T-006 -> blocked by T-005 (completed)
+- T-007 -> blocked by T-004 (completed)
 
 ## Layer 5 (blocked by Layer 4 plus auth spike)
 
-- T-011 -> blocked by T-005, T-007, T-009
+- T-011 -> blocked by T-005, T-007, T-009 (completed)
 
 ## Layer 6 (blocked by Layer 5)
 
-- T-012 -> blocked by T-006, T-011
-- T-013 -> blocked by T-002, T-008, T-011
+- T-012 -> blocked by T-006, T-011 (completed)
+- T-013 -> blocked by T-002, T-008, T-011 (completed)
 
 ## Layer 7 (first end-to-end access story)
 
-- T-010 -> blocked by T-011, T-012, T-013
+- T-010 -> blocked by T-011, T-012, T-013 (completed)
 
 ## Layer 8 (core household and ledger APIs)
 
@@ -114,6 +114,6 @@ This means the history experience depends on both the income/origin/category bra
 - Tasks: 22
 - Chores: 6
 - Spikes: 2
-- Earliest meaningful user-facing milestone: T-010 (invited sign-in works)
+- Earliest meaningful user-facing milestone: T-010 (invited sign-in works) ✓ DONE
 - First core finance milestone: T-020 + T-026 + T-029
 - Final proof-of-model milestone: T-033
