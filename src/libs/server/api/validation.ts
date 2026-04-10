@@ -13,6 +13,7 @@ const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export const uuidStringSchema = z.string().trim().regex(UUID_PATTERN);
 export const dateOnlyStringSchema = z.string().trim().refine(isValidDateOnly);
+export const currencyCodeSchema = z.string().trim().length(3).toUpperCase();
 export const moneyInputSchema = z
   .union([z.string(), z.number()])
   .transform((value, ctx) => {

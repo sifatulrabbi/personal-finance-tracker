@@ -1,8 +1,13 @@
 import type { NextRequest } from "next/server";
 
+import { convertToBdt, BASE_CURRENCY_CODE, BASE_CURRENCY_RATE } from "@/libs/currency";
 import { requireHouseholdAccess } from "@/libs/server/api/access";
-import { createApiErrorResponse } from "@/libs/server/api/errors";
-import { mockAccounts, mockCategories } from "@/libs/server/api/mock-data";
+import { ApiError, createApiErrorResponse } from "@/libs/server/api/errors";
+import {
+  mockAccounts,
+  mockCategories,
+  mockCurrencies,
+} from "@/libs/server/api/mock-data";
 import { createExpenseSchema } from "@/libs/server/api/schemas";
 import { parseJsonRequestBody } from "@/libs/server/api/validation";
 import { requireSessionUser } from "@/libs/server/auth";
@@ -18,6 +23,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const householdId = await requireHouseholdAccess(params, user);
 
     const body = await parseJsonRequestBody(request, createExpenseSchema);
+
+    // Resolve currency and compute BDT amount
+    let bdtAmountMinor = body.amount;
+    let rateToBdtMinor = BASE_CURRENCY_RATE;
+
+    if (body.currency !== BASE_CURRENCY_CODE) {
+      const currency = mockCurrencies.find(
+        (c) => c.householdId === householdId && c.code === body.currency,
+      );
+      if (!currency) {
+        throw new ApiError({
+          statusCode: 400,
+          code: "bad_request",
+          userMessage: `Unknown currency "${body.currency}".`,
+        });
+      }
+      rateToBdtMinor = currency.rateToBdtMinor;
+      bdtAmountMinor = convertToBdt(body.amount, rateToBdtMinor);
+    }
 
     // Resolve category (mock: use existing or create inline)
     const category = body.categoryId
@@ -36,7 +60,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       originId: null,
       createdByUserId: user.id,
       type: "expense" as const,
-      amountMinor: body.amount,
+      amountMinor: bdtAmountMinor,
+      originalCurrencyCode: body.currency,
+      originalAmountMinor: body.amount,
+      exchangeRateToBdtMinor: rateToBdtMinor,
       description: body.description ?? null,
       transactionDate: body.transactionDate,
       transferGroupId: null,
@@ -51,7 +78,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     logger.info("transactions.expense_created", {
       transactionId: transaction.id,
       householdId,
-      amountMinor: body.amount,
+      amountMinor: bdtAmountMinor,
+      originalCurrencyCode: body.currency,
+      originalAmountMinor: body.amount,
     });
 
     return Response.json({ data: transaction }, { status: 201 });

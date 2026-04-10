@@ -231,6 +231,56 @@ export const mockOrigins: MockOrigin[] = [
   },
 ];
 
+// ── Currencies ─────────────────────────────────────────────────────────────
+
+export type MockCurrency = Readonly<{
+  id: string;
+  householdId: string;
+  code: string;
+  symbol: string;
+  name: string;
+  rateToBdtMinor: number;
+  isBase: boolean;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
+export const mockCurrencies: MockCurrency[] = [
+  {
+    id: createId(),
+    householdId: MOCK_HOUSEHOLD_ID,
+    code: "BDT",
+    symbol: "৳",
+    name: "Bangladeshi Taka",
+    rateToBdtMinor: 100,
+    isBase: true,
+    createdAt: NOW,
+    updatedAt: NOW,
+  },
+  {
+    id: createId(),
+    householdId: MOCK_HOUSEHOLD_ID,
+    code: "USD",
+    symbol: "$",
+    name: "US Dollar",
+    rateToBdtMinor: 12200,
+    isBase: false,
+    createdAt: NOW,
+    updatedAt: NOW,
+  },
+  {
+    id: createId(),
+    householdId: MOCK_HOUSEHOLD_ID,
+    code: "EUR",
+    symbol: "€",
+    name: "Euro",
+    rateToBdtMinor: 14300,
+    isBase: false,
+    createdAt: NOW,
+    updatedAt: NOW,
+  },
+];
+
 // ── Transactions ────────────────────────────────────────────────────────────
 
 const transferGroupId = createId();
@@ -245,6 +295,9 @@ export type MockTransaction = Readonly<{
   createdByUserId: string;
   type: "income" | "expense";
   amountMinor: number;
+  originalCurrencyCode: string;
+  originalAmountMinor: number;
+  exchangeRateToBdtMinor: number;
   description: string | null;
   transactionDate: string;
   transferGroupId: string | null;
@@ -267,6 +320,9 @@ export const mockTransactions: MockTransaction[] = [
     createdByUserId: MOCK_USER_ID,
     type: "expense",
     amountMinor: 3250,
+    originalCurrencyCode: "BDT",
+    originalAmountMinor: 3250,
+    exchangeRateToBdtMinor: 100,
     description: "Weekly groceries",
     transactionDate: "2026-04-07",
     transferGroupId: null,
@@ -287,6 +343,9 @@ export const mockTransactions: MockTransaction[] = [
     createdByUserId: MOCK_USER_ID,
     type: "expense",
     amountMinor: 1500,
+    originalCurrencyCode: "BDT",
+    originalAmountMinor: 1500,
+    exchangeRateToBdtMinor: 100,
     description: "Bus pass",
     transactionDate: "2026-04-06",
     transferGroupId: null,
@@ -307,6 +366,9 @@ export const mockTransactions: MockTransaction[] = [
     createdByUserId: MOCK_USER_ID,
     type: "income",
     amountMinor: 250000,
+    originalCurrencyCode: "BDT",
+    originalAmountMinor: 250000,
+    exchangeRateToBdtMinor: 100,
     description: "April salary",
     transactionDate: "2026-04-01",
     transferGroupId: null,
@@ -327,6 +389,9 @@ export const mockTransactions: MockTransaction[] = [
     createdByUserId: MOCK_USER_ID,
     type: "expense",
     amountMinor: 2900,
+    originalCurrencyCode: "BDT",
+    originalAmountMinor: 2900,
+    exchangeRateToBdtMinor: 100,
     description: "Movie tickets",
     transactionDate: "2026-04-05",
     transferGroupId: null,
@@ -348,6 +413,9 @@ export const mockTransactions: MockTransaction[] = [
     createdByUserId: MOCK_USER_ID,
     type: "expense",
     amountMinor: 10000,
+    originalCurrencyCode: "BDT",
+    originalAmountMinor: 10000,
+    exchangeRateToBdtMinor: 100,
     description: "Transfer to wallet",
     transactionDate: "2026-04-03",
     transferGroupId,
@@ -368,6 +436,9 @@ export const mockTransactions: MockTransaction[] = [
     createdByUserId: MOCK_USER_ID,
     type: "income",
     amountMinor: 10000,
+    originalCurrencyCode: "BDT",
+    originalAmountMinor: 10000,
+    exchangeRateToBdtMinor: 100,
     description: "Transfer from savings",
     transactionDate: "2026-04-03",
     transferGroupId,

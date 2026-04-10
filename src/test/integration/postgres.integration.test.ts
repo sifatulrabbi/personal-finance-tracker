@@ -23,6 +23,8 @@ const EXPECTED_MIGRATION_FILES = [
   "0006-create-accounts.sql",
   "0007-create-origins.sql",
   "0008-create-transactions.sql",
+  "0009-create-currencies.sql",
+  "0010-add-currency-to-transactions.sql",
 ];
 
 let db: BunSqlDatabase;
@@ -201,6 +203,7 @@ describe("postgres integration", () => {
     expect(rows.map((row) => row.table_name)).toEqual([
       "accounts",
       "categories",
+      "currencies",
       "households",
       "origins",
       "people",

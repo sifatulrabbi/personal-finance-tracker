@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  currencyCodeSchema,
   dateOnlyStringSchema,
   moneyInputSchema,
   uuidStringSchema,
@@ -54,6 +55,7 @@ export const createExpenseSchema = z
     categoryId: uuidStringSchema.optional(),
     categoryName: z.string().trim().min(1).optional(),
     amount: moneyInputSchema,
+    currency: currencyCodeSchema.optional().default("BDT"),
     description: z.string().trim().optional(),
     transactionDate: dateOnlyStringSchema,
   })
@@ -77,6 +79,7 @@ export const createIncomeSchema = z
     originId: uuidStringSchema.optional(),
     originName: z.string().trim().min(1).optional(),
     amount: moneyInputSchema,
+    currency: currencyCodeSchema.optional().default("BDT"),
     description: z.string().trim().optional(),
     transactionDate: dateOnlyStringSchema,
   })
@@ -96,6 +99,23 @@ export const createIncomeSchema = z
     message: "Provide originId or originName, not both.",
     path: ["originId"],
   });
+
+// ── Transfers ───────────────────────────────────────────────────────────────
+
+// ── Currencies ─────────────────────────────────────────────────────────────
+
+export const createCurrencySchema = z.object({
+  code: currencyCodeSchema,
+  symbol: z.string().trim().min(1).max(5),
+  name: z.string().trim().min(1),
+  rateToBdt: moneyInputSchema,
+});
+
+export const updateCurrencySchema = z.object({
+  symbol: z.string().trim().min(1).max(5).optional(),
+  name: z.string().trim().min(1).optional(),
+  rateToBdt: moneyInputSchema.optional(),
+});
 
 // ── Transfers ───────────────────────────────────────────────────────────────
 
