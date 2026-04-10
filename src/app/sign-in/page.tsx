@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default async function SignInPage({
   searchParams,
 }: {
@@ -23,12 +25,12 @@ export default async function SignInPage({
           </div>
         )}
 
-        <a
+        <Link
           href="/api/auth/sign-in"
           className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-all hover:brightness-110 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           Sign in with Google
-        </a>
+        </Link>
       </div>
     </main>
   );

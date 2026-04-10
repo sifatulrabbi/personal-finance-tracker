@@ -79,9 +79,9 @@ describe("server config", () => {
   });
 
   test("throws clearly when DATABASE_URL is missing", () => {
-    expect(() =>
-      createAppConfig({ env: { ...VALID_WORKOS_ENV } }),
-    ).toThrow(CONFIG_ERROR);
+    expect(() => createAppConfig({ env: { ...VALID_WORKOS_ENV } })).toThrow(
+      CONFIG_ERROR,
+    );
   });
 
   test("throws clearly when DATABASE_URL is empty", () => {
