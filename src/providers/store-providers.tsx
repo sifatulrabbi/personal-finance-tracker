@@ -7,6 +7,7 @@ import { CategoryStoreProvider } from "@/providers/category-store-provider";
 import { CurrencyStoreProvider } from "@/providers/currency-store-provider";
 import { OriginStoreProvider } from "@/providers/origin-store-provider";
 import { PersonStoreProvider } from "@/providers/person-store-provider";
+import { TransactionStoreProvider } from "@/providers/transaction-store-provider";
 
 export function StoreProviders({ children }: { children: ReactNode }) {
   return (
@@ -14,7 +15,9 @@ export function StoreProviders({ children }: { children: ReactNode }) {
       <AccountStoreProvider>
         <PersonStoreProvider>
           <CategoryStoreProvider>
-            <OriginStoreProvider>{children}</OriginStoreProvider>
+            <OriginStoreProvider>
+              <TransactionStoreProvider>{children}</TransactionStoreProvider>
+            </OriginStoreProvider>
           </CategoryStoreProvider>
         </PersonStoreProvider>
       </AccountStoreProvider>

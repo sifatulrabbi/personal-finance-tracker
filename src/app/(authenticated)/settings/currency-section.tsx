@@ -81,9 +81,7 @@ export function CurrencySection() {
                 <CardTitle className="flex items-center gap-2">
                   <span>{currency.symbol}</span>
                   <span>{currency.code}</span>
-                  {currency.isBase && (
-                    <Badge variant="secondary">Base</Badge>
-                  )}
+                  {currency.isBase && <Badge variant="secondary">Base</Badge>}
                 </CardTitle>
                 <CardAction>
                   {!currency.isBase && (
@@ -112,7 +110,8 @@ export function CurrencySection() {
                   {!currency.isBase && (
                     <span>
                       {" "}
-                      &middot; 1 {currency.code} = {formatRate(currency.rateToBdtMinor)} BDT
+                      &middot; 1 {currency.code} ={" "}
+                      {formatRate(currency.rateToBdtMinor)} BDT
                     </span>
                   )}
                 </p>

@@ -47,9 +47,7 @@ export function CurrencyFormDrawer({
     setCode(currency?.code ?? "");
     setSymbol(currency?.symbol ?? "");
     setName(currency?.name ?? "");
-    setRateToBdt(
-      currency ? (currency.rateToBdtMinor / 100).toFixed(2) : "",
-    );
+    setRateToBdt(currency ? (currency.rateToBdtMinor / 100).toFixed(2) : "");
     setSubmitting(false);
   }
 
@@ -58,7 +56,8 @@ export function CurrencyFormDrawer({
     onOpenChange(next);
   }
 
-  const isValid = code.trim().length === 3 && symbol.trim() && name.trim() && rateToBdt;
+  const isValid =
+    code.trim().length === 3 && symbol.trim() && name.trim() && rateToBdt;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -94,9 +93,7 @@ export function CurrencyFormDrawer({
     <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>
-            {isEdit ? "Edit Currency" : "Add Currency"}
-          </DrawerTitle>
+          <DrawerTitle>{isEdit ? "Edit Currency" : "Add Currency"}</DrawerTitle>
           <DrawerDescription>
             {isEdit
               ? "Update the currency details and exchange rate."

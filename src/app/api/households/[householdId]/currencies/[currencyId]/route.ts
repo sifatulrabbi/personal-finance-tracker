@@ -1,10 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireHouseholdAccess } from "@/libs/server/api/access";
-import {
-  ApiError,
-  createApiErrorResponse,
-} from "@/libs/server/api/errors";
+import { ApiError, createApiErrorResponse } from "@/libs/server/api/errors";
 import { mockCurrencies } from "@/libs/server/api/mock-data";
 import { updateCurrencySchema } from "@/libs/server/api/schemas";
 import {

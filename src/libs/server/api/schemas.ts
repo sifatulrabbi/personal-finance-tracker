@@ -117,6 +117,30 @@ export const updateCurrencySchema = z.object({
   rateToBdt: moneyInputSchema.optional(),
 });
 
+// ── Transaction Update ─────────────────────────────────────────────────────
+
+export const updateTransactionSchema = z
+  .object({
+    accountId: uuidStringSchema.optional(),
+    personId: uuidStringSchema.optional(),
+    categoryId: uuidStringSchema.optional(),
+    categoryName: z.string().trim().min(1).optional(),
+    originId: uuidStringSchema.optional(),
+    originName: z.string().trim().min(1).optional(),
+    amount: moneyInputSchema.optional(),
+    currency: currencyCodeSchema.optional(),
+    description: z.string().trim().optional(),
+    transactionDate: dateOnlyStringSchema.optional(),
+  })
+  .refine((data) => !(data.categoryId && data.categoryName), {
+    message: "Provide categoryId or categoryName, not both.",
+    path: ["categoryId"],
+  })
+  .refine((data) => !(data.originId && data.originName), {
+    message: "Provide originId or originName, not both.",
+    path: ["originId"],
+  });
+
 // ── Transfers ───────────────────────────────────────────────────────────────
 
 export const createTransferSchema = z

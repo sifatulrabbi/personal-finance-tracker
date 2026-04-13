@@ -31,3 +31,4 @@
 
 - The project is still a greenfield project with 0 active users
 - You can make any changes to the database schema or existing migrations without worrying for repercussions
+- The project uses `bun` only use bun no npm, pnpm, or yarn, also no npx only `bunx`
