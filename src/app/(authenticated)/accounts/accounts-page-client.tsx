@@ -20,10 +20,10 @@ import { cn } from "@/libs/utils";
 import { useAccountStore } from "@/providers/account-store-provider";
 import type { Account } from "@/stores/account-store";
 
+import { TransactionSheet } from "../transactions/transaction-sheet";
 import { AccountCard } from "./account-card";
 import { AccountFormDrawer } from "./account-form-drawer";
 import { AccountSkeletons } from "./account-skeletons";
-import { TransferDrawer } from "./transfer-drawer";
 
 export function AccountsPageClient() {
   const { householdId } = useSession();
@@ -164,11 +164,13 @@ export function AccountsPageClient() {
         onConfirm={handleDelete}
       />
 
-      {/* Transfer drawer */}
-      <TransferDrawer
+      {/* Transfer sheet — same component as the transactions page, but
+          locked to the transfer variant. */}
+      <TransactionSheet
+        key={transferOpen ? "transfer-open" : "transfer-closed"}
         open={transferOpen}
         onOpenChange={setTransferOpen}
-        accounts={accounts}
+        defaultType="transfer"
       />
     </>
   );

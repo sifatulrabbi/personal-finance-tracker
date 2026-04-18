@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { TransactionType } from "@/libs/client/transaction-schemas";
 import { useAccountStore } from "@/providers/account-store-provider";
 import { useCategoryStore } from "@/providers/category-store-provider";
 import { useCurrencyStore } from "@/providers/currency-store-provider";
@@ -24,10 +25,9 @@ import { usePersonStore } from "@/providers/person-store-provider";
 import { useTransactionStore } from "@/providers/transaction-store-provider";
 import type { Transaction } from "@/stores/transaction-store";
 
-import { ExpenseDrawer } from "./expense-drawer";
-import { IncomeDrawer } from "./income-drawer";
 import { TransactionFilters } from "./transaction-filters";
 import { TransactionList } from "./transaction-list";
+import { TransactionSheet } from "./transaction-sheet";
 import { TransactionSkeletons } from "./transaction-skeletons";
 
 export function TransactionsPageClient() {
@@ -48,8 +48,10 @@ export function TransactionsPageClient() {
   const fetchCategories = useCategoryStore((s) => s.fetchCategories);
   const fetchCurrencies = useCurrencyStore((s) => s.fetchCurrencies);
 
-  const [expenseDrawerOpen, setExpenseDrawerOpen] = useState(false);
-  const [incomeDrawerOpen, setIncomeDrawerOpen] = useState(false);
+  // Sheet state — the same sheet handles create and edit; `createType` seeds
+  // the initial tab in create mode. `editingTransaction` switches the sheet
+  // into edit mode for an existing row.
+  const [createType, setCreateType] = useState<TransactionType | null>(null);
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
   const [deletingTransaction, setDeletingTransaction] =
@@ -84,7 +86,7 @@ export function TransactionsPageClient() {
   const hasMore =
     filters.type !== "transfer" && meta.page * meta.pageSize < meta.total;
 
-  function handleTabChange(value: unknown) {
+  function handleFilterTabChange(value: unknown) {
     if (typeof value === "string") {
       setFilters({
         type: value as "all" | "expense" | "income" | "transfer",
@@ -92,9 +94,19 @@ export function TransactionsPageClient() {
     }
   }
 
+  function openCreate(type: TransactionType) {
+    setEditingTransaction(null);
+    setCreateType(type);
+  }
+
   function handleEdit(transaction: Transaction) {
-    setExpenseDrawerOpen(false);
-    setIncomeDrawerOpen(false);
+    // Backend forbids editing transfers; the list should not expose Edit for
+    // transfer rows, but guard here too in case a stale action slips through.
+    if (transaction.transferGroupId !== null) {
+      toast.error("Transfers can't be edited — delete and recreate instead.");
+      return;
+    }
+    setCreateType(null);
     setEditingTransaction(transaction);
   }
 
@@ -112,16 +124,21 @@ export function TransactionsPageClient() {
     }
   }
 
-  const editingExpense =
-    editingTransaction?.type === "expense" ? editingTransaction : null;
-  const editingIncome =
-    editingTransaction?.type === "income" ? editingTransaction : null;
-
   const isTransferDelete =
     !!deletingTransaction && deletingTransaction.transferGroupId !== null;
   const deleteDescription = isTransferDelete
     ? "This will delete both the outgoing and incoming sides of this transfer. This action cannot be undone."
     : `Are you sure you want to delete this ${deletingTransaction?.type ?? "transaction"}? This action cannot be undone.`;
+
+  // Sheet open when either create or edit flow is active.
+  const sheetOpen = createType !== null || editingTransaction !== null;
+
+  function handleSheetOpenChange(next: boolean) {
+    if (!next) {
+      setCreateType(null);
+      setEditingTransaction(null);
+    }
+  }
 
   return (
     <>
@@ -131,14 +148,14 @@ export function TransactionsPageClient() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => setIncomeDrawerOpen(true)}
+            onClick={() => openCreate("income")}
           >
             <Banknote className="size-4" />
           </Button>
         }
       />
 
-      <Tabs value={filters.type} onValueChange={handleTabChange}>
+      <Tabs value={filters.type} onValueChange={handleFilterTabChange}>
         <TabsList variant="line" className="w-full px-4">
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="expense">Expenses</TabsTrigger>
@@ -163,7 +180,7 @@ export function TransactionsPageClient() {
                 Record your first expense or income to get started.
               </EmptyDescription>
             </EmptyHeader>
-            <Button size="sm" onClick={() => setExpenseDrawerOpen(true)}>
+            <Button size="sm" onClick={() => openCreate("expense")}>
               <Plus data-icon="inline-start" />
               Add Expense
             </Button>
@@ -192,40 +209,23 @@ export function TransactionsPageClient() {
 
       {displayTransactions.length > 0 && (
         <button
-          onClick={() => setExpenseDrawerOpen(true)}
+          onClick={() => openCreate("expense")}
           className="fixed bottom-20 right-4 z-40 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95"
         >
           <Plus className="size-5" />
         </button>
       )}
 
-      {/* Create/Edit expense drawer */}
-      <ExpenseDrawer
-        key={editingExpense?.id ?? "create-expense"}
-        open={expenseDrawerOpen || !!editingExpense}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditingTransaction(null);
-            setExpenseDrawerOpen(false);
-          }
-        }}
-        transaction={editingExpense}
+      <TransactionSheet
+        // Key re-mounts the sheet when switching between create/edit so RHF
+        // default values are honored without a manual reset dance.
+        key={editingTransaction?.id ?? `create-${createType ?? "expense"}`}
+        open={sheetOpen}
+        onOpenChange={handleSheetOpenChange}
+        transaction={editingTransaction}
+        defaultType={createType ?? "expense"}
       />
 
-      {/* Create/Edit income drawer */}
-      <IncomeDrawer
-        key={editingIncome?.id ?? "create-income"}
-        open={incomeDrawerOpen || !!editingIncome}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditingTransaction(null);
-            setIncomeDrawerOpen(false);
-          }
-        }}
-        transaction={editingIncome}
-      />
-
-      {/* Delete confirmation */}
       <ConfirmDialog
         open={!!deletingTransaction}
         onOpenChange={(open) => {
