@@ -16,13 +16,14 @@
     "db:seed:test": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://finance_tracker:finance_tracker@localhost:54329/finance_tracker_test} bun run src/scripts/db-seed.ts --test",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx,md,yml}\"",
-    "test": "bun test src/libs src/app/api",
+    "test": "bun test src/libs src/app/api 'src/app/(authenticated)' src/components",
     "test:api": "bun test src/app/api",
     "test:integration": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://finance_tracker:finance_tracker@localhost:54329/finance_tracker_test} bun test src/test/integration",
     "typecheck": "bun --bun next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
+    "@hookform/resolvers": "^5.2.2",
     "@workos-inc/authkit-nextjs": "^3.0.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
@@ -31,6 +32,7 @@
     "next-themes": "^0.4.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-hook-form": "^7.72.1",
     "shadcn": "4.1.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "3.5.0",
