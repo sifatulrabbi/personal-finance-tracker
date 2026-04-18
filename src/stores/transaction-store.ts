@@ -66,6 +66,15 @@ export type UpdateTransactionInput = {
   transactionDate?: string;
 };
 
+export type CreateTransferInput = {
+  sourceAccountId: string;
+  destinationAccountId: string;
+  personId: string;
+  amount: string;
+  transactionDate: string;
+  description?: string;
+};
+
 type TransactionState = {
   transactions: Transaction[];
   meta: TransactionMeta;
@@ -86,6 +95,10 @@ type TransactionActions = {
   createIncome: (
     householdId: string,
     input: CreateIncomeInput,
+  ) => Promise<void>;
+  createTransfer: (
+    householdId: string,
+    input: CreateTransferInput,
   ) => Promise<void>;
   updateTransaction: (
     householdId: string,
@@ -196,6 +209,19 @@ export const createTransactionStore = () =>
 
     createIncome: async (householdId, input) => {
       await apiRequest(`/api/households/${householdId}/transactions/income`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      await get().fetchTransactions(householdId);
+    },
+
+    createTransfer: async (householdId, input) => {
+      // Transfers create two transactions (one expense + one income) on the
+      // backend linked by transferGroupId. Refetch the list so both show up.
+      // Account balances shift too — callers refresh those separately because
+      // the account store is outside this domain.
+      await apiRequest(`/api/households/${householdId}/transfers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
