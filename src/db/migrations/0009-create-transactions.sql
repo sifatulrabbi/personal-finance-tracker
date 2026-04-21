@@ -8,13 +8,19 @@ CREATE TABLE transactions (
   created_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   type TEXT NOT NULL,
   amount_minor BIGINT NOT NULL,
+  original_currency_code TEXT NOT NULL,
+  original_amount_minor BIGINT NOT NULL,
+  exchange_rate_to_bdt_minor BIGINT NOT NULL,
   description TEXT,
   transaction_date DATE NOT NULL,
   transfer_group_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
   CONSTRAINT transactions_type_check CHECK (type IN ('income', 'expense')),
   CONSTRAINT transactions_amount_positive_check CHECK (amount_minor > 0),
+  CONSTRAINT transactions_original_amount_positive_check CHECK (original_amount_minor > 0),
+  CONSTRAINT transactions_exchange_rate_positive_check CHECK (exchange_rate_to_bdt_minor > 0),
   CONSTRAINT transactions_category_required_check CHECK (
     transfer_group_id IS NOT NULL
     OR category_id IS NOT NULL
@@ -27,7 +33,11 @@ CREATE TABLE transactions (
   CONSTRAINT transactions_expense_origin_absent_check CHECK (
     type <> 'expense'
     OR origin_id IS NULL
-  )
+  ),
+  -- Referential integrity for per-household currency codes. Uses the
+  -- (household_id, code) composite key added by the currencies table.
+  CONSTRAINT transactions_currency_fk FOREIGN KEY (household_id, original_currency_code)
+    REFERENCES currencies (household_id, code) ON DELETE RESTRICT
 );
 
 CREATE INDEX transactions_household_id_idx ON transactions (household_id);

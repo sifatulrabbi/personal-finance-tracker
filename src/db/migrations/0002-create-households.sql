@@ -1,4 +1,4 @@
-CREATE TABLE households (
+CREATE TABLE households(
   id UUID PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT,
