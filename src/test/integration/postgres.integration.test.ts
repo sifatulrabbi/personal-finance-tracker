@@ -22,9 +22,8 @@ const EXPECTED_MIGRATION_FILES = [
   "0005-create-categories.sql",
   "0006-create-accounts.sql",
   "0007-create-origins.sql",
-  "0008-create-transactions.sql",
-  "0009-create-currencies.sql",
-  "0010-add-currency-to-transactions.sql",
+  "0008-create-currencies.sql",
+  "0009-create-transactions.sql",
 ];
 
 let db: BunSqlDatabase;
@@ -50,6 +49,7 @@ async function seedLedgerContext() {
   const categoryId = createId();
   const accountId = createId();
   const originId = createId();
+  const currencyId = createId();
 
   await db`
     INSERT INTO households (id, name)
@@ -99,6 +99,29 @@ async function seedLedgerContext() {
     VALUES (${originId}, ${householdId}, ${"Salary"})
   `;
 
+  // BDT base currency — satisfies the transactions → currencies FK for any
+  // ledger insert in the surrounding tests.
+  await db`
+    INSERT INTO currencies (
+      id,
+      household_id,
+      code,
+      symbol,
+      name,
+      rate_to_bdt_minor,
+      is_base
+    )
+    VALUES (
+      ${currencyId},
+      ${householdId},
+      ${"BDT"},
+      ${"৳"},
+      ${"Bangladeshi Taka"},
+      ${100},
+      ${true}
+    )
+  `;
+
   return {
     householdId,
     userId,
@@ -106,6 +129,7 @@ async function seedLedgerContext() {
     categoryId,
     accountId,
     originId,
+    currencyId,
   };
 }
 
@@ -604,6 +628,9 @@ describe("postgres integration", () => {
         created_by_user_id,
         type,
         amount_minor,
+        original_currency_code,
+        original_amount_minor,
+        exchange_rate_to_bdt_minor,
         transaction_date,
         transfer_group_id
       )
@@ -615,6 +642,9 @@ describe("postgres integration", () => {
         ${context.userId},
         ${"expense"},
         ${1500},
+        ${"BDT"},
+        ${1500},
+        ${100},
         ${"2026-04-05"},
         ${transferGroupId}
       )
@@ -629,6 +659,9 @@ describe("postgres integration", () => {
         created_by_user_id,
         type,
         amount_minor,
+        original_currency_code,
+        original_amount_minor,
+        exchange_rate_to_bdt_minor,
         transaction_date,
         transfer_group_id
       )
@@ -640,6 +673,9 @@ describe("postgres integration", () => {
         ${context.userId},
         ${"income"},
         ${1500},
+        ${"BDT"},
+        ${1500},
+        ${100},
         ${"2026-04-05"},
         ${transferGroupId}
       )
