@@ -1,6 +1,7 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 
 import { getDb } from "@/libs/server/db/client";
+import { createUsersRepository } from "@/libs/server/db/repository";
 import { logger } from "@/libs/server/logger";
 
 export type SessionUser = Readonly<{
@@ -15,15 +16,6 @@ export type ResolveSessionUserResult =
   | { authenticated: true; user: SessionUser }
   | { authenticated: false; error: "no_session" | "not_invited" };
 
-type UserRow = {
-  id: string;
-  household_id: string;
-  email: string;
-  name: string | null;
-  workos_user_id: string | null;
-  is_drafted: boolean;
-};
-
 function buildDisplayName(
   firstName: string | null,
   lastName: string | null,
@@ -33,6 +25,13 @@ function buildDisplayName(
   return name || null;
 }
 
+/**
+ * Resolves the authenticated WorkOS user into a local SessionUser backed by
+ * the `users` table. A drafted invitation row is activated on its first
+ * successful sign-in: `workos_user_id` is stamped, `name` is set from WorkOS,
+ * and `is_drafted` is flipped to false. Users with no matching row are
+ * rejected with `not_invited` to enforce the invitation-only policy.
+ */
 export async function resolveSessionUser(): Promise<ResolveSessionUserResult> {
   const { user: workosUser } = await withAuth();
 
@@ -40,39 +39,25 @@ export async function resolveSessionUser(): Promise<ResolveSessionUserResult> {
     return { authenticated: false, error: "no_session" };
   }
 
-  const db = getDb();
+  const usersRepository = createUsersRepository({ db: getDb() });
+  const userRow = await usersRepository.findByEmail(workosUser.email);
 
-  const rows = (await db`
-    SELECT id::text, household_id::text AS household_id, email, name,
-           workos_user_id, is_drafted
-    FROM users
-    WHERE email = ${workosUser.email}
-    LIMIT 1
-  `) as UserRow[];
-
-  if (rows.length === 0) {
+  if (!userRow) {
     logger.auth("rejected_not_invited", { email: workosUser.email });
-
     return { authenticated: false, error: "not_invited" };
   }
 
-  const userRow = rows[0];
-
-  if (userRow.is_drafted) {
+  if (userRow.isDrafted) {
     const displayName = buildDisplayName(
       workosUser.firstName,
       workosUser.lastName,
     );
 
-    await db`
-      UPDATE users
-      SET workos_user_id = ${workosUser.id},
-          name = ${displayName},
-          is_drafted = false,
-          updated_at = NOW()
-      WHERE id = ${userRow.id}::uuid
-        AND is_drafted = true
-    `;
+    await usersRepository.activateDrafted({
+      id: userRow.id,
+      workosUserId: workosUser.id,
+      name: displayName,
+    });
 
     logger.auth("user_activated", {
       userId: userRow.id,
@@ -84,7 +69,7 @@ export async function resolveSessionUser(): Promise<ResolveSessionUserResult> {
       authenticated: true,
       user: {
         id: userRow.id,
-        householdId: userRow.household_id,
+        householdId: userRow.householdId,
         email: workosUser.email,
         name: displayName,
         workosUserId: workosUser.id,
@@ -96,10 +81,11 @@ export async function resolveSessionUser(): Promise<ResolveSessionUserResult> {
     authenticated: true,
     user: {
       id: userRow.id,
-      householdId: userRow.household_id,
+      householdId: userRow.householdId,
       email: userRow.email,
       name: userRow.name,
-      workosUserId: userRow.workos_user_id!,
+      // A non-drafted row always has workos_user_id set (activation writes it).
+      workosUserId: userRow.workosUserId!,
     },
   };
 }
