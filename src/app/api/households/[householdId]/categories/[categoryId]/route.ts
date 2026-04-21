@@ -1,14 +1,12 @@
 import type { NextRequest } from "next/server";
 
 import { requireHouseholdAccess } from "@/libs/server/api/access";
-import {
-  ApiError,
-  createApiErrorResponse,
-  createDomainConflictError,
-} from "@/libs/server/api/errors";
-import { mockCategories, mockTransactions } from "@/libs/server/api/mock-data";
+import { ApiError, createApiErrorResponse } from "@/libs/server/api/errors";
 import { parseIdParam } from "@/libs/server/api/validation";
 import { requireSessionUser } from "@/libs/server/auth";
+import { getDb } from "@/libs/server/db/client";
+import { createRepositories } from "@/libs/server/db/repository";
+import { mapForeignKeyInUse } from "@/libs/server/db/repository/errors";
 import { logger } from "@/libs/server/logger";
 
 type RouteParams = {
@@ -25,25 +23,22 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     );
     const categoryId = parseIdParam(resolved.categoryId, "categoryId");
 
-    const category = mockCategories.find(
-      (c) => c.id === categoryId && c.householdId === householdId,
-    );
+    const repos = createRepositories({ db: getDb() });
 
-    if (!category) {
-      throw new ApiError({
-        statusCode: 404,
-        code: "not_found",
-        userMessage: "Category not found.",
+    try {
+      const removed = await repos.categories.remove({
+        householdId,
+        id: categoryId,
       });
-    }
-
-    const isUsed = mockTransactions.some((t) => t.categoryId === categoryId);
-
-    if (isUsed) {
-      throw createDomainConflictError({
-        userMessage: "Cannot delete a category that is used by transactions.",
-        developerMessage: `Category ${categoryId} is referenced by transactions.`,
-      });
+      if (!removed) {
+        throw new ApiError({
+          statusCode: 404,
+          code: "not_found",
+          userMessage: "Category not found.",
+        });
+      }
+    } catch (error) {
+      throw mapForeignKeyInUse({ error, label: "category" });
     }
 
     logger.info("categories.deleted", { categoryId, householdId });

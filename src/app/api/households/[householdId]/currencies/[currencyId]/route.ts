@@ -1,20 +1,33 @@
 import type { NextRequest } from "next/server";
 
 import { requireHouseholdAccess } from "@/libs/server/api/access";
-import { ApiError, createApiErrorResponse } from "@/libs/server/api/errors";
-import { mockCurrencies } from "@/libs/server/api/mock-data";
+import {
+  ApiError,
+  createApiErrorResponse,
+  createBadRequestError,
+} from "@/libs/server/api/errors";
 import { updateCurrencySchema } from "@/libs/server/api/schemas";
 import {
   parseIdParam,
   parseJsonRequestBody,
 } from "@/libs/server/api/validation";
 import { requireSessionUser } from "@/libs/server/auth";
+import { getDb } from "@/libs/server/db/client";
+import { createRepositories } from "@/libs/server/db/repository";
+import { mapForeignKeyInUse } from "@/libs/server/db/repository/errors";
 import { logger } from "@/libs/server/logger";
-import { getUtcTimestamp } from "@/libs/server/time";
 
 type RouteParams = {
   params: Promise<{ householdId: string; currencyId: string }>;
 };
+
+function notFound(): never {
+  throw new ApiError({
+    statusCode: 404,
+    code: "not_found",
+    userMessage: "Currency not found.",
+  });
+}
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
@@ -26,16 +39,14 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     );
     const currencyId = parseIdParam(resolved.currencyId, "currencyId");
 
-    const currency = mockCurrencies.find(
-      (c) => c.id === currencyId && c.householdId === householdId,
-    );
+    const repos = createRepositories({ db: getDb() });
+    const currency = await repos.currencies.findById({
+      householdId,
+      id: currencyId,
+    });
 
     if (!currency) {
-      throw new ApiError({
-        statusCode: 404,
-        code: "not_found",
-        userMessage: "Currency not found.",
-      });
+      notFound();
     }
 
     return Response.json({ data: currency });
@@ -54,36 +65,37 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     );
     const currencyId = parseIdParam(resolved.currencyId, "currencyId");
 
-    const currency = mockCurrencies.find(
-      (c) => c.id === currencyId && c.householdId === householdId,
-    );
-
-    if (!currency) {
-      throw new ApiError({
-        statusCode: 404,
-        code: "not_found",
-        userMessage: "Currency not found.",
-      });
-    }
-
     const body = await parseJsonRequestBody(request, updateCurrencySchema);
 
-    if (currency.isBase && body.rateToBdt !== undefined) {
-      throw new ApiError({
-        statusCode: 400,
-        code: "bad_request",
+    const repos = createRepositories({ db: getDb() });
+    const current = await repos.currencies.findById({
+      householdId,
+      id: currencyId,
+    });
+    if (!current) {
+      notFound();
+    }
+    if (current.isBase && body.rateToBdt !== undefined) {
+      // BDT = base currency; its rate is always 100 and changing it would
+      // silently rescale every BDT-stored balance.
+      throw createBadRequestError({
         userMessage: "Cannot change the exchange rate of the base currency.",
       });
     }
 
-    const now = getUtcTimestamp();
-    const updated = {
-      ...currency,
-      symbol: body.symbol ?? currency.symbol,
-      name: body.name ?? currency.name,
-      rateToBdtMinor: body.rateToBdt ?? currency.rateToBdtMinor,
-      updatedAt: now,
-    };
+    const updated = await repos.currencies.update({
+      householdId,
+      id: currencyId,
+      patch: {
+        symbol: body.symbol,
+        name: body.name,
+        rateToBdtMinor: body.rateToBdt,
+      },
+    });
+
+    if (!updated) {
+      notFound();
+    }
 
     logger.info("currencies.updated", {
       currencyId,
@@ -106,24 +118,18 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     );
     const currencyId = parseIdParam(resolved.currencyId, "currencyId");
 
-    const currency = mockCurrencies.find(
-      (c) => c.id === currencyId && c.householdId === householdId,
-    );
+    const repos = createRepositories({ db: getDb() });
 
-    if (!currency) {
-      throw new ApiError({
-        statusCode: 404,
-        code: "not_found",
-        userMessage: "Currency not found.",
+    try {
+      const removed = await repos.currencies.remove({
+        householdId,
+        id: currencyId,
       });
-    }
-
-    if (currency.isBase) {
-      throw new ApiError({
-        statusCode: 400,
-        code: "bad_request",
-        userMessage: "Cannot delete the base currency.",
-      });
+      if (!removed) {
+        notFound();
+      }
+    } catch (error) {
+      throw mapForeignKeyInUse({ error, label: "currency" });
     }
 
     logger.info("currencies.deleted", { currencyId, householdId });

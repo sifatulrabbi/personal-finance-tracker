@@ -2,13 +2,12 @@ import type { NextRequest } from "next/server";
 
 import { requireHouseholdAccess } from "@/libs/server/api/access";
 import { createApiErrorResponse } from "@/libs/server/api/errors";
-import { mockPeople } from "@/libs/server/api/mock-data";
 import { createPersonSchema } from "@/libs/server/api/schemas";
 import { parseJsonRequestBody } from "@/libs/server/api/validation";
 import { requireSessionUser } from "@/libs/server/auth";
-import { createId } from "@/libs/id";
+import { getDb } from "@/libs/server/db/client";
+import { createRepositories } from "@/libs/server/db/repository";
 import { logger } from "@/libs/server/logger";
-import { getUtcTimestamp } from "@/libs/server/time";
 
 type RouteParams = { params: Promise<{ householdId: string }> };
 
@@ -17,7 +16,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     const user = await requireSessionUser();
     const householdId = await requireHouseholdAccess(params, user);
 
-    const people = mockPeople.filter((p) => p.householdId === householdId);
+    const repos = createRepositories({ db: getDb() });
+    const people = await repos.people.listByHousehold(householdId);
 
     return Response.json({ data: people });
   } catch (error) {
@@ -32,15 +32,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const body = await parseJsonRequestBody(request, createPersonSchema);
 
-    const now = getUtcTimestamp();
-    const person = {
-      id: createId(),
+    const repos = createRepositories({ db: getDb() });
+    const person = await repos.people.insert({
       householdId,
       name: body.name,
       isDefault: false,
-      createdAt: now,
-      updatedAt: now,
-    };
+    });
 
     logger.info("people.created", { personId: person.id, householdId });
 

@@ -2,13 +2,12 @@ import type { NextRequest } from "next/server";
 
 import { requireHouseholdAccess } from "@/libs/server/api/access";
 import { createApiErrorResponse } from "@/libs/server/api/errors";
-import { mockAccounts } from "@/libs/server/api/mock-data";
 import { createAccountSchema } from "@/libs/server/api/schemas";
 import { parseJsonRequestBody } from "@/libs/server/api/validation";
 import { requireSessionUser } from "@/libs/server/auth";
-import { createId } from "@/libs/id";
+import { getDb } from "@/libs/server/db/client";
+import { createRepositories } from "@/libs/server/db/repository";
 import { logger } from "@/libs/server/logger";
-import { getUtcTimestamp } from "@/libs/server/time";
 
 type RouteParams = { params: Promise<{ householdId: string }> };
 
@@ -17,7 +16,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     const user = await requireSessionUser();
     const householdId = await requireHouseholdAccess(params, user);
 
-    const accounts = mockAccounts.filter((a) => a.householdId === householdId);
+    const repos = createRepositories({ db: getDb() });
+    const accounts = await repos.accounts.listByHousehold(householdId);
 
     return Response.json({ data: accounts });
   } catch (error) {
@@ -32,17 +32,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const body = await parseJsonRequestBody(request, createAccountSchema);
 
-    const now = getUtcTimestamp();
-    const account = {
-      id: createId(),
+    const repos = createRepositories({ db: getDb() });
+    const account = await repos.accounts.insert({
       householdId,
       name: body.name,
       description: body.description ?? null,
       initialBalanceMinor: body.initialBalance,
-      currentBalanceMinor: body.initialBalance,
-      createdAt: now,
-      updatedAt: now,
-    };
+    });
 
     logger.info("accounts.created", { accountId: account.id, householdId });
 

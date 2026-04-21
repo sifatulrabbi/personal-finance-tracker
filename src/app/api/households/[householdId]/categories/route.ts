@@ -2,13 +2,12 @@ import type { NextRequest } from "next/server";
 
 import { requireHouseholdAccess } from "@/libs/server/api/access";
 import { createApiErrorResponse } from "@/libs/server/api/errors";
-import { mockCategories } from "@/libs/server/api/mock-data";
 import { createCategorySchema } from "@/libs/server/api/schemas";
 import { parseJsonRequestBody } from "@/libs/server/api/validation";
 import { requireSessionUser } from "@/libs/server/auth";
-import { createId } from "@/libs/id";
+import { getDb } from "@/libs/server/db/client";
+import { createRepositories } from "@/libs/server/db/repository";
 import { logger } from "@/libs/server/logger";
-import { getUtcTimestamp } from "@/libs/server/time";
 
 type RouteParams = { params: Promise<{ householdId: string }> };
 
@@ -17,9 +16,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     const user = await requireSessionUser();
     const householdId = await requireHouseholdAccess(params, user);
 
-    const categories = mockCategories.filter(
-      (c) => c.householdId === householdId,
-    );
+    const repos = createRepositories({ db: getDb() });
+    const categories = await repos.categories.listByHousehold(householdId);
 
     return Response.json({ data: categories });
   } catch (error) {
@@ -34,15 +32,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const body = await parseJsonRequestBody(request, createCategorySchema);
 
-    const now = getUtcTimestamp();
-    const category = {
-      id: createId(),
+    const repos = createRepositories({ db: getDb() });
+    const category = await repos.categories.insert({
       householdId,
       name: body.name,
       description: body.description ?? null,
-      createdAt: now,
-      updatedAt: now,
-    };
+    });
 
     logger.info("categories.created", {
       categoryId: category.id,

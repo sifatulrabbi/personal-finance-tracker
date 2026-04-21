@@ -1,14 +1,12 @@
 import type { NextRequest } from "next/server";
 
 import { requireHouseholdAccess } from "@/libs/server/api/access";
-import {
-  ApiError,
-  createApiErrorResponse,
-  createDomainConflictError,
-} from "@/libs/server/api/errors";
-import { mockOrigins, mockTransactions } from "@/libs/server/api/mock-data";
+import { ApiError, createApiErrorResponse } from "@/libs/server/api/errors";
 import { parseIdParam } from "@/libs/server/api/validation";
 import { requireSessionUser } from "@/libs/server/auth";
+import { getDb } from "@/libs/server/db/client";
+import { createRepositories } from "@/libs/server/db/repository";
+import { mapForeignKeyInUse } from "@/libs/server/db/repository/errors";
 import { logger } from "@/libs/server/logger";
 
 type RouteParams = {
@@ -25,25 +23,19 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     );
     const originId = parseIdParam(resolved.originId, "originId");
 
-    const origin = mockOrigins.find(
-      (o) => o.id === originId && o.householdId === householdId,
-    );
+    const repos = createRepositories({ db: getDb() });
 
-    if (!origin) {
-      throw new ApiError({
-        statusCode: 404,
-        code: "not_found",
-        userMessage: "Origin not found.",
-      });
-    }
-
-    const isUsed = mockTransactions.some((t) => t.originId === originId);
-
-    if (isUsed) {
-      throw createDomainConflictError({
-        userMessage: "Cannot delete an origin that is used by transactions.",
-        developerMessage: `Origin ${originId} is referenced by transactions.`,
-      });
+    try {
+      const removed = await repos.origins.remove({ householdId, id: originId });
+      if (!removed) {
+        throw new ApiError({
+          statusCode: 404,
+          code: "not_found",
+          userMessage: "Origin not found.",
+        });
+      }
+    } catch (error) {
+      throw mapForeignKeyInUse({ error, label: "origin" });
     }
 
     logger.info("origins.deleted", { originId, householdId });

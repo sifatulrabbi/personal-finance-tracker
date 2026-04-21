@@ -6,9 +6,11 @@ import {
   createApiErrorResponse,
   createDomainConflictError,
 } from "@/libs/server/api/errors";
-import { mockPeople } from "@/libs/server/api/mock-data";
 import { parseIdParam } from "@/libs/server/api/validation";
 import { requireSessionUser } from "@/libs/server/auth";
+import { getDb } from "@/libs/server/db/client";
+import { createRepositories } from "@/libs/server/db/repository";
+import { mapForeignKeyInUse } from "@/libs/server/db/repository/errors";
 import { logger } from "@/libs/server/logger";
 
 type RouteParams = {
@@ -25,10 +27,11 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     );
     const personId = parseIdParam(resolved.personId, "personId");
 
-    const person = mockPeople.find(
-      (p) => p.id === personId && p.householdId === householdId,
-    );
+    const repos = createRepositories({ db: getDb() });
 
+    // Look up first so we can distinguish "not found" (404) from
+    // "default person can't be deleted" (409) and from "in use" (409 via FK).
+    const person = await repos.people.findById({ householdId, id: personId });
     if (!person) {
       throw new ApiError({
         statusCode: 404,
@@ -36,12 +39,17 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
         userMessage: "Person not found.",
       });
     }
-
     if (person.isDefault) {
       throw createDomainConflictError({
         userMessage: "The default Household person cannot be deleted.",
         developerMessage: `Attempted to delete default person ${personId}.`,
       });
+    }
+
+    try {
+      await repos.people.remove({ householdId, id: personId });
+    } catch (error) {
+      throw mapForeignKeyInUse({ error, label: "person" });
     }
 
     logger.info("people.deleted", { personId, householdId });
