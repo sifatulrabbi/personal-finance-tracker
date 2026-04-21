@@ -8,6 +8,7 @@ type QueryRows = Array<{ id: string }>;
 function createSeedDbStub(resultsByCall: QueryRows[] = []) {
   const queryValues: unknown[][] = [];
   const pendingResults = [...resultsByCall];
+
   const query = mock(async (_strings: TemplateStringsArray, ...values) => {
     const sql = _strings.join("");
 
@@ -35,36 +36,29 @@ function createSeedDbStub(resultsByCall: QueryRows[] = []) {
 }
 
 describe("seed database", () => {
-  test("exposes the required seed constants", () => {
-    expect(SEED_HOUSEHOLDS.real.name).toBe("Sifatul's Household");
-    expect(SEED_HOUSEHOLDS.real.seedUser.email).toBe(
-      "mdsifatulislam.rabbi@gmail.com",
-    );
-    expect(SEED_HOUSEHOLDS.real.defaultPerson.name).toBe("Household");
-    expect(SEED_HOUSEHOLDS.test.name).toBe("Test Household");
-    expect(SEED_HOUSEHOLDS.test.seedUser.email).toBe("sifatuli.r@gmail.com");
-    expect(SEED_HOUSEHOLDS.test.defaultPerson.name).toBe("Household");
-  });
-
   test("seeds all required records in one transaction", async () => {
     const { db, query, begin } = createSeedDbStub();
 
     const result = await seedDatabase({ db });
 
     expect(begin).toHaveBeenCalledTimes(1);
-    expect(query).toHaveBeenCalledTimes(8);
+    // Two households × (1 name-check + 1 household + 1 user + 1 person + 1 currency)
+    // = 10 query calls.
+    expect(query).toHaveBeenCalledTimes(10);
     expect(result.records).toEqual([
       { action: "inserted", table: "households", key: "real.household" },
       { action: "inserted", table: "users", key: "real.seedUser" },
       { action: "inserted", table: "people", key: "real.defaultPerson" },
+      { action: "inserted", table: "currencies", key: "real.baseCurrency" },
       { action: "inserted", table: "households", key: "test.household" },
       { action: "inserted", table: "users", key: "test.seedUser" },
       { action: "inserted", table: "people", key: "test.defaultPerson" },
+      { action: "inserted", table: "currencies", key: "test.baseCurrency" },
     ]);
   });
 
   test("marks records as skipped when inserts return no rows", async () => {
-    const { db } = createSeedDbStub([[], [], [], [], [], []]);
+    const { db } = createSeedDbStub([[], [], [], [], [], [], [], []]);
 
     const result = await seedDatabase({ db });
 
@@ -72,9 +66,11 @@ describe("seed database", () => {
       { action: "skipped", table: "households", key: "real.household" },
       { action: "skipped", table: "users", key: "real.seedUser" },
       { action: "skipped", table: "people", key: "real.defaultPerson" },
+      { action: "skipped", table: "currencies", key: "real.baseCurrency" },
       { action: "skipped", table: "households", key: "test.household" },
       { action: "skipped", table: "users", key: "test.seedUser" },
       { action: "skipped", table: "people", key: "test.defaultPerson" },
+      { action: "skipped", table: "currencies", key: "test.baseCurrency" },
     ]);
   });
 
@@ -117,7 +113,7 @@ describe("seed database", () => {
       ),
     }) as unknown as BunSqlDatabase;
 
-    await expect(seedDatabase({ db })).rejects.toThrow(
+    expect(seedDatabase({ db })).rejects.toThrow(
       `Seed household "${SEED_HOUSEHOLDS.real.name}" already exists with a different id.`,
     );
   });

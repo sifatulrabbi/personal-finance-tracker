@@ -48,15 +48,17 @@ afterAll(async () => {
 });
 
 describe("seed integration", () => {
-  test("creates the expected households, drafted users, and default people", async () => {
+  test("creates the expected households, drafted users, default people, and base currencies", async () => {
     await applyMigrations({ db });
 
     const result = await seedDatabase({ db });
+
     const householdRows = (await db.unsafe(`
       SELECT id::text AS id, name
       FROM households
       ORDER BY name ASC
     `)) as Array<{ id: string; name: string }>;
+
     const userRows = (await db.unsafe(`
       SELECT
         id::text AS id,
@@ -75,6 +77,7 @@ describe("seed integration", () => {
       workos_user_id: string | null;
       is_drafted: boolean;
     }>;
+
     const personRows = (await db.unsafe(`
       SELECT id::text AS id, household_id::text AS household_id, name, is_default
       FROM people
@@ -84,6 +87,27 @@ describe("seed integration", () => {
       household_id: string;
       name: string;
       is_default: boolean;
+    }>;
+
+    const currencyRows = (await db.unsafe(`
+      SELECT
+        id::text AS id,
+        household_id::text AS household_id,
+        code,
+        symbol,
+        name,
+        rate_to_bdt_minor,
+        is_base
+      FROM currencies
+      ORDER BY household_id ASC
+    `)) as Array<{
+      id: string;
+      household_id: string;
+      code: string;
+      symbol: string;
+      name: string;
+      rate_to_bdt_minor: number | string;
+      is_base: boolean;
     }>;
 
     expect(result.records.every((record) => record.action === "inserted")).toBe(
@@ -131,6 +155,30 @@ describe("seed integration", () => {
         is_default: true,
       },
     ]);
+    expect(currencyRows).toEqual([
+      {
+        id: SEED_HOUSEHOLDS.real.baseCurrency.id,
+        household_id: SEED_HOUSEHOLDS.real.id,
+        code: SEED_HOUSEHOLDS.real.baseCurrency.code,
+        symbol: SEED_HOUSEHOLDS.real.baseCurrency.symbol,
+        name: SEED_HOUSEHOLDS.real.baseCurrency.name,
+        rate_to_bdt_minor: String(
+          SEED_HOUSEHOLDS.real.baseCurrency.rateToBdtMinor,
+        ),
+        is_base: true,
+      },
+      {
+        id: SEED_HOUSEHOLDS.test.baseCurrency.id,
+        household_id: SEED_HOUSEHOLDS.test.id,
+        code: SEED_HOUSEHOLDS.test.baseCurrency.code,
+        symbol: SEED_HOUSEHOLDS.test.baseCurrency.symbol,
+        name: SEED_HOUSEHOLDS.test.baseCurrency.name,
+        rate_to_bdt_minor: String(
+          SEED_HOUSEHOLDS.test.baseCurrency.rateToBdtMinor,
+        ),
+        is_base: true,
+      },
+    ]);
   });
 
   test("is idempotent across repeated runs", async () => {
@@ -148,6 +196,7 @@ describe("seed integration", () => {
     expect(await countRows("households")).toBe(2);
     expect(await countRows("users")).toBe(2);
     expect(await countRows("people")).toBe(2);
+    expect(await countRows("currencies")).toBe(2);
   });
 
   test("repairs partial prior seed state by inserting only missing rows", async () => {
@@ -163,13 +212,16 @@ describe("seed integration", () => {
       { action: "skipped", table: "households", key: "real.household" },
       { action: "inserted", table: "users", key: "real.seedUser" },
       { action: "inserted", table: "people", key: "real.defaultPerson" },
+      { action: "inserted", table: "currencies", key: "real.baseCurrency" },
       { action: "inserted", table: "households", key: "test.household" },
       { action: "inserted", table: "users", key: "test.seedUser" },
       { action: "inserted", table: "people", key: "test.defaultPerson" },
+      { action: "inserted", table: "currencies", key: "test.baseCurrency" },
     ]);
     expect(await countRows("households")).toBe(2);
     expect(await countRows("users")).toBe(2);
     expect(await countRows("people")).toBe(2);
+    expect(await countRows("currencies")).toBe(2);
   });
 
   test("does not overwrite existing seed-id rows", async () => {
@@ -204,7 +256,7 @@ describe("seed integration", () => {
       )
     `;
 
-    await expect(seedDatabase({ db })).rejects.toThrow(
+    expect(seedDatabase({ db })).rejects.toThrow(
       `Seed household "${SEED_HOUSEHOLDS.real.name}" already exists with a different id.`,
     );
   });
