@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/card";
 import {
   Choice,
+  ErrorMessage,
   MoneyField,
   Notes,
   SaveForm,
@@ -206,9 +207,15 @@ function ScheduleForm({
   onCategoriesChanged: () => void;
 }) {
   const [categoryEditing, setCategoryEditing] = useState(false);
+  const [walletID, setWalletID] = useState(
+    initial?.wallet_id ?? data.wallets.find((w) => !w.archived)?.id ?? "",
+  );
+  const walletAvailable = data.wallets.some(
+    (w) => w.id === walletID && !w.archived,
+  );
   return (
     <SaveForm
-      disabled={categoryEditing}
+      disabled={categoryEditing || !walletAvailable}
       path={initial ? `/schedules/${initial.id}` : "/schedules"}
       method={initial ? "PUT" : "POST"}
       label={initial ? "Save bill" : "Create bill"}
@@ -217,7 +224,7 @@ function ScheduleForm({
         name: value(form, "name"),
         category_id: value(form, "category_id"),
         amount: value(form, "amount"),
-        wallet_id: value(form, "wallet_id"),
+        wallet_id: walletID,
         frequency: initial?.frequency ?? value(form, "frequency"),
         start_date: initial?.start_date ?? value(form, "start_date"),
         end_date: value(form, "end_date"),
@@ -239,7 +246,14 @@ function ScheduleForm({
         maxLength={120}
         placeholder="Rent, Wi-Fi, or electricity"
       />
-      <WalletChoice wallets={data.wallets} defaultValue={initial?.wallet_id} />
+      <WalletChoice
+        wallets={data.wallets}
+        value={walletID}
+        onChange={setWalletID}
+      />
+      {!walletAvailable && (
+        <ErrorMessage error="This wallet is archived or unavailable. Reactivate it in Wallets, or explicitly select an active wallet before saving." />
+      )}
       <CategoryChoice
         type="expense"
         categories={data.categories}
@@ -305,11 +319,8 @@ function PaymentForm({
   onSaved: () => void;
 }) {
   const active = data.wallets.filter((w) => !w.archived);
-  const [walletID, setWalletID] = useState(
-    active.some((w) => w.id === bill.wallet_id)
-      ? bill.wallet_id
-      : (active[0]?.id ?? ""),
-  );
+  const [walletID, setWalletID] = useState(bill.wallet_id);
+  const walletAvailable = active.some((w) => w.id === walletID);
   const currency = active.find((w) => w.id === walletID)?.currency;
   const expectedCurrency = data.wallets.find(
     (w) => w.id === bill.wallet_id,
@@ -320,7 +331,7 @@ function PaymentForm({
       path={`/bills/${bill.id}/confirm`}
       onSaved={onSaved}
       label="Record payment"
-      disabled={!walletID}
+      disabled={!walletAvailable}
       body={(form) => ({
         amount: value(form, "amount"),
         wallet_id: walletID,
@@ -331,10 +342,13 @@ function PaymentForm({
     >
       <WalletChoice
         label="Pay from"
-        wallets={active}
+        wallets={data.wallets}
         value={walletID}
         onChange={setWalletID}
       />
+      {!walletAvailable && (
+        <ErrorMessage error="This wallet is archived or unavailable. Reactivate it in Wallets, or explicitly choose an active payment wallet." />
+      )}
       <MoneyField
         label="Amount paid"
         name="amount"

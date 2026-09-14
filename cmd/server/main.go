@@ -42,7 +42,7 @@ func run() error {
 		InsecureCookies: os.Getenv("ALLOW_INSECURE_COOKIES") == "true",
 	})
 	if err != nil {
-		return errors.New("invalid authentication or origin configuration; HTTP development requires ALLOW_INSECURE_COOKIES=true")
+		return errors.New("invalid authentication or origin configuration; HTTP requires ALLOW_INSECURE_COOKIES=true and HTTPS requires false")
 	}
 	handler = httpapi.WithFrontend(handler, env("WEB_DIR", "web/dist"))
 	server := &http.Server{

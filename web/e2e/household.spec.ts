@@ -3,7 +3,10 @@ import { submitLogin } from "./login";
 
 async function navigate(page: Page, name: string) {
   await page.getByRole("button", { name: "Open menu", exact: true }).click();
-  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name, exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("button", { name, exact: true })
+    .click();
   await expect(page.getByRole("dialog", { name: "Navigation" })).toHaveCount(0);
 }
 
@@ -17,7 +20,9 @@ test("mobile household can record money and confirm bills", async ({
     .getByLabel("Password", { exact: true })
     .fill("test-household-password");
   await submitLogin(page);
-  await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open menu", exact: true }),
+  ).toBeVisible();
   await navigate(page, "Wallets");
   await page.getByRole("button", { name: "Add wallet", exact: true }).click();
   await page.getByLabel("Wallet name").fill(`Cash ${suffix}`);
@@ -79,7 +84,9 @@ test("mobile household can record money and confirm bills", async ({
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).resolves.toBe(true);
-  await expect(page.getByRole("region", { name: "Wallets", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Wallets", exact: true }),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("wallets-mobile.png"),
     fullPage: true,
@@ -97,7 +104,9 @@ test("credit debt, transfers, adjustments, and corrections stay consistent", asy
     .getByLabel("Password", { exact: true })
     .fill("test-household-password");
   await submitLogin(page);
-  await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open menu", exact: true }),
+  ).toBeVisible();
   const write = async (path: string, data: unknown) => {
     const response = await page.request.post(`/api/v1${path}`, {
       headers: {
@@ -127,6 +136,15 @@ test("credit debt, transfers, adjustments, and corrections stay consistent", asy
     currency: "USD",
     opening_balance: "100",
   });
+  const settings = await (await page.request.get("/api/v1/settings")).json();
+  const rateResponse = await page.request.put("/api/v1/settings", {
+    headers: {
+      "X-CSRF-Protection": "1",
+      "Idempotency-Key": crypto.randomUUID(),
+    },
+    data: { rate: "125", version: settings.version },
+  });
+  expect(rateResponse.ok()).toBe(true);
   await page.reload();
   const record = async (
     kind: string,
@@ -228,7 +246,9 @@ test("blank payment uses the scheduled amount and long names fit a small phone",
     .getByLabel("Password", { exact: true })
     .fill("test-household-password");
   await submitLogin(page);
-  await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open menu", exact: true }),
+  ).toBeVisible();
   const name = `${"LongWallet".repeat(9)}-${testInfo.project.name}`;
   const headers = {
     "X-CSRF-Protection": "1",

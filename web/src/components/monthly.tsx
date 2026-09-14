@@ -84,6 +84,7 @@ export function Monthly({ refreshToken }: { refreshToken: unknown }) {
               name="target"
               min="0"
               defaultValue={data.target.amount}
+              onChange={() => setSaved(false)}
               placeholder="No target set"
             />
           </SaveForm>

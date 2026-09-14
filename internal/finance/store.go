@@ -82,6 +82,11 @@ func Open(path string, now func() time.Time) (*Store, error) {
 	return s, nil
 }
 func (s *Store) Close() error { return s.db.Close() }
+
+func (s *Store) Health(ctx context.Context) error {
+	var version int
+	return s.db.QueryRowContext(ctx, `SELECT version FROM settings WHERE id=1`).Scan(&version)
+}
 func (s *Store) migrate() error {
 	tx, e := s.db.Begin()
 	if e != nil {

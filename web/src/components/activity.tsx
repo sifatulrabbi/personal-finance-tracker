@@ -197,11 +197,9 @@ function TransactionForm({
   );
   const [toID, setToID] = useState(initial?.to_wallet_id ?? "");
   const targets = active.filter((w) => w.id !== walletID);
-  const destination = targets.some((w) => w.id === toID)
-    ? toID
-    : (targets[0]?.id ?? "");
+  const destination = toID || (targets[0]?.id ?? "");
   const wallet = active.find((w) => w.id === walletID);
-  const target = active.find((w) => w.id === destination);
+  const target = targets.find((w) => w.id === destination);
   const foreign =
     wallet?.currency === "USD" ||
     (kind === "transfer" && target?.currency === "USD");
@@ -243,11 +241,14 @@ function TransactionForm({
         <Badge variant="secondary">Correcting {kind}</Badge>
       )}
       <WalletChoice
-        wallets={active}
+        wallets={data.wallets}
         label={kind === "transfer" ? "From wallet" : "Wallet"}
         value={walletID}
         onChange={setWalletID}
       />
+      {(!wallet || (kind === "transfer" && !target)) && (
+        <ErrorMessage error="Choose active wallets before saving. Reactivate an archived wallet in Wallets, or explicitly select a replacement. A transfer needs two different wallets." />
+      )}
       {(kind === "expense" || kind === "income") && (
         <CategoryChoice
           key={kind}
@@ -260,7 +261,8 @@ function TransactionForm({
       )}
       {kind === "transfer" ? (
         <WalletChoice
-          wallets={targets}
+          wallets={data.wallets}
+          disabledID={walletID}
           label="To wallet"
           name="to_wallet_id"
           value={destination}

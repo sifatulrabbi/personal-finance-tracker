@@ -55,7 +55,7 @@ func New(store *finance.Store, config Config) (http.Handler, error) {
 	if e != nil || origin.Host == "" || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || origin.User != nil {
 		return nil, finance.ErrInvalid
 	}
-	if !config.InsecureCookies && origin.Scheme != "https" {
+	if config.InsecureCookies != (origin.Scheme == "http") {
 		return nil, finance.ErrInvalid
 	}
 	s := &Server{store: store, config: config, users: map[string]Credential{}, attempts: map[string]attempt{}}
@@ -92,7 +92,17 @@ func New(store *finance.Store, config Config) (http.Handler, error) {
 		return nil, e
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { respond(w, map[string]string{"status": "ok"}, nil) })
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if e := s.store.Health(ctx); e != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"status": "unavailable"})
+			return
+		}
+		respond(w, map[string]string{"status": "ok"}, nil)
+	})
 	mux.HandleFunc("POST /api/v1/login", s.login)
 	private := http.NewServeMux()
 	private.HandleFunc("GET /api/v1/me", func(w http.ResponseWriter, r *http.Request) { respond(w, actor(r), nil) })
@@ -111,7 +121,9 @@ func New(store *finance.Store, config Config) (http.Handler, error) {
 	private.HandleFunc("PUT /api/v1/monthly/{month}/target", input(func(r *http.Request, in struct {
 		Amount  string `json:"amount"`
 		Version int    `json:"version"`
-	}) (any, error) { return s.store.SetMonthlyTarget(r.Context(), actor(r).ID, key(r), r.PathValue("month"), in.Amount, in.Version) }))
+	}) (any, error) {
+		return s.store.SetMonthlyTarget(r.Context(), actor(r).ID, key(r), r.PathValue("month"), in.Amount, in.Version)
+	}))
 	private.HandleFunc("GET /api/v1/wallets", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Wallets(r.Context()); respond(w, v, e) })
 	private.HandleFunc("POST /api/v1/wallets", input(func(r *http.Request, in finance.WalletInput) (any, error) {
 		return s.store.CreateWallet(r.Context(), actor(r).ID, key(r), in)

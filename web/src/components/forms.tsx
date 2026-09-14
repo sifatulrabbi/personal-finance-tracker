@@ -69,7 +69,7 @@ export function Choice({
 }: {
   label: string;
   name: string;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; disabled?: boolean }[];
   value?: string;
   onChange?: (value: string) => void;
   defaultValue?: string;
@@ -90,7 +90,11 @@ export function Choice({
         className="w-full"
       >
         {options.map((option) => (
-          <NativeSelectOption key={option.value} value={option.value}>
+          <NativeSelectOption
+            key={option.value}
+            value={option.value}
+            disabled={option.disabled}
+          >
             {option.label}
           </NativeSelectOption>
         ))}
@@ -105,8 +109,10 @@ export function WalletChoice({
   defaultValue,
   value,
   onChange,
+  disabledID,
 }: {
   wallets: Wallet[];
+  disabledID?: string;
   label?: string;
   name?: string;
   defaultValue?: string;
@@ -121,10 +127,11 @@ export function WalletChoice({
       value={value}
       onChange={onChange}
       options={wallets
-        .filter((w) => !w.archived)
+        .filter((w) => !w.archived || w.id === (value ?? defaultValue))
         .map((w) => ({
           value: w.id,
-          label: `${w.name} · ${w.currency}${w.card_type === "credit" ? " · Credit" : ""}`,
+          label: `${w.name} · ${w.currency}${w.card_type === "credit" ? " · Credit" : ""}${w.archived ? " · Archived" : ""}`,
+          disabled: w.archived || w.id === disabledID,
         }))}
     />
   );

@@ -28,6 +28,8 @@ After building an image, run `bash scripts/smoke-docker.sh simply-finance` to ve
 
 For hosting, put an HTTPS reverse proxy in front of port 47831. Set `APP_ORIGIN` to the exact public origin without a trailing slash and set `ALLOW_INSECURE_COOKIES=false`. The bundled Compose file binds only to loopback. Do not expose the HTTP development configuration directly to the internet. Restart the container after changing the allowed users or password hashes.
 
+Startup rejects HTTPS origins with insecure cookies enabled, and HTTP origins without the explicit development opt-in. `/healthz` checks that SQLite can read application settings within two seconds and returns 503 if unavailable. This is not a write-capacity or disk-space check; monitor free space on the hosting server separately.
+
 ## Backup and restore
 
 The database is `/data/finance.sqlite` inside the container. SQLite can also maintain `-wal` and `-shm` files. For a simple consistent backup, stop writes by stopping the container, then copy the whole data directory:
@@ -40,6 +42,8 @@ docker compose start finance
 ```
 
 Treat backups as private financial records. Before restoring, stop the service and copy the backup directory into an empty replacement data volume; never mix a database with unrelated journal files. Preserve write access for container UID/GID 10001. Keep the old volume until the restored application has been checked. Do not use `docker compose down -v` unless you intend to delete the records.
+
+Before relying on this for real records, schedule backups at an interval matching the amount of data you can afford to lose. Keep an encrypted copy off the hosting server and verify restoration into a separate volume. A same-server backup does not protect against loss of the server or its disk. Backup scheduling and the remote destination are hosting responsibilities; the application does not send your records to a backup provider.
 
 ## Development and verification
 

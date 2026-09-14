@@ -87,6 +87,7 @@ export function Settings({
               min="0.000001"
               inputMode="decimal"
               defaultValue={settings.rate}
+              onChange={() => setSaved(false)}
               placeholder="For example, 125.00"
               required
             />
