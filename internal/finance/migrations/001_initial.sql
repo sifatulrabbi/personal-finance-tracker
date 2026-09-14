@@ -1,0 +1,10 @@
+CREATE TABLE users(id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT NOT NULL);
+CREATE TABLE settings(id INTEGER PRIMARY KEY CHECK(id=1), rate INTEGER, version INTEGER NOT NULL DEFAULT 1);
+INSERT INTO settings(id) VALUES(1);
+CREATE TABLE wallets(id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('physical','bank','digital','card')), card_type TEXT NOT NULL DEFAULT '', currency TEXT NOT NULL CHECK(currency IN ('BDT','USD')), details TEXT NOT NULL, credit_limit INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE transactions(id TEXT PRIMARY KEY, version INTEGER NOT NULL, voided INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE transaction_revisions(transaction_id TEXT NOT NULL REFERENCES transactions(id), version INTEGER NOT NULL, payload TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, PRIMARY KEY(transaction_id,version));
+CREATE TABLE wallet_entries(id INTEGER PRIMARY KEY, transaction_id TEXT NOT NULL, version INTEGER NOT NULL, wallet_id TEXT NOT NULL REFERENCES wallets(id), delta INTEGER NOT NULL, reversal_of INTEGER UNIQUE REFERENCES wallet_entries(id), FOREIGN KEY(transaction_id,version) REFERENCES transaction_revisions(transaction_id,version));
+CREATE INDEX wallet_entries_wallet ON wallet_entries(wallet_id);
+CREATE TABLE request_keys(actor_id TEXT NOT NULL REFERENCES users(id), key TEXT NOT NULL, fingerprint TEXT NOT NULL, response TEXT NOT NULL, PRIMARY KEY(actor_id,key));
+CREATE TABLE audit_events(id INTEGER PRIMARY KEY, actor_id TEXT NOT NULL REFERENCES users(id), entity_id TEXT NOT NULL, action TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL, created_at TEXT NOT NULL);

@@ -1,0 +1,1 @@
+CREATE TABLE monthly_targets(month TEXT PRIMARY KEY, amount INTEGER, version INTEGER NOT NULL DEFAULT 1);

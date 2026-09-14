@@ -1,0 +1,13 @@
+services:
+  finance:
+    build: .
+    ports:
+      - "127.0.0.1:47831:47831"
+    env_file:
+      - path: .env
+        format: raw
+    volumes:
+      - finance-data:/data
+    restart: unless-stopped
+volumes:
+  finance-data:

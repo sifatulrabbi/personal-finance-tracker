@@ -1,0 +1,14 @@
+.git
+.planning
+.env
+.env.*
+data
+backups
+**/*.sqlite*
+**/*.db*
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+**/coverage
+.DS_Store
