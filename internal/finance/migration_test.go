@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
-	"simply-finance/internal/finance"
 	"testing"
 	"time"
 )
@@ -39,7 +38,7 @@ func TestLegacyRecordsSurviveCategoryMigration(t *testing.T) {
 	if e = db.Close(); e != nil {
 		t.Fatal(e)
 	}
-	s, e := finance.Open(path, time.Now)
+	s, e := openPrepared(t, path, time.Now)
 	if e != nil {
 		t.Fatal(e)
 	}

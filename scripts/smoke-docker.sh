@@ -19,10 +19,14 @@ if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "Test port $port is occupied. Set TEST_PORT to a free port." >&2
   exit 1
 fi
-hash="$(printf %s test-household-password | docker run --rm -i --entrypoint /app/hash-password "$image")"
+hash="$(printf %s test-household-password | docker run --rm -i "$image" hash-password)"
 users="[{\"email\":\"test@example.test\",\"password_hash\":\"$hash\",\"name\":\"Synthetic test\"}]"
 docker volume create "$source_volume" >/dev/null
 docker volume create "$restore_volume" >/dev/null
+docker run --rm -v "$source_volume:/data" "$image" migrate
+docker run --rm -v "$source_volume:/data" "$image" seed
+docker run --rm -v "$source_volume:/data" "$image" migrate
+docker run --rm -v "$source_volume:/data" "$image" seed
 start() {
   docker run -d --name "$1" -p "127.0.0.1:$port:47831" \
     -e "AUTH_USERS_JSON=$users" -e "APP_ORIGIN=http://127.0.0.1:$port" -e ALLOW_INSECURE_COOKIES=true \

@@ -13,6 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 	"net/mail"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -55,12 +56,19 @@ type Wallet struct {
 }
 
 func Open(path string, now func() time.Time) (*Store, error) {
+	return openDatabase(path, now, false)
+}
+
+func openDatabase(path string, now func() time.Time, create bool) (*Store, error) {
 	abs, e := filepath.Abs(path)
 	if e != nil {
 		return nil, e
 	}
 	u := url.URL{Scheme: "file", Path: abs}
 	q := u.Query()
+	if !create {
+		q.Set("mode", "rw")
+	}
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "journal_mode(WAL)")
@@ -75,11 +83,23 @@ func Open(path string, now func() time.Time) (*Store, error) {
 	if now == nil {
 		s.now = time.Now
 	}
-	if e = s.migrate(); e != nil {
+	if e = db.Ping(); e != nil {
 		db.Close()
 		return nil, e
 	}
 	return s, nil
+}
+
+func Migrate(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	s, err := openDatabase(path, time.Now, true)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	return s.migrate()
 }
 func (s *Store) Close() error { return s.db.Close() }
 

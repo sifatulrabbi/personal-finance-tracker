@@ -21,7 +21,7 @@ func (transport handlerTransport) RoundTrip(request *http.Request) (*http.Respon
 }
 
 func TestCategoryAndMonthlyHTTP(t *testing.T) {
-	s, e := finance.Open(filepath.Join(t.TempDir(), "http.sqlite"), time.Now)
+	s, e := openPrepared(t, filepath.Join(t.TempDir(), "http.sqlite"), time.Now)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -75,8 +75,20 @@ func TestCategoryAndMonthlyHTTP(t *testing.T) {
 	if e = json.Unmarshal(body, &monthly); e != nil {
 		t.Fatal(e)
 	}
-	if monthly.Spent != "100.00" || monthly.Categories[0].Percentage != "100.00" {
+	if monthly.Spent != "100.00" {
 		t.Fatalf("monthly: %+v", monthly)
+	}
+	found := false
+	for _, row := range monthly.Categories {
+		if row.CategoryID == category.ID {
+			found = true
+			if row.Percentage != "100.00" {
+				t.Fatalf("category share: %+v", row)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing expense category")
 	}
 	status, body = request(t, c, "PUT", server.URL+"/api/v1/monthly/2026-09/target", map[string]any{"amount": "40000", "version": monthly.Target.Version}, "target")
 	if status != 200 {

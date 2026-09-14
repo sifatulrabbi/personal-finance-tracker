@@ -74,7 +74,7 @@ func TestCategoriesKeepNamesAndEnforceTransactionType(t *testing.T) {
 	s := openStore(t)
 	u := user(t, s)
 	all, e := s.Categories(ctx)
-	if e != nil || len(all) != 2 {
+	if e != nil || len(all) != 11 {
 		t.Fatalf("defaults: %+v %v", all, e)
 	}
 	c, e := s.CreateCategory(ctx, u.ID, "category", finance.CategoryInput{Name: " Eating out / FOOD ", Type: "expense"})

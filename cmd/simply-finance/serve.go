@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -16,25 +16,14 @@ import (
 	"simply-finance/internal/httpapi"
 )
 
-func main() {
-	if err := run(); err != nil {
-		slog.Error("server stopped", "error", err)
-		os.Exit(1)
-	}
-}
-
-func run() error {
+func serve(path string) error {
 	var users []httpapi.Credential
 	if err := json.Unmarshal([]byte(os.Getenv("AUTH_USERS_JSON")), &users); err != nil {
 		return errors.New("AUTH_USERS_JSON must be a JSON array of emails and password_hash values")
 	}
-	path := env("DATABASE_PATH", "data/finance.sqlite")
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
 	store, err := finance.Open(path, time.Now)
 	if err != nil {
-		return err
+		return fmt.Errorf("open existing database (run migrate explicitly to initialize it): %w", err)
 	}
 	defer store.Close()
 	handler, err := httpapi.New(store, httpapi.Config{
@@ -42,7 +31,10 @@ func run() error {
 		InsecureCookies: os.Getenv("ALLOW_INSECURE_COOKIES") == "true",
 	})
 	if err != nil {
-		return errors.New("invalid authentication or origin configuration; HTTP requires ALLOW_INSECURE_COOKIES=true and HTTPS requires false")
+		if errors.Is(err, finance.ErrInvalid) {
+			return errors.New("invalid authentication or origin configuration; HTTP requires ALLOW_INSECURE_COOKIES=true and HTTPS requires false")
+		}
+		return fmt.Errorf("initialize HTTP handler (database preparation requires the explicit migrate command): %w", err)
 	}
 	handler = httpapi.WithFrontend(handler, env("WEB_DIR", "web/dist"))
 	server := &http.Server{

@@ -9,7 +9,7 @@ import (
 )
 
 func TestDefaultMonthUsesDhakaAndEmptyTargetIsNotZero(t *testing.T) {
-	s, e := finance.Open(filepath.Join(t.TempDir(), "month.sqlite"), func() time.Time { return time.Date(2026, 9, 30, 19, 0, 0, 0, time.UTC) })
+	s, e := openPrepared(t, filepath.Join(t.TempDir(), "month.sqlite"), func() time.Time { return time.Date(2026, 9, 30, 19, 0, 0, 0, time.UTC) })
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -62,8 +62,11 @@ func TestMonthlySpendingUsesLatestExpensesAndSavedRates(t *testing.T) {
 	if e != nil || m.Spent != "800.00" {
 		t.Fatalf("monthly: %+v %v", m, e)
 	}
-	if len(m.Categories) != 2 || m.Categories[0].Spent != "200.00" || m.Categories[0].Percentage != "25.00" {
+	if len(m.Categories) != 11 {
 		t.Fatalf("rows: %+v", m.Categories)
+	}
+	if row := monthlyCategory(t, m, c.ID); row.Spent != "200.00" || row.Percentage != "25.00" {
+		t.Fatalf("category spending: %+v", row)
 	}
 	in.CategoryID = ""
 	in.Rate = ""
@@ -80,13 +83,24 @@ func TestMonthlySpendingUsesLatestExpensesAndSavedRates(t *testing.T) {
 		t.Fatal(e)
 	}
 	m, e = s.Monthly(ctx, "2026-09")
-	if e != nil || m.Spent != "600.00" || m.Categories[0].Percentage != "0.00" {
+	if e != nil || m.Spent != "600.00" || monthlyCategory(t, m, c.ID).Percentage != "0.00" {
 		t.Fatalf("void: %+v %v", m, e)
 	}
 	empty, e := s.Monthly(ctx, "2026-08")
-	if e != nil || empty.Spent != "0.00" || empty.Categories[0].Percentage != "0.00" {
+	if e != nil || empty.Spent != "0.00" || monthlyCategory(t, empty, c.ID).Percentage != "0.00" {
 		t.Fatalf("empty: %+v %v", empty, e)
 	}
+}
+
+func monthlyCategory(t *testing.T, month finance.MonthlySpending, id string) finance.CategorySpending {
+	t.Helper()
+	for _, row := range month.Categories {
+		if row.CategoryID == id {
+			return row
+		}
+	}
+	t.Fatalf("missing category %s", id)
+	return finance.CategorySpending{}
 }
 
 func TestMonthlyTargetsAreCopiedOnceAndVersioned(t *testing.T) {

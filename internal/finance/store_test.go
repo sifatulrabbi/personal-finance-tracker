@@ -12,7 +12,7 @@ var ctx = context.Background()
 
 func openStore(t *testing.T) *finance.Store {
 	t.Helper()
-	s, e := finance.Open(filepath.Join(t.TempDir(), "test.sqlite"), func() time.Time { return time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC) })
+	s, e := openPrepared(t, filepath.Join(t.TempDir(), "test.sqlite"), func() time.Time { return time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC) })
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -29,7 +29,7 @@ func user(t *testing.T, s *finance.Store) finance.User {
 }
 func TestWalletOpeningBalanceIsDurableAndRetrySafe(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "household.sqlite")
-	s, e := finance.Open(path, time.Now)
+	s, e := openPrepared(t, path, time.Now)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -50,7 +50,7 @@ func TestWalletOpeningBalanceIsDurableAndRetrySafe(t *testing.T) {
 	if e = s.Close(); e != nil {
 		t.Fatal(e)
 	}
-	s, e = finance.Open(path, time.Now)
+	s, e = openPrepared(t, path, time.Now)
 	if e != nil {
 		t.Fatal(e)
 	}

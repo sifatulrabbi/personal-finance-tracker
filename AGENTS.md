@@ -6,6 +6,7 @@ Simply Finance is a shared household finance tracker for two or more ENV-allowli
 
 - Keep financial rules and authorization in the Go backend behind a versioned HTTP JSON API. The React UI is a client, not a second implementation of the rules.
 - Use SQLite with a persistent data directory. Keep migrations versioned. Depend on Docker for reproducible builds and deployment; use Bun for TypeScript work.
+- Ship one Cobra binary: `serve`, `migrate`, `seed`, and `hash-password`. Database migration and default seeding are explicit operator commands, never server startup behavior. Embed migrations and repeatable seeds separately; prepare test databases explicitly. Preserve applied migrations when adding new versions.
 - Finish and verify the backend before building the mobile-first React, shadcn/ui, and Tailwind UI. Preserve one set of domain rules across all future clients.
 - Pass storage, time, and configuration into application services. Keep transport concerns outside financial rules. Prefer small interfaces at actual integration boundaries, not an interface for every type.
 

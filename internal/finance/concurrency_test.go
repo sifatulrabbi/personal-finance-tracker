@@ -12,12 +12,12 @@ import (
 
 func TestConcurrentRetriesAcrossConnectionsOnlyDeductOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "concurrent.sqlite")
-	s, err := finance.Open(path, time.Now)
+	s, err := openPrepared(t, path, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	other, err := finance.Open(path, time.Now)
+	other, err := openPrepared(t, path, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}

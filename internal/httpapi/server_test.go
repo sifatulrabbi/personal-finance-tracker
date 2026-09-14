@@ -50,7 +50,7 @@ func request(t *testing.T, c *http.Client, method, url string, body any, key str
 	return res.StatusCode, data
 }
 func TestAuthenticatedHouseholdHTTPWorkflow(t *testing.T) {
-	s, e := finance.Open(filepath.Join(t.TempDir(), "http.sqlite"), time.Now)
+	s, e := openPrepared(t, filepath.Join(t.TempDir(), "http.sqlite"), time.Now)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -110,7 +110,7 @@ func TestAuthenticatedHouseholdHTTPWorkflow(t *testing.T) {
 	}
 }
 func TestSessionRevocationAndRequestGuards(t *testing.T) {
-	s, e := finance.Open(filepath.Join(t.TempDir(), "auth.sqlite"), time.Now)
+	s, e := openPrepared(t, filepath.Join(t.TempDir(), "auth.sqlite"), time.Now)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -176,7 +176,7 @@ func TestSessionRevocationAndRequestGuards(t *testing.T) {
 
 func TestHTTPRatesDebtAndRecurringPaymentLifecycle(t *testing.T) {
 	now := func() time.Time { return time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC) }
-	s, err := finance.Open(filepath.Join(t.TempDir(), "lifecycle.sqlite"), now)
+	s, err := openPrepared(t, filepath.Join(t.TempDir(), "lifecycle.sqlite"), now)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -64,8 +64,8 @@ func New(store *finance.Store, config Config) (http.Handler, error) {
 	}
 	for _, u := range config.Users {
 		email, e := finance.NormalizeEmail(u.Email)
-		if e != nil {
-			return nil, e
+		if e != nil || len(u.Name) > 120 {
+			return nil, finance.ErrInvalid
 		}
 		if _, exists := s.users[email]; exists {
 			return nil, finance.ErrInvalid
@@ -76,9 +76,6 @@ func New(store *finance.Store, config Config) (http.Handler, error) {
 		}
 		u.Email = email
 		s.users[email] = u
-		if _, e = store.EnsureUser(context.Background(), email, u.Name); e != nil {
-			return nil, e
-		}
 	}
 	allowed := map[string]string{}
 	for email, u := range s.users {

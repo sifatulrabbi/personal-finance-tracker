@@ -13,16 +13,30 @@ docker build -t simply-finance .
 Generate a password hash without putting the password in shell history. This example uses Bash's hidden-input prompt:
 
 ```sh
-bash -c 'read -rsp "Password (12–72 bytes): " password; printf "\n" >&2; printf %s "$password" | docker run --rm -i --entrypoint /app/hash-password simply-finance; unset password'
+bash -c 'read -rsp "Password (12–72 bytes): " password; printf "\n" >&2; printf %s "$password" | docker run --rm -i simply-finance hash-password; unset password'
 ```
 
 Copy `.env.example` to `.env`. Replace both emails and hash placeholders; remove the second entry if only one user is needed. Keep the JSON on one line and do not add surrounding shell quotes. The raw env-file setting preserves the `$` characters in bcrypt hashes. Password hashes still need protection: keep this file private and out of Git.
 
 ```sh
-docker compose up -d --build
+docker compose build finance
+docker compose run --rm finance migrate
+docker compose run --rm finance seed
+docker compose up -d finance
 ```
 
-Open `http://localhost:47831`. The first run is empty. Add wallets and opening balances, then set the USD rate before recording USD activity. Credit-card opening balances mean the amount owed, not available credit.
+Open `http://localhost:47831`. The first run has default categories but no financial records. Add wallets and opening balances, then set the USD rate before recording USD activity. Credit-card opening balances mean the amount owed, not available credit.
+
+The image contains one binary at `/app/simply-finance` with `serve`, `migrate`, `seed`, and `hash-password` commands. Run `docker run --rm simply-finance --help` for help. Migrations and seed definitions are embedded in the binary; no repository checkout or mounted SQL files are needed at runtime. `serve` is the image's default command and never migrates, checks schema versions, or seeds the database. Login creates the user's profile; startup retains session revocation enforcement. Database errors are not automatically repaired.
+
+For upgrades, back up the database and stop the service before running `migrate`, then run `seed` if you want the release's default data, and start the new image. Both commands can be rerun: migrations skip applied versions and seeds insert only missing defaults. Run only one maintenance command at a time. Seeding never imports private wallets or expenses; the private Sheets importer remains separate. Do not mount an empty volume when you intend to upgrade existing records.
+
+Without Compose, use the same volume and image for each deliberate step (the volume name below is an example):
+
+```sh
+docker run --rm -v simply-finance-data:/data simply-finance migrate
+docker run --rm -v simply-finance-data:/data simply-finance seed
+```
 
 After building an image, run `bash scripts/smoke-docker.sh simply-finance` to verify non-root startup, authenticated writes, restart persistence, and cold backup/restore with disposable synthetic data. This uses port 47834 by default; set `TEST_PORT` to a free alternative if needed.
 
@@ -62,6 +76,6 @@ bun run test:e2e
 
 The browser suite builds and starts the actual Go server on port 47833 with a temporary SQLite database and synthetic credentials. It removes its test directory on shutdown. Port 47832 is reserved for the optional Vite development server; 47831 is the application port. Check availability before starting services. On restricted macOS environments, use `GOCACHE=/tmp/simply-finance-go-cache` and allow loopback listeners for HTTP tests.
 
-For local application development, configure `AUTH_USERS_JSON`, `APP_ORIGIN`, and `ALLOW_INSECURE_COOKIES` in your process environment, build the frontend, then run `go run ./cmd/server` from the root. The Go process does not auto-load `.env`. Alternatively, run the whole application through Docker Compose. `DATABASE_PATH`, `WEB_DIR`, and `LISTEN_ADDR` override the defaults when needed.
+For local application development, build the binary with `go build -o /tmp/simply-finance ./cmd/simply-finance`. Run `/tmp/simply-finance migrate`, then `/tmp/simply-finance seed`. Configure `AUTH_USERS_JSON`, `APP_ORIGIN`, and `ALLOW_INSECURE_COOKIES` in your process environment, build the frontend, and run `/tmp/simply-finance serve`. The Go process does not auto-load `.env`. Alternatively, run the whole application through Docker Compose. `DATABASE_PATH`, `WEB_DIR`, and `LISTEN_ADDR` override the defaults when needed. The `serve`, `migrate`, and `seed` commands also accept `--database /absolute/path/finance.sqlite`, which takes precedence over `DATABASE_PATH`. Database maintenance and password hashing do not require authentication configuration.
 
 See `docs/scope.md` for deliberate omissions, `docs/api.md` for request conventions, and `docs/adr/` for lasting design decisions. New agents should begin with `AGENTS.md`.

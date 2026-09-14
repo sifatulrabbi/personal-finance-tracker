@@ -6,11 +6,18 @@ const root = resolve(import.meta.dir, "../..");
 const temporary = await mkdtemp(join(tmpdir(), "simply-finance-e2e-"));
 const env = { ...process.env, GOCACHE: "/tmp/simply-finance-go-cache" };
 const build = Bun.spawn(
-  ["go", "build", "-o", join(temporary, "server"), "./cmd/server"],
+  ["go", "build", "-o", join(temporary, "simply-finance"), "./cmd/simply-finance"],
   { cwd: root, env, stdout: "inherit", stderr: "inherit" },
 );
 if ((await build.exited) !== 0) throw new Error("Backend build failed");
-const hash = Bun.spawn(["go", "run", "./cmd/hash-password"], {
+const binary = join(temporary, "simply-finance");
+for (const command of ["migrate", "seed"]) {
+  const setup = Bun.spawn([binary, command, "--database", join(temporary, "test.sqlite")], {
+    cwd: root, env, stdout: "inherit", stderr: "inherit",
+  });
+  if ((await setup.exited) !== 0) throw new Error(`Database ${command} failed`);
+}
+const hash = Bun.spawn([binary, "hash-password"], {
   cwd: root,
   env,
   stdin: new Blob(["test-household-password"]),
@@ -19,7 +26,7 @@ const hash = Bun.spawn(["go", "run", "./cmd/hash-password"], {
 });
 const passwordHash = (await new Response(hash.stdout).text()).trim();
 if ((await hash.exited) !== 0) throw new Error("Test password hashing failed");
-const server = Bun.spawn([join(temporary, "server")], {
+const server = Bun.spawn([binary, "serve"], {
   cwd: root,
   env: {
     ...env,
