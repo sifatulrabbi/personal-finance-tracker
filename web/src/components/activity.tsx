@@ -319,7 +319,7 @@ function TransactionForm({
         </p>
       ) : null}
       {initial ? (
-        <Notes label="Reason for correction" name="reason" required />
+        <Notes label="Reason for correction" name="reason" />
       ) : null}
     </SaveForm>
   );

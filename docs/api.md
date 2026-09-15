@@ -13,7 +13,7 @@ Every financial or settings mutation requires an `Idempotency-Key` header of 1â€
 | PUT | `/wallets/{id}` | Update name, details, credit limit, or archive status. Type and currency are immutable. |
 | POST | `/wallets/{id}/adjust` | Set a target `balance` with `version` and `reason`. For credit cards, the target means debt owed. |
 | GET, POST | `/transactions` | List records or create income, expense, or transfer. |
-| PUT | `/transactions/{id}` | Correct a record with its current `version` and a `reason`. |
+| PUT | `/transactions/{id}` | Correct a record with its current `version` and an optional `reason`. |
 | POST | `/transactions/{id}/void` | Reverse a record with `version` and `reason`. |
 | GET | `/transactions/{id}/history` | Read all preserved revisions and author emails. |
 | GET, PUT | `/settings` | Read defaults or set `rate` with `version`. |

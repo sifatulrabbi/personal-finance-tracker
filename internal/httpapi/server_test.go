@@ -225,7 +225,11 @@ func TestHTTPRatesDebtAndRecurringPaymentLifecycle(t *testing.T) {
 	if payment.Amount != "1020.00" || payment.ActorEmail != "wife@example.test" {
 		t.Fatal(payment)
 	}
-	call("POST", "/transactions/"+payment.ID+"/void", map[string]any{"version": 1, "reason": "Wrong payment"}, "void", nil)
+	call("PUT", "/transactions/"+payment.ID, map[string]any{"version": 1, "kind": "expense", "wallet_id": bank.ID, "amount": "1030", "date": "2026-09-14"}, "correct-without-reason", &payment)
+	if payment.Amount != "1030.00" || payment.Version != 2 || payment.Reason != "" {
+		t.Fatal(payment)
+	}
+	call("POST", "/transactions/"+payment.ID+"/void", map[string]any{"version": 2, "reason": "Wrong payment"}, "void", nil)
 	call("GET", "/bills/due", nil, "", &due)
 	if len(due) != 1 {
 		t.Fatal(due)
@@ -243,7 +247,7 @@ func TestHTTPRatesDebtAndRecurringPaymentLifecycle(t *testing.T) {
 	}
 	var history []finance.Transaction
 	call("GET", "/transactions/"+payment.ID+"/history", nil, "", &history)
-	if len(history) != 2 || !history[1].Voided {
+	if len(history) != 3 || history[1].Reason != "" || !history[2].Voided {
 		t.Fatal(history)
 	}
 }

@@ -82,7 +82,7 @@ func TestIncomeExpenseAndCorrectionsPreserveHistory(t *testing.T) {
 		t.Fatal(e)
 	}
 	input.Amount = "100.00"
-	input.Reason = "Receipt correction"
+	input.Reason = ""
 	edited, e := s.ReviseTransaction(ctx, u.ID, "edit", record.ID, 1, input, false)
 	if e != nil || edited.Version != 2 {
 		t.Fatalf("edit: %+v %v", edited, e)

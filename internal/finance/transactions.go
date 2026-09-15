@@ -196,7 +196,7 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		if old.Version != version || old.Voided {
 			return old, ErrConflict
 		}
-		if strings.TrimSpace(in.Reason) == "" || len(in.Reason) > 500 || (old.Kind == "opening" || old.Kind == "adjustment") {
+		if (void && strings.TrimSpace(in.Reason) == "") || len(in.Reason) > 500 || (old.Kind == "opening" || old.Kind == "adjustment") {
 			return old, ErrInvalid
 		}
 		r := old

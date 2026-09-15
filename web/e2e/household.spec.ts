@@ -215,7 +215,6 @@ test("credit debt, transfers, adjustments, and corrections stay consistent", asy
   await page.getByText(`Card purchase ${suffix}`, { exact: true }).click();
   await page.getByRole("button", { name: "Correct record" }).click();
   await page.getByLabel("Amount", { exact: true }).fill("180");
-  await page.getByLabel("Reason for correction").fill("Correct receipt");
   await page.getByRole("button", { name: "Save correction" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByText(`Card purchase ${suffix}`, { exact: true }).click();

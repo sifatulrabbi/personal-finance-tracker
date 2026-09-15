@@ -67,7 +67,14 @@ test("archived wallets are never silently replaced in transfers or bills", async
     "PUT",
   );
   await page.reload();
-  await page.getByText(note, { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Money records" })).toBeVisible();
+  const transferRecord = page.getByText(note, { exact: true });
+  for (let pageNumber = 0; pageNumber < 5 && !(await transferRecord.isVisible()); pageNumber++) {
+    const loadOlder = page.getByRole("button", { name: "Load older records" });
+    if (!(await loadOlder.isVisible())) break;
+    await loadOlder.click();
+  }
+  await transferRecord.click();
   await page.getByRole("button", { name: "Correct record" }).click();
   await expect(page.getByLabel("To wallet", { exact: true })).toHaveValue(
     destination.id,
