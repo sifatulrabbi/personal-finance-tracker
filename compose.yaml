@@ -4,7 +4,7 @@ services:
     ports:
       - "127.0.0.1:47831:47831"
     env_file:
-      - path: .env
+      - path: .env.runtime
         format: raw
     volumes:
       - finance-data:/data

@@ -16,7 +16,7 @@ Generate a password hash without putting the password in shell history. This exa
 bash -c 'read -rsp "Password (12–72 bytes): " password; printf "\n" >&2; printf %s "$password" | docker run --rm -i simply-finance hash-password; unset password'
 ```
 
-Copy `.env.example` to `.env`. Replace both emails and hash placeholders; remove the second entry if only one user is needed. Keep the JSON on one line and do not add surrounding shell quotes. The raw env-file setting preserves the `$` characters in bcrypt hashes. Password hashes still need protection: keep this file private and out of Git.
+Copy `.env.example` to `.env.runtime`. Replace both emails and hash placeholders; remove the second entry if only one user is needed. Keep the JSON on one line and do not add surrounding shell quotes. The separate runtime filename avoids Docker Compose treating bcrypt `$` characters as project-variable substitutions, while the raw env-file setting preserves them when loading the container environment. Password hashes still need protection: keep this file private and out of Git.
 
 Set `BACKUP_DIR` in `.env` to the absolute host path `$HOME/backups/simply-finance` with `$HOME` expanded to its actual value. Compose does not expand `~` in bind-mount paths. On macOS, prepare the private directory before starting Compose:
 
