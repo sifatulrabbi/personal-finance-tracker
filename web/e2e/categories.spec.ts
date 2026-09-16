@@ -136,7 +136,8 @@ test("categories preserve record drafts and monthly shares use actual spending",
   await page.getByRole("button", { name: "Save target", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Target saved");
   const row = page
-    .getByRole("row")
+    .getByTestId("monthly-mobile-list")
+    .locator(":scope > div")
     .filter({ hasText: `Eating out ${info.project.name}` });
   await expect(row).toContainText("৳200.00");
   await expect(row).toContainText("25.00%");
@@ -176,12 +177,15 @@ test("categories preserve record drafts and monthly shares use actual spending",
   await expect(page.getByLabel("Monthly target (BDT)")).toHaveValue("4000.00");
   await expect(page.getByTestId("monthly-total")).toHaveText("৳800.00");
   await expect(
-    page.getByRole("row").filter({ hasText: "Others" }),
+    page
+      .getByTestId("monthly-mobile-list")
+      .locator(":scope > div")
+      .filter({ hasText: "Others" }),
   ).toContainText("100.00%");
   await navigate(page, "Bills");
   await page.getByRole("button", { name: "Add bill", exact: true }).click();
   const billName = `Categorized bill ${info.project.name}`;
-  await page.getByLabel("Bill name").fill(billName);
+  await page.getByLabel("Bill name", { exact: true }).fill(billName);
   await page.getByLabel("Expected amount").fill("100");
   await page
     .getByLabel("Category", { exact: true })

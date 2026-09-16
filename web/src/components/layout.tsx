@@ -31,12 +31,17 @@ export function Modal({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[88dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-md">
+        <DialogHeader className="shrink-0 border-b py-4 pr-14 pl-4 sm:py-5 sm:pr-16 sm:pl-6">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {children}
+        <div
+          data-slot="dialog-body"
+          className="min-h-0 min-w-0 flex-1 overflow-x-clip overflow-y-auto overscroll-contain px-4 py-5 [scroll-padding-bottom:5rem] sm:px-6"
+        >
+          {children}
+        </div>
       </DialogContent>
     </Dialog>
   );

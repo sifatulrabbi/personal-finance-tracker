@@ -42,7 +42,7 @@ export function Bills({ data, onSaved }: { data: Data; onSaved: () => void }) {
   };
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Recurring bills</h2>
         <Button
           size="sm"
@@ -86,14 +86,16 @@ export function Bills({ data, onSaved }: { data: Data; onSaved: () => void }) {
                 </p>
               ) : null}
             </CardContent>
-            <CardFooter className="flex gap-2">
+            <CardFooter className="flex flex-col items-stretch gap-2 sm:flex-row">
               <Button
+                className="w-full sm:w-auto"
                 size="sm"
                 onClick={() => setEditor({ type: "pay", bill })}
               >
                 Confirm payment
               </Button>
               <Button
+                className="w-full sm:w-auto"
                 variant="ghost"
                 size="sm"
                 onClick={() => setEditor({ type: "skip", bill })}

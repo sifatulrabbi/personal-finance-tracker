@@ -43,7 +43,7 @@ export function Navigation({
       </DialogTrigger>
       <DialogPortal>
         <DialogOverlay />
-        <DialogPrimitive.Content className="fixed inset-y-0 left-0 z-50 flex h-dvh w-80 max-w-[calc(100%-3rem)] flex-col gap-6 overflow-y-auto border-r bg-background p-4 shadow-lg outline-none">
+        <DialogPrimitive.Content className="navigation-drawer fixed inset-y-0 z-50 flex w-80 min-w-0 flex-col gap-6 overflow-x-clip overflow-y-auto border-r bg-background px-4 shadow-lg outline-none">
           <div className="flex items-center justify-between gap-2">
             <DialogTitle>Navigation</DialogTitle>
             <DialogClose asChild>
