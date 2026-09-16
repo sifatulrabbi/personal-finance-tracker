@@ -63,7 +63,7 @@ export function App() {
   }, [user]);
   if (!ready)
     return (
-      <main className="mx-auto flex max-w-md flex-col gap-4 p-6">
+      <main className="app-login mx-auto flex min-h-dvh max-w-md flex-col gap-4">
         <Skeleton className="h-12 w-48" />
         <Skeleton className="h-48 w-full" />
       </main>
@@ -80,8 +80,8 @@ export function App() {
       />
     );
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 px-4 pb-10 pt-6">
-      <header className="sticky top-0 z-40 -mx-4 flex items-center justify-between gap-3 bg-background px-4 py-3">
+    <main className="app-shell mx-auto flex min-h-dvh max-w-md min-w-0 flex-col gap-6">
+      <header className="app-header sticky top-0 z-40 flex min-w-0 items-center justify-between gap-3 bg-background pb-3">
         <Navigation current={page} onSelect={setPage} />
         <div className="min-w-0 flex-1">
           <p className="text-sm text-muted-foreground">{page}</p>
@@ -171,7 +171,7 @@ function Login({
     }
   }
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-8 px-5 py-12">
+    <main className="app-login mx-auto flex min-h-dvh max-w-md min-w-0 flex-col justify-center gap-8">
       <div className="flex flex-col gap-3">
         <div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
           <WalletIcon className="size-6" />

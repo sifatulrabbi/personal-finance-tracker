@@ -56,7 +56,7 @@ test("mobile household can record money and confirm bills", async ({
   ).toBeVisible();
   await navigate(page, "Bills");
   await page.getByRole("button", { name: "Add bill", exact: true }).click();
-  await page.getByLabel("Bill name").fill(`Wi-Fi ${suffix}`);
+  await page.getByLabel("Bill name", { exact: true }).fill(`Wi-Fi ${suffix}`);
   await page.getByLabel("Expected amount").fill("1000");
   await page
     .getByLabel("Wallet", { exact: true })

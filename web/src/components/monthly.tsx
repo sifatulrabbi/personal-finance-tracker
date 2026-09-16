@@ -93,42 +93,68 @@ export function Monthly({ refreshToken }: { refreshToken: unknown }) {
             Each share is a percentage of actual spending, not the target. USD
             expenses use their saved exchange rates.
           </p>
-          <table className="w-full table-fixed text-sm">
-            <caption className="sr-only">
-              Expense categories for {data.month}
-            </caption>
-            <thead>
-              <tr className="border-b">
-                <th scope="col" className="w-2/5 py-3 text-left">
-                  Category
-                </th>
-                <th scope="col" className="py-3 text-right">
-                  Spent
-                </th>
-                <th scope="col" className="w-1/4 py-3 text-right">
-                  Share
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.categories.map((c) => (
-                <tr key={c.category_id} className="border-b">
-                  <th
-                    scope="row"
-                    className="whitespace-pre-wrap break-words py-3 pr-2 text-left font-normal"
-                  >
-                    {c.name}
+          <dl
+            data-testid="monthly-mobile-list"
+            className="flex min-w-0 flex-col sm:hidden"
+          >
+            {data.categories.map((category) => (
+              <div
+                key={category.category_id}
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-b py-3"
+              >
+                <dt className="min-w-0 whitespace-pre-wrap break-words font-medium">
+                  {category.name}
+                </dt>
+                <dd className="max-w-40 break-words text-right font-medium tabular-nums">
+                  {moneyLabel(category.spent, "BDT")}
+                </dd>
+                <dd className="col-span-2 text-sm text-muted-foreground">
+                  {category.percentage}% of monthly spending
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <div
+            data-testid="monthly-table"
+            className="hidden min-w-0 max-w-full overflow-x-auto sm:block"
+          >
+            <table className="w-full table-fixed text-sm">
+              <caption className="sr-only">
+                Expense categories for {data.month}
+              </caption>
+              <thead>
+                <tr className="border-b">
+                  <th scope="col" className="w-2/5 py-3 text-left">
+                    Category
                   </th>
-                  <td className="break-all py-3 text-right tabular-nums">
-                    {moneyLabel(c.spent, "BDT")}
-                  </td>
-                  <td className="py-3 text-right tabular-nums">
-                    {c.percentage}%
-                  </td>
+                  <th scope="col" className="py-3 text-right">
+                    Spent
+                  </th>
+                  <th scope="col" className="w-1/4 py-3 text-right">
+                    Share
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.categories.map((category) => (
+                  <tr key={category.category_id} className="border-b">
+                    <th
+                      scope="row"
+                      className="whitespace-pre-wrap break-words py-3 pr-2 text-left font-normal"
+                    >
+                      {category.name}
+                    </th>
+                    <td className="break-words py-3 text-right tabular-nums">
+                      {moneyLabel(category.spent, "BDT")}
+                    </td>
+                    <td className="py-3 text-right tabular-nums">
+                      {category.percentage}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {data.spent === "0.00" && (
             <p className="text-sm text-muted-foreground">
               No expenses recorded this month.

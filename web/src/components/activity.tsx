@@ -55,7 +55,7 @@ export function Activity({
   };
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Money records</h2>
         <Button
           size="sm"
@@ -408,11 +408,19 @@ function RecordDetail({
         </p>
       ) : null}
       {!record.voided && !["opening", "adjustment"].includes(record.kind) ? (
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setMode("edit")}>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            className="w-full sm:w-auto"
+            variant="outline"
+            onClick={() => setMode("edit")}
+          >
             Correct record
           </Button>
-          <Button variant="destructive" onClick={() => setMode("void")}>
+          <Button
+            className="w-full sm:w-auto"
+            variant="destructive"
+            onClick={() => setMode("void")}
+          >
             Void record
           </Button>
         </div>
