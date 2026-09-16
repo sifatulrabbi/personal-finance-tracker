@@ -27,7 +27,7 @@ func TestExplicitCommandsAndHelp(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "finance.sqlite")
 	t.Setenv("DATABASE_PATH", path)
 	t.Setenv("AUTH_USERS_JSON", "not needed for database commands")
-	for _, args := range [][]string{nil, {"--help"}, {"migrate", "--help"}, {"seed", "--help"}, {"serve", "--help"}} {
+	for _, args := range [][]string{nil, {"--help"}, {"migrate", "--help"}, {"seed", "--help"}, {"serve", "--help"}, {"backup", "--help"}, {"backup-agent", "--help"}, {"verify-backup", "--help"}} {
 		if _, err := execute(args...); err != nil {
 			t.Fatal(err)
 		}
@@ -63,6 +63,57 @@ func TestExplicitCommandsAndHelp(t *testing.T) {
 	categories, err = s.Categories(context.Background())
 	if err != nil || len(categories) != 11 {
 		t.Fatal(categories, err)
+	}
+}
+
+func TestBackupCommandCreatesRestorableSnapshotWithoutAuthentication(t *testing.T) {
+	dir := t.TempDir()
+	database := filepath.Join(dir, "finance.sqlite")
+	destination := filepath.Join(dir, "backups")
+	if err := os.Mkdir(destination, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := execute("migrate", "--database", database); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AUTH_USERS_JSON", "invalid and intentionally unused")
+	output, err := execute("backup", "--database", database, "--destination", destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, "backup completed path=") {
+		t.Fatalf("output = %q", output)
+	}
+	entries, err := os.ReadDir(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot string
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".sqlite") {
+			snapshot = filepath.Join(destination, entry.Name())
+		}
+	}
+	if snapshot == "" {
+		t.Fatal("backup command did not publish a snapshot")
+	}
+	s, err := finance.Open(snapshot, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.Health(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = execute("verify-backup", "--database", snapshot); err != nil {
+		t.Fatal(err)
+	}
+	corrupt := filepath.Join(dir, "corrupt.sqlite")
+	if err = os.WriteFile(corrupt, []byte("not sqlite"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = execute("verify-backup", "--database", corrupt); err == nil {
+		t.Fatal("verified a corrupt backup")
 	}
 }
 

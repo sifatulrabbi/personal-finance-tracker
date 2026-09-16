@@ -1,0 +1,4 @@
+volumes:
+  finance-data:
+    external: true
+    name: ${RESTORE_VOLUME:?Set RESTORE_VOLUME to the prepared restore volume}

@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/bcrypt"
 	"io"
 	"os"
+	"os/signal"
 	"simply-finance/internal/finance"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -43,6 +46,8 @@ func newCommand() *cobra.Command {
 		command.Flags().StringVar(&path, "database", env("DATABASE_PATH", "data/finance.sqlite"), "SQLite database path (defaults to DATABASE_PATH)")
 		root.AddCommand(command)
 	}
+	root.AddCommand(newBackupCommand(false), newBackupCommand(true))
+	root.AddCommand(newVerifyBackupCommand())
 	root.AddCommand(&cobra.Command{Use: "hash-password", Short: "Hash a 12–72 byte password read from standard input", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		password, err := io.ReadAll(io.LimitReader(cmd.InOrStdin(), 75))
 		if err != nil {
@@ -63,7 +68,9 @@ func newCommand() *cobra.Command {
 }
 
 func main() {
-	if err := newCommand().Execute(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := newCommand().ExecuteContext(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}

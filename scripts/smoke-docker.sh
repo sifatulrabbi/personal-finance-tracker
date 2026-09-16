@@ -9,6 +9,7 @@ source_volume="$prefix-source"
 restore_volume="$prefix-restore"
 container="$prefix-app"
 restored="$prefix-restored"
+backup_dir="$temporary/backups"
 cleanup() {
   docker rm -f "$container" "$restored" >/dev/null 2>&1 || true
   docker volume rm "$source_volume" "$restore_volume" >/dev/null 2>&1 || true
@@ -23,6 +24,7 @@ hash="$(printf %s test-household-password | docker run --rm -i "$image" hash-pas
 users="[{\"email\":\"test@example.test\",\"password_hash\":\"$hash\",\"name\":\"Synthetic test\"}]"
 docker volume create "$source_volume" >/dev/null
 docker volume create "$restore_volume" >/dev/null
+mkdir -m 700 "$backup_dir"
 docker run --rm -v "$source_volume:/data" "$image" migrate
 docker run --rm -v "$source_volume:/data" "$image" seed
 docker run --rm -v "$source_volume:/data" "$image" migrate
@@ -57,9 +59,18 @@ request GET /wallets read | grep -q '874.50'
 docker restart "$container" >/dev/null
 ready
 request GET /wallets read | grep -q '874.50'
+docker run --rm -v "$source_volume:/data" -v "$backup_dir:/backups" "$image" backup --destination /backups >/dev/null
+backup_file="$(find "$backup_dir" -maxdepth 1 -type f -name 'simply-finance-*.sqlite' -print -quit)"
+test -n "$backup_file"
+docker run --rm -v "$backup_file:/backup/finance.sqlite:ro" "$image" verify-backup --database /backup/finance.sqlite >/dev/null
 docker stop "$container" >/dev/null
-docker run --rm --user 0 --entrypoint /bin/sh -v "$source_volume:/source:ro" -v "$restore_volume:/restore" "$image" -c 'cp -a /source/. /restore/'
+docker run --rm --user 0 --entrypoint /bin/sh -v "$backup_file:/restore/finance.sqlite:ro" -v "$restore_volume:/data" "$image" -c 'set -eu; test -z "$(find /data -mindepth 1 -maxdepth 1 -print -quit)"; cp /restore/finance.sqlite /data/finance.sqlite; chown 10001:10001 /data/finance.sqlite; chmod 600 /data/finance.sqlite'
 start "$restored" "$restore_volume"
 ready
+if request GET /wallets old-session >/dev/null 2>&1; then
+  echo 'Restored backup unexpectedly retained a login session.' >&2
+  exit 1
+fi
+request POST /login restored-login '{"email":"test@example.test","password":"test-household-password"}' >/dev/null
 request GET /wallets read | grep -q '874.50'
-echo 'PASS: non-root container, frontend, authenticated writes, restart persistence, and cold backup/restore.'
+echo 'PASS: non-root container, frontend, authenticated writes, restart persistence, live backup, session scrubbing, and fresh-volume restore.'
