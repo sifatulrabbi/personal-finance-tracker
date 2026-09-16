@@ -9,5 +9,25 @@ services:
     volumes:
       - finance-data:/data
     restart: unless-stopped
+  backup:
+    build: .
+    command: ["backup-agent"]
+    environment:
+      DATABASE_PATH: /data/finance.sqlite
+      BACKUP_DIR: /backups
+    volumes:
+      - finance-data:/data
+      - type: bind
+        source: ${BACKUP_DIR:?Set BACKUP_DIR to an absolute host directory}
+        target: /backups
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "test -n \"$$(find /tmp/simply-finance-backup-success -mmin -125 -print 2>/dev/null)\""]
+      interval: 5m
+      timeout: 5s
+      start_period: 2m
+      retries: 1
 volumes:
   finance-data:
