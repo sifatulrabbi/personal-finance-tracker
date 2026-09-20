@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { Button } from "@/components/ui/button";
+import { NavLink } from "react-router-dom";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { pages } from "@/routes";
 import {
   Dialog,
   DialogClose,
@@ -12,22 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-export const pages = [
-  "Activity",
-  "Wallets",
-  "Bills",
-  "Monthly spending",
-  "Settings",
-] as const;
-export type Page = (typeof pages)[number];
-
-export function Navigation({
-  current,
-  onSelect,
-}: {
-  current: Page;
-  onSelect: (page: Page) => void;
-}) {
+export function Navigation() {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -62,18 +49,20 @@ export function Navigation({
           </DialogDescription>
           <nav aria-label="Main navigation" className="flex flex-col gap-2">
             {pages.map((page) => (
-              <Button
-                key={page}
-                variant={current === page ? "secondary" : "ghost"}
-                className="h-12 w-full justify-start"
-                aria-current={current === page ? "page" : undefined}
-                onClick={() => {
-                  onSelect(page);
-                  setOpen(false);
-                }}
+              <NavLink
+                key={page.path}
+                to={page.path}
+                end
+                className={({ isActive }) =>
+                  buttonVariants({
+                    variant: isActive ? "secondary" : "ghost",
+                    className: "h-12 w-full justify-start",
+                  })
+                }
+                onClick={() => setOpen(false)}
               >
-                {page}
-              </Button>
+                {page.name}
+              </NavLink>
             ))}
           </nav>
         </DialogPrimitive.Content>

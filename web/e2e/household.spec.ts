@@ -5,7 +5,7 @@ async function navigate(page: Page, name: string) {
   await page.getByRole("button", { name: "Open menu", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("button", { name, exact: true })
+    .getByRole("link", { name, exact: true })
     .click();
   await expect(page.getByRole("dialog", { name: "Navigation" })).toHaveCount(0);
 }

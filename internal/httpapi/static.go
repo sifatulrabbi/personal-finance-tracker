@@ -28,6 +28,10 @@ func WithFrontend(api http.Handler, directory string) http.Handler {
 		}
 		file := filepath.Join(directory, filepath.FromSlash(strings.TrimPrefix(name, "/")))
 		info, err := os.Stat(file)
+		if os.IsNotExist(err) && path.Ext(name) == "" {
+			file = filepath.Join(directory, "index.html")
+			info, err = os.Stat(file)
+		}
 		if err != nil || !info.Mode().IsRegular() {
 			http.NotFound(w, r)
 			return

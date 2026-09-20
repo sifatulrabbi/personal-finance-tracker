@@ -1,6 +1,64 @@
 import { expect, test } from "@playwright/test";
 import { submitLogin } from "./login";
 
+test("page URLs survive login, reload, and browser history", async ({ page }) => {
+  await page.goto("/wallets");
+  await page.getByLabel("Email", { exact: true }).fill("test@example.test");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("test-household-password");
+  await submitLogin(page);
+
+  await expect(page).toHaveURL(/\/wallets$/);
+  await expect(
+    page.getByRole("region", { name: "Wallets", exact: true }),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/wallets$/);
+  await expect(
+    page.getByRole("region", { name: "Wallets", exact: true }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Navigation" })
+    .getByRole("link", { name: "Bills", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/bills$/);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/wallets$/);
+  await expect(
+    page.getByRole("region", { name: "Wallets", exact: true }),
+  ).toBeVisible();
+
+  await page.goForward();
+  await expect(page).toHaveURL(/\/bills$/);
+  await expect(
+    page.getByRole("region", { name: "Bills", exact: true }),
+  ).toBeVisible();
+});
+
+test("an unknown page stays visible until the user leaves it", async ({ page }) => {
+  await page.goto("/does-not-exist");
+  await page.getByLabel("Email", { exact: true }).fill("test@example.test");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("test-household-password");
+  await submitLogin(page);
+
+  await expect(page).toHaveURL(/\/does-not-exist$/);
+  await expect(
+    page.getByRole("heading", { name: "Page not found", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Go to Activity", exact: true }).click();
+  await expect(page).toHaveURL(/\/activity$/);
+  await expect(
+    page.getByRole("region", { name: "Activity", exact: true }),
+  ).toBeVisible();
+});
+
 test("mobile menu selects pages, fits phones, and restores focus", async ({
   page,
 }, testInfo) => {
@@ -10,19 +68,20 @@ test("mobile menu selects pages, fits phones, and restores focus", async ({
     .getByLabel("Password", { exact: true })
     .fill("test-household-password");
   await submitLogin(page);
+  await expect(page).toHaveURL(/\/activity$/);
   const trigger = page.getByRole("button", { name: "Open menu", exact: true });
   const drawer = page.getByRole("dialog", { name: "Navigation" });
   for (const width of [320, 390, 448]) {
     await page.setViewportSize({ width, height: 700 });
-    for (const name of [
-      "Activity",
-      "Wallets",
-      "Bills",
-      "Monthly spending",
-      "Settings",
+    for (const { name, path } of [
+      { name: "Activity", path: "/activity" },
+      { name: "Wallets", path: "/wallets" },
+      { name: "Bills", path: "/bills" },
+      { name: "Monthly spending", path: "/monthly" },
+      { name: "Settings", path: "/settings" },
     ]) {
       await trigger.click();
-      const item = drawer.getByRole("button", { name, exact: true });
+      const item = drawer.getByRole("link", { name, exact: true });
       await expect(item).toBeVisible();
       const bounds = await item.boundingBox();
       expect(bounds!.height).toBeGreaterThanOrEqual(44);
@@ -30,12 +89,13 @@ test("mobile menu selects pages, fits phones, and restores focus", async ({
       expect(bounds!.x + bounds!.width).toBeLessThan(width);
       await item.click();
       await expect(drawer).toHaveCount(0);
+      await expect(page).toHaveURL(new RegExp(`${path}$`));
       await expect(
         page.getByRole("region", { name, exact: true }),
       ).toBeVisible();
       await trigger.click();
       await expect(
-        drawer.getByRole("button", { name, exact: true }),
+        drawer.getByRole("link", { name, exact: true }),
       ).toHaveAttribute("aria-current", "page");
       await page.keyboard.press("Escape");
       await expect(drawer).toHaveCount(0);
@@ -46,7 +106,7 @@ test("mobile menu selects pages, fits phones, and restores focus", async ({
   await drawer.getByRole("button", { name: "Close menu" }).focus();
   await page.keyboard.press("Shift+Tab");
   await expect(
-    drawer.getByRole("button", { name: "Settings", exact: true }),
+    drawer.getByRole("link", { name: "Settings", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
@@ -79,7 +139,7 @@ test("mobile menu selects pages, fits phones, and restores focus", async ({
   }
   await page.reload();
   await trigger.click();
-  await drawer.getByRole("button", { name: "Wallets", exact: true }).click();
+  await drawer.getByRole("link", { name: "Wallets", exact: true }).click();
   await expect(drawer).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 700 });
   await expect

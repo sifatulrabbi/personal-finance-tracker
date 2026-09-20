@@ -45,7 +45,7 @@ async function navigate(page: Page, name: string) {
   await page.getByRole("button", { name: "Open menu", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("button", { name, exact: true })
+    .getByRole("link", { name, exact: true })
     .click();
 }
 
@@ -82,6 +82,7 @@ test("categories preserve record drafts and monthly shares use actual spending",
   });
   expect(response.ok()).toBe(true);
   await page.reload();
+  await navigate(page, "Activity");
   await page.getByRole("button", { name: "Add record", exact: true }).click();
   await page.getByLabel("Amount", { exact: true }).fill("200");
   const month = info.project.name === "mobile-chromium" ? "2025-04" : "2025-05";

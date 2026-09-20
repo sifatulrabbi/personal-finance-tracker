@@ -10,7 +10,7 @@ async function navigate(page: Page, name: string) {
   await page.getByRole("button", { name: "Open menu", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("button", { name, exact: true })
+    .getByRole("link", { name, exact: true })
     .click();
   await expect(page.getByRole("dialog", { name: "Navigation" })).toHaveCount(0);
 }
@@ -278,7 +278,7 @@ test("safe areas and a reduced visual viewport keep mobile controls reachable", 
   expect(drawerBounds!.x + drawerBounds!.width).toBeLessThanOrEqual(
     viewport.width - safeRight,
   );
-  await drawer.getByRole("button", { name: "Wallets", exact: true }).click();
+  await drawer.getByRole("link", { name: "Wallets", exact: true }).click();
 
   await page.getByRole("button", { name: "Add wallet", exact: true }).click();
   await page.getByLabel("Wallet name", { exact: true }).focus();

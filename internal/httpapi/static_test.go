@@ -19,18 +19,24 @@ func TestFrontendServesOnlyPublicFilesAndPreservesAPI(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "assets"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", "app.js"), []byte("console.log('ok')"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	h := httpapi.WithFrontend(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }), dir)
 	for _, tc := range []struct {
 		path   string
 		status int
-	}{{"/", 200}, {"/api/v1/wallets", 401}, {"/assets/", 404}, {"/.env", 404}, {"/../finance.sqlite", 404}} {
+	}{{"/", 200}, {"/wallets", 200}, {"/unknown/nested", 200}, {"/assets/app.js", 200}, {"/assets/missing.js", 404}, {"/api/v1/wallets", 401}, {"/assets/", 404}, {"/.env", 404}, {"/../finance.sqlite", 404}} {
 		r := httptest.NewRecorder()
 		h.ServeHTTP(r, httptest.NewRequest("GET", tc.path, nil))
 		if r.Code != tc.status {
 			t.Fatalf("%s: %d", tc.path, r.Code)
 		}
-		if tc.path == "/" && !strings.Contains(r.Header().Get("Content-Security-Policy"), "script-src 'self'") {
+		if (tc.path == "/" || tc.path == "/wallets") && !strings.Contains(r.Header().Get("Content-Security-Policy"), "script-src 'self'") {
 			t.Fatal("missing frontend CSP")
+		}
+		if tc.path == "/wallets" && !strings.Contains(r.Body.String(), "Simply Finance") {
+			t.Fatal("client route did not serve the frontend document")
 		}
 	}
 }
