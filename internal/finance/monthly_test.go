@@ -68,7 +68,7 @@ func TestMonthlySpendingUsesLatestExpensesAndSavedRates(t *testing.T) {
 	if row := monthlyCategory(t, m, c.ID); row.Spent != "200.00" || row.Percentage != "25.00" {
 		t.Fatalf("category spending: %+v", row)
 	}
-	in.CategoryID = ""
+	in.CategoryID = "others-expense"
 	in.Rate = ""
 	in.Reason = "Correct category"
 	revised, e := s.ReviseTransaction(ctx, u.ID, "edit", r.ID, r.Version, in, false)

@@ -70,6 +70,39 @@ func TestBillKeepsCategoryFromOccurrence(t *testing.T) {
 	}
 }
 
+// Regression (C3): a correction that omits category_id keeps the prior category, like rate;
+// moving a record to Others takes an explicit Others ID.
+func TestCorrectionWithoutCategoryKeepsPriorCategory(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	groceries, e := s.CreateCategory(ctx, u.ID, "groceries", finance.CategoryInput{Name: "Test pet care", Type: "expense"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	w := createWallet(t, s, u, "Cash", "BDT", "", "1000")
+	r, e := s.CreateTransaction(ctx, u.ID, "expense", finance.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "100", Date: "2026-09-14", CategoryID: groceries.ID})
+	if e != nil {
+		t.Fatal(e)
+	}
+	r, e = s.ReviseTransaction(ctx, u.ID, "amount", r.ID, 1, finance.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "120", Date: "2026-09-14"}, false)
+	if e != nil || r.CategoryID != groceries.ID {
+		t.Fatalf("omitted category: %+v %v", r, e)
+	}
+	month, e := s.Monthly(ctx, "2026-09")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, c := range month.Categories {
+		if c.CategoryID == groceries.ID && c.Spent != "120.00" {
+			t.Fatalf("monthly moved spending: %+v", month.Categories)
+		}
+	}
+	r, e = s.ReviseTransaction(ctx, u.ID, "others", r.ID, 2, finance.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "120", Date: "2026-09-14", CategoryID: "others-expense"}, false)
+	if e != nil || r.CategoryID != "others-expense" {
+		t.Fatalf("explicit others: %+v %v", r, e)
+	}
+}
+
 func TestCategoriesKeepNamesAndEnforceTransactionType(t *testing.T) {
 	s := openStore(t)
 	u := user(t, s)

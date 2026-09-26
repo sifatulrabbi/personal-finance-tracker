@@ -237,8 +237,12 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		r := old
 		var effects []effect
 		if !void {
+			// Omitted correction fields keep the prior value where empty is not itself a valid choice.
 			if in.Rate == "" {
 				in.Rate = old.Rate
+			}
+			if in.CategoryID == "" {
+				in.CategoryID = old.CategoryID
 			}
 			if in.Kind != old.Kind {
 				return old, invalid("kind", "A record's kind cannot change. Void it and record a new one.")
