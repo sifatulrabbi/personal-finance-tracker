@@ -1,5 +1,5 @@
 import { apiWrite, dhakaToday, expect, test } from "./fixtures";
-import { openSheet, signIn, toast } from "./login";
+import { navigate, openSheet, openWallet, signIn, toast } from "./login";
 import { addRecord, kindRadio, loadMoreWithKeyboard, openAddRecord, typeAmount, walletRadio } from "./records";
 import type { Page } from "@playwright/test";
 
@@ -324,6 +324,46 @@ test("voided records stay visible, struck through, and reconciliation records ca
   await expect(dialog.getByText(/cannot be corrected or voided/)).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Correct record" })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Void record" })).toHaveCount(0);
+});
+
+test("a wallet page lists its own records, and a bank's include its debit card's", async ({ page }) => {
+  await signedIn(page);
+  const bank = await wallet(page, "City Bank", { type: "bank", opening_balance: "50000" });
+  const cash = await wallet(page, "Pocket cash");
+  const card = await apiWrite(page, "/wallets", { name: "Debit", type: "card", card_type: "debit", bank_wallet_id: bank.id });
+  await record(page, { wallet_id: bank.id, amount: "20", note: "Bank fee" });
+  await record(page, { wallet_id: card.id, amount: "850", note: "Card groceries" });
+  await record(page, { wallet_id: cash.id, amount: "30", note: "Cash tea" });
+  await record(page, { kind: "transfer", wallet_id: bank.id, to_wallet_id: cash.id, amount: "2000", note: "ATM" });
+  await page.reload();
+  await navigate(page, "Wallets");
+  await openWallet(page, "City Bank");
+  const details = page.getByRole("region", { name: "Wallet details", exact: true });
+  for (const note of ["Bank fee", "Card groceries", "ATM"]) await expect(row(page, note)).toBeVisible();
+  await expect(row(page, "Cash tea")).toHaveCount(0);
+  await expect(details.getByTestId("activity-day").first().getByRole("heading")).toHaveText("Today");
+
+  // Records open and correct in place; the wallet's list shows the saved version.
+  await row(page, "Card groceries").click();
+  await page.getByRole("button", { name: "Correct record" }).click();
+  const sheet = page.getByRole("dialog");
+  await typeAmount(sheet, "800");
+  await sheet.getByRole("button", { name: "Save correction" }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(row(page, "Card groceries")).toContainText("−৳800.00");
+
+  // The same list in Activity, as a filter.
+  await page.getByRole("link", { name: "Filter in Activity" }).click();
+  await expect(page).toHaveURL(new RegExp(`/activity\\?wallet=${bank.id}$`));
+  await expect(page.getByLabel("Filter by wallet")).toHaveValue(bank.id);
+  await expect(row(page, "Card groceries")).toBeVisible();
+  await expect(row(page, "Cash tea")).toHaveCount(0);
+
+  // A debit card's own page shows only its own records.
+  await navigate(page, "Wallets");
+  await openWallet(page, "Debit");
+  await expect(rows(page)).toHaveCount(1);
+  await expect(row(page, "Card groceries")).toBeVisible();
 });
 
 test("voiding from the detail sheet needs a reason and keeps the record listed", async ({ page }) => {

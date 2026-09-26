@@ -192,7 +192,8 @@ test("focus returns to the opener after a dialog closes, and opening selects not
   await name.fill("Focus wallet renamed");
   await page.getByRole("button", { name: "Save wallet", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByText("Focus wallet renamed", { exact: true })).toBeVisible();
+  // The wallet page's title; its record list below names the wallet too.
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Focus wallet renamed");
   // Regression: focus fell back to <body> after every dialog.
   await expect(edit).toBeFocused();
 
