@@ -16,6 +16,7 @@ import (
 // through the login endpoint. The clock starts at 2026-09-14 12:00 UTC (18:00 in Dhaka).
 type household struct {
 	t      *testing.T
+	path   string
 	base   string
 	clock  *testClock
 	store  *finance.Store
@@ -31,7 +32,8 @@ type member struct {
 func newHousehold(t *testing.T) *household {
 	t.Helper()
 	clock := &testClock{now: time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)}
-	s, e := openPrepared(t, filepath.Join(t.TempDir(), "household.sqlite"), clock.Now)
+	path := filepath.Join(t.TempDir(), "household.sqlite")
+	s, e := openPrepared(t, path, clock.Now)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -42,7 +44,7 @@ func newHousehold(t *testing.T) *household {
 	}
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-	h := &household{t: t, base: server.URL + "/api/v1", clock: clock, store: s}
+	h := &household{t: t, path: path, base: server.URL + "/api/v1", clock: clock, store: s}
 	h.me = h.signIn("sifatul@example.test")
 	h.spouse = h.signIn("wife@example.test")
 	return h

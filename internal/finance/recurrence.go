@@ -238,6 +238,9 @@ func (s *Store) ConfirmBill(ctx context.Context, actor, key, bid string, in Paym
 		if in.Note == "" {
 			in.Note = b.Note
 		}
+		if in.Date == "" {
+			in.Date = b.DueDate
+		}
 		in.Note = b.Name + ": " + in.Note
 		out, e = s.createTransaction(tx, actor, TransactionInput{Kind: "expense", WalletID: in.WalletID, Amount: in.Amount, Date: in.Date, Note: in.Note, Rate: in.Rate, CategoryID: b.CategoryID})
 		if e != nil {

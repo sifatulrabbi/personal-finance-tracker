@@ -117,6 +117,10 @@ func (s *Server) handler() http.Handler {
 	private := http.NewServeMux()
 	private.HandleFunc("GET /api/v1/me", func(w http.ResponseWriter, r *http.Request) { respond(w, actor(r), nil) })
 	private.HandleFunc("POST /api/v1/logout", s.logout)
+	private.HandleFunc("GET /api/v1/summary", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.store.Summary(r.Context())
+		respond(w, v, e)
+	})
 	private.HandleFunc("GET /api/v1/categories", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.store.Categories(r.Context())
 		respond(w, v, e)
@@ -179,6 +183,10 @@ func (s *Server) handler() http.Handler {
 	}) (any, error) {
 		return s.store.ReviseTransaction(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Version, finance.TransactionInput{Reason: in.Reason}, true)
 	}))
+	private.HandleFunc("GET /api/v1/transactions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.store.Transaction(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
+	})
 	private.HandleFunc("GET /api/v1/transactions/{id}/history", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.store.History(r.Context(), r.PathValue("id"))
 		respond(w, v, e)
@@ -191,6 +199,10 @@ func (s *Server) handler() http.Handler {
 		return s.store.SetRate(r.Context(), actor(r).ID, key(r), in.Rate, in.Version)
 	}))
 	private.HandleFunc("GET /api/v1/schedules", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Schedules(r.Context()); respond(w, v, e) })
+	private.HandleFunc("GET /api/v1/schedules/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.store.Schedule(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
+	})
 	private.HandleFunc("POST /api/v1/schedules", input(func(r *http.Request, in finance.ScheduleInput) (any, error) {
 		return s.store.CreateSchedule(r.Context(), actor(r).ID, key(r), in)
 	}))
@@ -200,6 +212,28 @@ func (s *Server) handler() http.Handler {
 		}
 		return s.store.UpdateSchedule(r.Context(), actor(r).ID, key(r), in)
 	}))
+	private.HandleFunc("GET /api/v1/bills", func(w http.ResponseWriter, r *http.Request) {
+		l, o, e := page(r)
+		if e != nil {
+			respond(w, nil, e)
+			return
+		}
+		v, e := s.store.Bills(r.Context(), r.URL.Query().Get("status"), l, o)
+		respond(w, v, e)
+	})
+	private.HandleFunc("GET /api/v1/bills/upcoming", func(w http.ResponseWriter, r *http.Request) {
+		days := 30
+		if raw := r.URL.Query().Get("days"); raw != "" {
+			n, e := strconv.Atoi(raw)
+			if e != nil {
+				respond(w, nil, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use a whole number of days.", Field: "days"})
+				return
+			}
+			days = n
+		}
+		v, e := s.store.Upcoming(r.Context(), days)
+		respond(w, v, e)
+	})
 	private.HandleFunc("GET /api/v1/bills/due", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Due(r.Context()); respond(w, v, e) })
 	private.HandleFunc("POST /api/v1/bills/{id}/confirm", input(func(r *http.Request, in finance.PaymentInput) (any, error) {
 		return s.store.ConfirmBill(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in)

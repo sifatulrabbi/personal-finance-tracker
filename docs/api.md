@@ -35,11 +35,13 @@ Unauthenticated requests to any `/api/v1` path, including unknown ones, get 401 
 | POST | `/login` | Email and password login. |
 | POST | `/logout` | Revoke this session. |
 | GET | `/me` | Current user profile. |
+| GET | `/summary` | Home screen figures in one read; see below. |
 | GET, POST | `/wallets` | List wallets or create one with an opening balance. |
 | GET | `/wallets/{id}` | Read one wallet. |
 | PUT | `/wallets/{id}` | Update name, details, credit limit, or archive status with the wallet's `version`. Type and currency are immutable. |
 | POST | `/wallets/{id}/adjust` | Set a target `balance` with `balance_version` and `reason`. For credit cards, the target means debt owed. |
 | GET, POST | `/transactions` | List records or create income, expense, or transfer. |
+| GET | `/transactions/{id}` | Read one record's current revision, with `voided`, `actor_email`, and `created_at`. |
 | PUT | `/transactions/{id}` | Correct a record with its current `version` and an optional `reason`. |
 | POST | `/transactions/{id}/void` | Reverse a record with `version` and `reason`. |
 | GET | `/transactions/{id}/history` | Read all preserved revisions and author emails. |
@@ -48,9 +50,12 @@ Unauthenticated requests to any `/api/v1` path, including unknown ones, get 401 
 | GET | `/monthly?month=YYYY-MM` | Read spending, category shares, and target. Omit the month for the current Asia/Dhaka month. A month without its own target shows the latest earlier saved target; reading never writes. |
 | PUT | `/monthly/{month}/target` | Set one BDT `amount` with the current target `version` and an idempotency key. Zero is allowed. |
 | GET, POST | `/schedules` | List or create recurring bills. |
+| GET | `/schedules/{id}` | Read one recurring bill. |
 | PUT | `/schedules/{id}` | Change future bill details or active status, with `version`. Start date and frequency are immutable. |
 | GET | `/bills/due` | Materialize and list unpaid occurrences through today. |
-| POST | `/bills/{id}/confirm` | Record payment with `date`, optional `amount`, `wallet_id`, `rate`, and `note`. |
+| GET | `/bills?status=due\|paid\|skipped` | List stored occurrences by status (default `due`) with `limit` and `offset`. `due` materializes like `/bills/due` and lists oldest first; `paid` and `skipped` are plain reads, newest first, and paid bills carry `transaction_id`. |
+| GET | `/bills/upcoming?days=N` | Occurrences of active schedules dated after today through today plus `N` days (1–366, default 30), earliest first, at most 200. Computed on each read and never stored, so they have no `id`. |
+| POST | `/bills/{id}/confirm` | Record payment with optional `date` (defaults to the due date), `amount`, `wallet_id`, `rate`, and `note`. |
 | POST | `/bills/{id}/skip` | Skip an unpaid occurrence with a `reason`. |
 | GET | `/audit` | Read wallet, schedule, bill-status, and settings changes. |
 
@@ -69,6 +74,8 @@ The system rate is initially unset rather than populated with an invented market
 A debit card is created with `bank_wallet_id`, the active bank wallet it draws from, and takes that wallet's currency. It has no balance of its own: an opening balance or adjustment is rejected, its `balance` is 0.00, and records made with it keep the card as `wallet_id` while moving the bank wallet's balance. A transfer between a card and its own bank is rejected on `to_wallet_id`. The link cannot change. A debit card without `bank_wallet_id` predates this rule (ADR 0011): it keeps its recorded balance and history, but new income, expenses, incoming transfers, and schedules on it are rejected; corrections and voids of its records, transfers out of it, and an adjustment to zero stay available so it can be drained and replaced by a linked card.
 
 Credit wallets return `debt` and `available_credit`; their cash `balance` is zero so clients cannot accidentally count borrowed credit as owned money. A negative debt means a card is overpaid. Cash wallets may go negative because manual records can be incomplete or entered out of order. The backend bounds individual amounts and final wallet balances to 9,000,000,000,000 minor units.
+
+`GET /summary` returns `today` (Asia/Dhaka), `totals` (one entry each for BDT and USD with `cash`, `card_debt`, and `available_credit`), `month` (`month`, `spent`, and `target` for the current month, as in `/monthly`), `bills` (`due_count`, `oldest_due_date`, `next_due_date`), `recent` (the five most recent records, ordered like `/transactions`), and `legacy_debit_cards`. Cash is the balance of every non-credit wallet, archived ones included because an archived wallet keeps its balance; linked debit cards have no balance, and a legacy unlinked debit card's own balance is counted until drained. Card debt and available credit sum the credit cards; a negative debt is an overpayment. `due_count` counts unpaid occurrences through today, including ones not yet stored, and `oldest_due_date` is the earliest of them; `next_due_date` is the first occurrence after today within 90 days. The summary reads only; it never stores occurrences or targets.
 
 Omitted and empty recurring-payment amounts both use the occurrence's expected amount. If the payment wallet uses a different currency from the scheduled wallet, an explicit actual amount is required instead. Explicit zero, negative, or malformed amounts are rejected. Editing a schedule snapshots already-due occurrences before applying future changes. Deactivation stops new occurrence generation; reactivation catches up unpaid dates. Voiding a payment reopens its occurrence. Changes to confirmed transaction amounts retain the linked occurrence and its original expected amount.
 
