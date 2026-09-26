@@ -306,7 +306,12 @@ func Verify(ctx context.Context, path string) error {
 	if !info.Mode().IsRegular() {
 		return errors.New("snapshot is not a regular file")
 	}
-	u := url.URL{Scheme: "file", Path: path}
+	// A file: URL needs an absolute path; a relative one would be read as a host name.
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	u := url.URL{Scheme: "file", Path: abs}
 	query := u.Query()
 	query.Set("mode", "ro")
 	u.RawQuery = query.Encode()

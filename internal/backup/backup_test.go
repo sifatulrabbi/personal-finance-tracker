@@ -250,3 +250,16 @@ func TestCreateRequiresAbsoluteDestination(t *testing.T) {
 		t.Fatalf("error = %v, want absolute destination rejection", err)
 	}
 }
+
+// Regression: Verify built a file: URL from the path as given, and Go writes file URLs with "//",
+// so a relative path such as snapshots/finance.sqlite was read as a host and failed with
+// "invalid uri authority".
+func TestVerifyAcceptsARelativePath(t *testing.T) {
+	path, db := preparedDatabase(t)
+	db.Close()
+	t.Chdir(filepath.Dir(filepath.Dir(path)))
+	relative := filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path))
+	if err := backup.Verify(context.Background(), relative); err != nil {
+		t.Fatalf("verify %s: %v", relative, err)
+	}
+}
