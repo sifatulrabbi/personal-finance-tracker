@@ -21,10 +21,15 @@ import {
 } from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CircleAlert } from "lucide-react";
+import { cn } from "cn";
 import { errorMessage, isApiError } from "@/api/errors";
 import { mutationKey, type MutationKey } from "@/api/idempotency";
-import type { Wallet } from "@/api/types";
+import type { Currency, Wallet } from "@/api/types";
 import { parseDecimalInput } from "@/money/decimal";
+import { currencySymbol } from "@/money/format";
+import { useInSheet } from "@/components/layout";
+import { notifySaved } from "@/components/feedback";
 
 export function TextField({
   label,
@@ -158,20 +163,22 @@ export function MoneyField({
   required = true,
   maxFraction = 2,
   allowNegative = false,
+  currency,
   onChange,
+  className,
   ...props
 }: Omit<ComponentProps<typeof Input>, "type" | "min" | "step"> & {
   label?: string;
   hint?: string;
   maxFraction?: number;
   allowNegative?: boolean;
+  // Shows the currency symbol inside the field, before the digits.
+  currency?: Currency;
 }) {
   const id = useId();
   const errorID = `${id}-error`;
   const [error, setError] = useState("");
-  return (
-    <Field data-invalid={error ? true : undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+  const input = (
       <Input
         id={id}
         type="text"
@@ -196,8 +203,26 @@ export function MoneyField({
           if (error) setError("");
           onChange?.(event);
         }}
+        className={cn(currency && "pl-8", className)}
         {...props}
       />
+  );
+  return (
+    <Field data-invalid={error ? true : undefined}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      {currency ? (
+        <div className="relative min-w-0">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-muted-foreground"
+          >
+            {currencySymbol[currency]}
+          </span>
+          {input}
+        </div>
+      ) : (
+        input
+      )}
       {hint ? <FieldDescription>{hint}</FieldDescription> : null}
       {error ? <FieldError id={errorID}>{error}</FieldError> : null}
     </Field>
@@ -212,9 +237,20 @@ export function RateField(
 export function ErrorMessage({ error }: { error: string }) {
   return error ? (
     <Alert variant="destructive" role="alert">
+      <CircleAlert aria-hidden />
       <AlertDescription>{error}</AlertDescription>
     </Alert>
   ) : null;
+}
+
+// A hint that needs attention but is not an error (for example an archived wallet).
+export function WarningMessage({ children }: { children: ReactNode }) {
+  return (
+    <Alert variant="warning" role="alert">
+      <CircleAlert aria-hidden />
+      <AlertDescription>{children}</AlertDescription>
+    </Alert>
+  );
 }
 
 // A value the user typed that cannot be sent as it is.
@@ -277,6 +313,7 @@ export function SaveForm<Body, Result>({
   label = "Save",
   disabled = false,
   resetOnSuccess = false,
+  saved,
 }: {
   children: ReactNode;
   body: (form: FormReader) => Body;
@@ -286,7 +323,10 @@ export function SaveForm<Body, Result>({
   label?: string;
   disabled?: boolean;
   resetOnSuccess?: boolean;
+  // The toast shown after a successful save. An id lets the screen dismiss it early.
+  saved?: string | { message: string; id: string };
 }) {
+  const inSheet = useInSheet();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const last = useRef<MutationKey | undefined>(undefined);
@@ -316,6 +356,7 @@ export function SaveForm<Body, Result>({
       // The next, separate submission must never replay this response.
       last.current = undefined;
       if (resetOnSuccess) form.reset();
+      if (saved) notifySaved(saved);
       onSaved?.(result);
     } catch (problem) {
       setError(errorMessage(problem, "Could not save. Your entry is still here; try again."));
@@ -325,14 +366,33 @@ export function SaveForm<Body, Result>({
       inFlight.current = false;
     }
   }
+  const footer = (
+    <>
+      <ErrorMessage error={error} />
+      <Button type="submit" size={inSheet ? "lg" : "default"} disabled={busy || disabled} className={inSheet ? "w-full" : "self-start"}>
+        {busy ? "Saving…" : label}
+      </Button>
+    </>
+  );
+  if (inSheet)
+    // In a sheet the error and the Save button stay pinned to the bottom, so an error is
+    // never below the fold and Save is reachable with the keyboard open.
+    return (
+      <form onSubmit={submit} data-sheet-form="">
+        <FieldGroup>{children}</FieldGroup>
+        <div
+          data-slot="sheet-footer"
+          className="sticky bottom-0 z-10 -mx-4 mt-5 flex flex-col gap-3 border-t bg-card px-4 py-3 sm:-mx-5 sm:px-5"
+        >
+          {footer}
+        </div>
+      </form>
+    );
   return (
     <form onSubmit={submit}>
       <FieldGroup>
         {children}
-        <ErrorMessage error={error} />
-        <Button type="submit" disabled={busy || disabled}>
-          {busy ? "Saving…" : label}
-        </Button>
+        {footer}
       </FieldGroup>
     </form>
   );

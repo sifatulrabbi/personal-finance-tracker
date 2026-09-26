@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Plus, Pencil, SlidersHorizontal } from "lucide-react";
+import { Plus, Pencil, SlidersHorizontal, Wallet as WalletIcon } from "lucide-react";
 import type { CardType, Currency, Wallet, WalletType } from "@/api/types";
 import { useWallets } from "@/cache/queries";
 import { useWrites } from "@/cache/writes";
-import { moneyLabel } from "@/money/format";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,20 +14,23 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FieldDescription } from "@/components/ui/field";
 import {
   Choice,
   MoneyField,
   SaveForm,
   TextField,
   Notes,
+  WarningMessage,
 } from "@/components/forms";
 import {
+  EmptyState,
   LoadError,
   Modal,
-  NoRecords,
-  PageHeading,
+  PageIntro,
   useEditor,
 } from "@/components/layout";
+import { Money } from "@/components/money";
 
 const types: { value: WalletType; label: string }[] = [
   { value: "physical", label: "Physical cash" },
@@ -50,40 +52,46 @@ export function Wallets() {
       ? wallets.find((w) => w.id === (editor.value as { id: string }).id)
       : undefined;
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <PageHeading>Your wallets</PageHeading>
-        <Button size="sm" onClick={(e) => editor.open({ mode: "create" }, e)}>
-          <Plus data-icon="inline-start" />
-          Add wallet
-        </Button>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        Cash you hold and credit you owe, kept separate.
-      </p>
+    <>
+      <PageIntro
+        description="Cash you hold and credit you owe, kept separate."
+        action={
+          <Button size="sm" variant="outline" onClick={(e) => editor.open({ mode: "create" }, e)}>
+            <Plus data-icon="inline-start" />
+            Add wallet
+          </Button>
+        }
+      />
       <LoadError
         error={query.error}
         hasData={Boolean(query.data)}
         onRetry={() => void query.refetch()}
         what="wallets"
       />
-      {query.isPending ? <Skeleton className="h-40 w-full" /> : null}
+      {query.isPending ? (
+        <div aria-hidden className="flex flex-col gap-3">
+          <Skeleton className="h-36 w-full rounded-xl" />
+          <Skeleton className="h-36 w-full rounded-xl" />
+        </div>
+      ) : null}
       {query.data && !wallets.length ? (
-        <NoRecords
+        <EmptyState
+          icon={<WalletIcon />}
           title="Start with a wallet"
           description="Add your cash, bank account, bKash, or card with its current balance."
         />
       ) : null}
+      <div className="flex min-w-0 flex-col gap-3">
       {wallets
         .filter((wallet) => showArchived || !wallet.archived)
         .map((wallet) => (
-          <Card key={wallet.id}>
+          <Card key={wallet.id} className={wallet.archived ? "opacity-75" : undefined}>
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
                 <CardTitle className="min-w-0 break-all">
                   {wallet.name}
                 </CardTitle>
-                <Badge variant="secondary">{wallet.currency}</Badge>
+                <Badge variant="outline">{wallet.currency}</Badge>
               </div>
               <CardDescription>
                 {wallet.card_type === "credit"
@@ -92,7 +100,7 @@ export function Wallets() {
                 {wallet.archived ? " · Archived" : ""}
               </CardDescription>
             </CardHeader>
-            <CardContent className="@container flex flex-col gap-2">
+            <CardContent className="@container flex flex-col gap-1">
               {/* Never break inside a number: the size shrinks with the card instead. */}
               {wallet.bank_wallet_id ? (
                 // A linked debit card has no balance of its own (ADR 0011).
@@ -104,16 +112,20 @@ export function Wallets() {
               ) : (
                 <p
                   data-testid="wallet-balance"
-                  className="text-[min(1.875rem,9cqi)] font-semibold tracking-tight whitespace-nowrap tabular-nums"
+                  className="text-[min(2rem,9cqi)] leading-tight font-semibold tracking-tight"
                 >
-                  {moneyLabel(wallet.debt ?? wallet.balance, wallet.currency)}
+                  <Money
+                    amount={wallet.debt ?? wallet.balance}
+                    currency={wallet.currency}
+                    debt={wallet.card_type === "credit"}
+                  />
                 </p>
               )}
               {wallet.card_type === "credit" ? (
                 <p className="text-sm text-muted-foreground">
                   Available{" "}
-                  {moneyLabel(wallet.available_credit ?? "0.00", wallet.currency)} ·
-                  Limit {moneyLabel(wallet.credit_limit, wallet.currency)}
+                  <Money amount={wallet.available_credit ?? "0.00"} currency={wallet.currency} /> ·
+                  Limit <Money amount={wallet.credit_limit} currency={wallet.currency} />
                 </p>
               ) : null}
               {wallet.details ? (
@@ -122,7 +134,7 @@ export function Wallets() {
                 </p>
               ) : null}
             </CardContent>
-            <CardFooter className="flex flex-wrap gap-2">
+            <CardFooter className="flex flex-wrap gap-2 border-t pt-3 [.border-t]:pt-3">
               <Button
                 variant="outline"
                 size="sm"
@@ -135,6 +147,7 @@ export function Wallets() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="text-muted-foreground"
                   onClick={(e) => editor.open({ mode: "adjust", id: wallet.id }, e)}
                 >
                   <SlidersHorizontal data-icon="inline-start" />
@@ -144,8 +157,9 @@ export function Wallets() {
             </CardFooter>
           </Card>
         ))}
+      </div>
       {wallets.some((wallet) => wallet.archived) ? (
-        <Button variant="ghost" onClick={() => setShowArchived(!showArchived)}>
+        <Button variant="ghost" className="self-center" onClick={() => setShowArchived(!showArchived)}>
           {showArchived ? "Hide" : "Show"} archived wallets
         </Button>
       ) : null}
@@ -165,7 +179,7 @@ export function Wallets() {
           <AdjustWallet key={current.id} wallet={current} onSaved={editor.close} />
         ) : null}
       </Modal>
-    </section>
+    </>
   );
 }
 
@@ -197,6 +211,7 @@ function AdjustWallet(props: { wallet: Wallet; onSaved: () => void }) {
   return (
     <SaveForm
       onSaved={onSaved}
+      saved="Adjustment recorded"
       label="Record adjustment"
       body={(form) => ({
         balance_version: wallet.balance_version,
@@ -208,6 +223,7 @@ function AdjustWallet(props: { wallet: Wallet; onSaved: () => void }) {
       <MoneyField
         label={wallet.card_type === "credit" ? "Actual debt owed" : "Actual balance"}
         name="balance"
+        currency={wallet.currency}
         allowNegative
         defaultValue={wallet.debt ?? wallet.balance}
       />
@@ -229,6 +245,7 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
   return (
     <SaveForm
       onSaved={onSaved}
+      saved="Wallet created"
       label="Create wallet"
       body={(form) => ({
         name: form.text("name"),
@@ -282,9 +299,7 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
             }))}
           />
         ) : (
-          <p className="text-sm text-destructive">
-            Add the bank account this card spends from first.
-          </p>
+          <WarningMessage>Add the bank account this card spends from first.</WarningMessage>
         )
       ) : (
         <>
@@ -309,10 +324,10 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
         <MoneyField label="Credit limit" name="credit_limit" defaultValue="0" />
       ) : null}
       {debit ? (
-        <p className="text-sm text-muted-foreground">
+        <FieldDescription>
           The card has no balance of its own. Spending with it comes out of the
           bank account.
-        </p>
+        </FieldDescription>
       ) : null}
       <Notes name="details" label="Account details (optional)" />
     </SaveForm>
@@ -327,6 +342,7 @@ function EditWallet(props: { wallet: Wallet; onSaved: () => void }) {
   return (
     <SaveForm
       onSaved={onSaved}
+      saved="Wallet saved"
       label="Save wallet"
       // An explicit input shape: response-only fields such as balance and debt are never
       // echoed back, so a new computed field on the server cannot break wallet edits.
@@ -356,6 +372,7 @@ function EditWallet(props: { wallet: Wallet; onSaved: () => void }) {
         <MoneyField
           label="Credit limit"
           name="credit_limit"
+          currency={wallet.currency}
           defaultValue={wallet.credit_limit}
         />
       ) : null}
