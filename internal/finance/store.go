@@ -182,6 +182,12 @@ func (s *Store) EnsureUser(ctx context.Context, email, name string) (User, error
 	e = s.db.QueryRowContext(ctx, `SELECT id,email,name FROM users WHERE email=?`, email).Scan(&u.ID, &u.Email, &u.Name)
 	return u, e
 }
+
+// RequestKeyTTL is how long an Idempotency-Key and its stored response are kept. A retry inside
+// this window replays the first response; expired keys are pruned on later writes, after which
+// the same key is treated as a new request.
+const RequestKeyTTL = 30 * 24 * time.Hour
+
 func write[T any](ctx context.Context, s *Store, actor, key, operation string, input any, fn func(*sql.Tx) (T, error)) (T, error) {
 	var zero T
 	if len(key) < 1 || len(key) > 128 {
@@ -198,6 +204,10 @@ func write[T any](ctx context.Context, s *Store, actor, key, operation string, i
 		return zero, e
 	}
 	defer tx.Rollback()
+	now := s.now().Unix()
+	if _, e = tx.ExecContext(ctx, `DELETE FROM request_keys WHERE created_at<?`, now-int64(RequestKeyTTL/time.Second)); e != nil {
+		return zero, e
+	}
 	var prior, body string
 	e = tx.QueryRowContext(ctx, `SELECT fingerprint,response FROM request_keys WHERE actor_id=? AND key=?`, actor, key).Scan(&prior, &body)
 	if e == nil {
@@ -226,7 +236,7 @@ func write[T any](ctx context.Context, s *Store, actor, key, operation string, i
 	if e != nil {
 		return zero, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO request_keys VALUES(?,?,?,?)`, actor, key, fingerprint, string(data)); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO request_keys(actor_id,key,fingerprint,response,created_at) VALUES(?,?,?,?,?)`, actor, key, fingerprint, string(data), now); e != nil {
 		return zero, e
 	}
 	if e = tx.Commit(); e != nil {
@@ -243,7 +253,7 @@ func (s *Store) audit(tx *sql.Tx, actor, entity, action string, before, after an
 	if e != nil {
 		return e
 	}
-	_, e = tx.Exec(`INSERT INTO audit_events(actor_id,entity_id,action,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)`, actor, entity, action, string(a), string(b), s.now().UTC().Format(time.RFC3339Nano))
+	_, e = tx.Exec(`INSERT INTO audit_events(actor_id,entity_id,action,before_json,after_json,created_at) VALUES(?,?,?,?,?,?)`, actor, entity, action, string(a), string(b), s.instant())
 	return e
 }
 func (s *Store) CreateWallet(ctx context.Context, actor, key string, in WalletInput) (Wallet, error) {
@@ -336,7 +346,7 @@ func (s *Store) CreateWallet(ctx context.Context, actor, key string, in WalletIn
 			return zero, e
 		}
 		payload, _ := json.Marshal(map[string]any{"kind": "opening", "wallet_id": wid, "amount": FormatMoney(opening), "date": s.today()})
-		if _, e = tx.Exec(`INSERT INTO transaction_revisions VALUES(?,1,?,?,?)`, tid, string(payload), actor, s.now().UTC().Format(time.RFC3339Nano)); e != nil {
+		if _, e = tx.Exec(`INSERT INTO transaction_revisions VALUES(?,1,?,?,?)`, tid, string(payload), actor, s.instant()); e != nil {
 			return zero, e
 		}
 		if _, e = tx.Exec(`INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta) VALUES(?,1,?,?)`, tid, wid, signed); e != nil {
@@ -444,3 +454,9 @@ var dhaka = func() *time.Location {
 }()
 
 func (s *Store) today() string { return s.now().In(dhaka).Format("2006-01-02") }
+
+// instantLayout is a fixed-width UTC layout, so stored instants sort correctly as strings.
+// RFC3339Nano trims trailing zeros and made "…00.12Z" sort after "…00.123Z".
+const instantLayout = "2006-01-02T15:04:05.000000000Z"
+
+func (s *Store) instant() string { return s.now().UTC().Format(instantLayout) }

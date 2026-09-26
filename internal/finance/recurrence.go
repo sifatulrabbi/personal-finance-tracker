@@ -47,7 +47,11 @@ type PaymentInput struct {
 // validateSchedule checks a new schedule (previous == nil) or an update to previous. An archived
 // wallet is accepted only when an update keeps the wallet and does not turn the schedule back on,
 // so a schedule on a closed account can still be edited or paused but never newly bills it.
-func validateSchedule(tx *sql.Tx, in ScheduleInput, active bool, previous *Schedule) error {
+// MaxScheduleBackfillDays bounds how far in the past a new schedule may start, which bounds the
+// due bills its first read can create (53 for a weekly schedule).
+const MaxScheduleBackfillDays = 366
+
+func validateSchedule(tx *sql.Tx, in ScheduleInput, active bool, previous *Schedule, earliest string) error {
 	if _, e := categoryID(tx, "expense", in.CategoryID); e != nil {
 		return e
 	}
@@ -62,6 +66,9 @@ func validateSchedule(tx *sql.Tx, in ScheduleInput, active bool, previous *Sched
 	}
 	if _, e := OccurrenceDate(in.StartDate, in.Frequency, 0); e != nil {
 		return invalid("start_date", "Enter a start date as YYYY-MM-DD.")
+	}
+	if previous == nil && in.StartDate < earliest {
+		return invalid("start_date", "Start the schedule no more than 366 days ago. Record older payments as expenses.")
 	}
 	if in.EndDate != "" && (!validDate(in.EndDate) || in.EndDate < in.StartDate) {
 		return invalid("end_date", "Enter an end date as YYYY-MM-DD, on or after the start date.")
@@ -86,7 +93,7 @@ func validateSchedule(tx *sql.Tx, in ScheduleInput, active bool, previous *Sched
 func (s *Store) CreateSchedule(ctx context.Context, actor, key string, in ScheduleInput) (Schedule, error) {
 	return write(ctx, s, actor, key, "schedule.create", in, func(tx *sql.Tx) (Schedule, error) {
 		out := Schedule{ScheduleInput: in, ID: id(), Version: 1, Active: true}
-		if e := validateSchedule(tx, in, true, nil); e != nil {
+		if e := validateSchedule(tx, in, true, nil, s.addDays(-MaxScheduleBackfillDays)); e != nil {
 			return out, e
 		}
 		out.Amount = FormatMoney(mustMoney(in.Amount))
@@ -280,7 +287,7 @@ func (s *Store) UpdateSchedule(ctx context.Context, actor, key string, in Schedu
 		if in.Frequency != old.Frequency {
 			return in, invalid("frequency", "A schedule's frequency cannot change.")
 		}
-		if e = validateSchedule(tx, in.ScheduleInput, in.Active, &old); e != nil {
+		if e = validateSchedule(tx, in.ScheduleInput, in.Active, &old, ""); e != nil {
 			return in, e
 		}
 		in.Amount = FormatMoney(mustMoney(in.Amount))

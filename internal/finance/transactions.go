@@ -118,30 +118,35 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 	} else if in.ReceivedAmount != "" {
 		return r, nil, invalid("received_amount", "Only transfers have a received amount.")
 	}
+	// A rate is required only when a value must be converted: a USD income or expense needs its BDT
+	// value, and a cross-currency transfer without a received amount derives it from the rate. Any
+	// other USD record snapshots the default rate when one is set, as a reference.
 	rate := int64(0)
-	needsRate := w.Currency == "USD" || to.Currency == "USD"
+	usesUSD := w.Currency == "USD" || to.Currency == "USD"
+	needsRate := (in.Kind != "transfer" && w.Currency == "USD") || (in.Kind == "transfer" && to.Currency != w.Currency && in.ReceivedAmount == "")
 	if in.Rate != "" {
 		rate, e = ParseRate(in.Rate)
 		if e != nil {
 			return r, nil, invalid("rate", "Enter a positive rate with at most six decimal places.")
 		}
-	} else if needsRate {
+	} else if usesUSD {
 		set, e := settings(tx)
 		if e != nil {
 			return r, nil, e
 		}
-		if set.Rate == "" {
+		if set.Rate != "" {
+			if rate, e = ParseRate(set.Rate); e != nil {
+				return r, nil, e
+			}
+		} else if needsRate {
 			return r, nil, ErrRateRequired
-		}
-		if rate, e = ParseRate(set.Rate); e != nil {
-			return r, nil, e
 		}
 	}
 	if rate > 0 {
 		r.Rate = FormatRate(rate)
 	}
 	bdt := amount
-	if w.Currency == "USD" {
+	if w.Currency == "USD" && rate > 0 {
 		bdt, e = Convert(amount, rate, "USD")
 		if e != nil {
 			return r, nil, invalid("amount", "This amount is larger than the supported limit at this rate.")
@@ -165,6 +170,13 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 			return r, nil, invalid("received_amount", "A transfer between wallets of the same currency must receive the amount sent.")
 		}
 		r.ReceivedAmount = FormatMoney(received)
+		// Without a rate, a USD transfer's BDT value is known only when BDT is received.
+		if w.Currency == "USD" && rate == 0 {
+			r.BDTAmount = ""
+			if to.Currency == "BDT" {
+				r.BDTAmount = r.ReceivedAmount
+			}
+		}
 		return r, []effect{{w.ledgerID(), -amount, "wallet_id"}, {to.ledgerID(), received, "to_wallet_id"}}, nil
 	}
 	delta := amount
@@ -244,7 +256,7 @@ func keepArchivedBalances(tx *sql.Tx, in TransactionInput, before, after []effec
 	return nil
 }
 func (s *Store) saveRevision(tx *sql.Tx, actor string, r Transaction, effects []effect) (Transaction, error) {
-	r.CreatedAt = s.now().UTC().Format(time.RFC3339Nano)
+	r.CreatedAt = s.instant()
 	if e := tx.QueryRow(`SELECT email FROM users WHERE id=?`, actor).Scan(&r.ActorEmail); e != nil {
 		return r, e
 	}
@@ -470,7 +482,7 @@ func (s *Store) Transactions(ctx context.Context, limit, offset int) ([]Transact
 	if e := validPage(limit, offset); e != nil {
 		return nil, e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT r.payload,t.id,r.version,u.email,r.created_at FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version JOIN users u ON u.id=r.actor_id ORDER BY json_extract(r.payload,'$.date') DESC,r.created_at DESC,t.id LIMIT ? OFFSET ?`, limit, offset)
+	rows, e := s.db.QueryContext(ctx, `SELECT r.payload,t.id,r.version,u.email,r.created_at FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version JOIN users u ON u.id=r.actor_id ORDER BY json_extract(r.payload,'$.date') DESC,r.created_at DESC,r.rowid DESC LIMIT ? OFFSET ?`, limit, offset)
 	if e != nil {
 		return nil, e
 	}
