@@ -213,7 +213,7 @@ func (s *Store) ConfirmBill(ctx context.Context, actor, key, bid string, in Paym
 			return out, e
 		}
 		if b.Status != "due" {
-			return out, ErrConflict
+			return out, ErrAlreadySettled
 		}
 		if in.WalletID == "" {
 			in.WalletID = b.WalletID
@@ -225,10 +225,10 @@ func (s *Store) ConfirmBill(ctx context.Context, actor, key, bid string, in Paym
 			}
 			actual, err := wallet(tx, in.WalletID)
 			if err != nil {
-				return out, err
+				return out, walletNotFound("wallet_id", err)
 			}
 			if expected.Currency != actual.Currency {
-				return out, ErrInvalid
+				return out, invalid("amount", "Enter the amount paid; the payment wallet uses a different currency from the bill.")
 			}
 			in.Amount = b.Amount
 		}
@@ -297,10 +297,10 @@ func (s *Store) SkipBill(ctx context.Context, actor, key, bid, reason string) (B
 			return b, e
 		}
 		if b.Status != "due" {
-			return b, ErrConflict
+			return b, ErrAlreadySettled
 		}
 		if strings.TrimSpace(reason) == "" || len(reason) > 500 {
-			return b, ErrInvalid
+			return b, invalid("reason", "Enter a reason of at most 500 bytes.")
 		}
 		old := b
 		b.Status = "skipped"

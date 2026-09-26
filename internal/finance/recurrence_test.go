@@ -121,7 +121,7 @@ func TestRecurringBillOnlyChangesBalanceOnManualConfirmation(t *testing.T) {
 	if e != nil || again.ID != r.ID {
 		t.Fatalf("retry %+v %v", again, e)
 	}
-	if _, e = s.ConfirmBill(ctx, u.ID, "double-pay", due[0].ID, finance.PaymentInput{Date: "2026-09-14"}); e != finance.ErrConflict {
+	if _, e = s.ConfirmBill(ctx, u.ID, "double-pay", due[0].ID, finance.PaymentInput{Date: "2026-09-14"}); !errors.Is(e, finance.ErrAlreadySettled) {
 		t.Fatalf("duplicate: %v", e)
 	}
 	due, e = s.Due(ctx)
@@ -142,7 +142,7 @@ func TestActualBillAmountAndVoidReopenTheDueItem(t *testing.T) {
 		t.Fatal(e)
 	}
 	due, _ := s.Due(ctx)
-	if _, e = s.ConfirmBill(ctx, u.ID, "zero", due[0].ID, finance.PaymentInput{Amount: "0", Date: "2026-09-14"}); e != finance.ErrInvalid {
+	if _, e = s.ConfirmBill(ctx, u.ID, "zero", due[0].ID, finance.PaymentInput{Amount: "0", Date: "2026-09-14"}); !errors.Is(e, finance.ErrInvalid) {
 		t.Fatalf("zero %v", e)
 	}
 	r, e := s.ConfirmBill(ctx, u.ID, "actual", due[0].ID, finance.PaymentInput{Amount: "1020", Date: "2026-09-14", Note: "Includes card charge"})
@@ -201,7 +201,7 @@ func TestBillCannotSilentlyReinterpretBDTAsUSD(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = s.ConfirmBill(ctx, u.ID, "wrong-currency", due[0].ID, finance.PaymentInput{WalletID: usd.ID, Date: "2026-09-14", Rate: "125"})
-	if err != finance.ErrInvalid {
+	if !errors.Is(err, finance.ErrInvalid) {
 		t.Fatalf("blank amount switched currencies: %v", err)
 	}
 	paid, err := s.ConfirmBill(ctx, u.ID, "actual-usd", due[0].ID, finance.PaymentInput{WalletID: usd.ID, Amount: "8", Date: "2026-09-14", Rate: "125"})

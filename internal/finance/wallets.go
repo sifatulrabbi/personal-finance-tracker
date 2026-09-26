@@ -19,14 +19,17 @@ func (s *Store) AdjustWallet(ctx context.Context, actor, key, wid string, versio
 			return r, e
 		}
 		if w.Version != version {
-			return r, ErrConflict
+			return r, ErrStaleVersion
 		}
-		if w.Archived || strings.TrimSpace(reason) == "" || len(reason) > 500 {
-			return r, ErrInvalid
+		if w.Archived {
+			return r, archived("", "This wallet is archived. Unarchive it before adjusting its balance.")
+		}
+		if strings.TrimSpace(reason) == "" || len(reason) > 500 {
+			return r, invalid("reason", "Enter a reason of at most 500 bytes.")
 		}
 		desired, e := ParseMoney(target)
 		if e != nil {
-			return r, e
+			return r, invalid("balance", "Enter a balance with at most two decimal places.")
 		}
 		if w.CardType == "credit" {
 			desired = -desired
@@ -36,8 +39,11 @@ func (s *Store) AdjustWallet(ctx context.Context, actor, key, wid string, versio
 			return r, e
 		}
 		delta := desired - current
-		if delta > MaxMoney || delta < -MaxMoney || delta == 0 {
-			return r, ErrInvalid
+		if delta == 0 {
+			return r, invalid("balance", "The wallet already has this balance.")
+		}
+		if delta > MaxMoney || delta < -MaxMoney {
+			return r, invalid("balance", "This adjustment is larger than the supported limit.")
 		}
 		r = Transaction{ID: id(), Version: 1, TransactionInput: TransactionInput{Kind: "adjustment", WalletID: wid, Amount: FormatMoney(delta), Date: s.today(), Reason: reason, Note: "Balance set to " + FormatMoney(mustMoney(target))}}
 		if _, e = tx.Exec(`INSERT INTO transactions(id,version) VALUES(?,1)`, r.ID); e != nil {
@@ -54,14 +60,22 @@ func (s *Store) UpdateWallet(ctx context.Context, actor, key string, in Wallet) 
 			return old, e
 		}
 		if old.Version != in.Version {
-			return old, ErrConflict
+			return old, ErrStaleVersion
 		}
-		if strings.TrimSpace(in.Name) == "" || len(in.Name) > 120 || len(in.Details) > 2000 || in.Type != old.Type || in.CardType != old.CardType || in.Currency != old.Currency {
-			return old, ErrInvalid
+		if e = validWalletText(in.Name, in.Details); e != nil {
+			return old, e
+		}
+		for _, f := range []struct{ field, got, want string }{{"type", in.Type, old.Type}, {"card_type", in.CardType, old.CardType}, {"currency", in.Currency, old.Currency}} {
+			if f.got != f.want {
+				return old, invalid(f.field, "A wallet's type, card type, and currency cannot change.")
+			}
 		}
 		limit, e := ParseMoney(in.CreditLimit)
-		if e != nil || limit < 0 || (old.CardType != "credit" && limit != 0) {
-			return old, ErrInvalid
+		if e != nil || limit < 0 {
+			return old, invalid("credit_limit", "Enter a credit limit of zero or more, with at most two decimal places.")
+		}
+		if old.CardType != "credit" && limit != 0 {
+			return old, invalid("credit_limit", "Only credit cards have a credit limit.")
 		}
 		if _, e = tx.Exec(`UPDATE wallets SET name=?,details=?,credit_limit=?,archived=?,version=version+1 WHERE id=?`, in.Name, in.Details, limit, in.Archived, in.ID); e != nil {
 			return old, e
@@ -85,8 +99,8 @@ type AuditEvent struct {
 }
 
 func (s *Store) Audit(ctx context.Context, limit, offset int) ([]AuditEvent, error) {
-	if limit < 1 || limit > 200 || offset < 0 {
-		return nil, ErrInvalid
+	if e := validPage(limit, offset); e != nil {
+		return nil, e
 	}
 	rows, e := s.db.QueryContext(ctx, `SELECT a.id,u.email,a.entity_id,a.action,a.before_json,a.after_json,a.created_at FROM audit_events a JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT ? OFFSET ?`, limit, offset)
 	if e != nil {

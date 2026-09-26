@@ -46,7 +46,7 @@ func TestWalletOpeningBalanceIsDurableAndRetrySafe(t *testing.T) {
 		t.Fatalf("retry: %+v %v", again, e)
 	}
 	in.Name = "Other"
-	if _, e = s.CreateWallet(ctx, u.ID, "open-cash", in); e != finance.ErrConflict {
+	if _, e = s.CreateWallet(ctx, u.ID, "open-cash", in); !errors.Is(e, finance.ErrIdempotencyKeyReused) {
 		t.Fatalf("key mismatch: %v", e)
 	}
 	if e = s.Close(); e != nil {
@@ -89,7 +89,7 @@ func TestIncomeExpenseAndCorrectionsPreserveHistory(t *testing.T) {
 	if e != nil || edited.Version != 2 {
 		t.Fatalf("edit: %+v %v", edited, e)
 	}
-	if _, e = s.ReviseTransaction(ctx, u.ID, "stale", record.ID, 1, input, false); e != finance.ErrConflict {
+	if _, e = s.ReviseTransaction(ctx, u.ID, "stale", record.ID, 1, input, false); !errors.Is(e, finance.ErrStaleVersion) {
 		t.Fatalf("stale edit: %v", e)
 	}
 	ws, e := s.Wallets(ctx)
@@ -191,6 +191,44 @@ func TestCorrectionsOnArchivedWalletsMustNotChangeTheirBalance(t *testing.T) {
 		t.Fatalf("void balance %s", b)
 	}
 }
+
+// Regression (C4, C16): opening payloads carry no version, so the stale check used to fire first
+// and report a retryable 409. Reconciliation records are refused as not correctable at any version.
+func TestOpeningAndAdjustmentRecordsAreNotCorrectable(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	w := createWallet(t, s, u, "cash", "BDT", "", "100")
+	adjustment, e := s.AdjustWallet(ctx, u.ID, "adjust", w.ID, w.Version, "80", "Counted cash")
+	if e != nil {
+		t.Fatal(e)
+	}
+	list, e := s.Transactions(ctx, 10, 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var opening finance.Transaction
+	for _, r := range list {
+		if r.Kind == "opening" {
+			opening = r
+		}
+	}
+	if opening.Version != 1 {
+		t.Fatalf("opening version: %+v", opening)
+	}
+	for _, r := range []finance.Transaction{opening, adjustment} {
+		for _, version := range []int{0, 1} {
+			if _, e = s.ReviseTransaction(ctx, u.ID, fmt.Sprint("edit-", r.ID, version), r.ID, version, finance.TransactionInput{Kind: r.Kind, WalletID: w.ID, Amount: "1", Date: "2026-09-14"}, false); !errors.Is(e, finance.ErrNotCorrectable) {
+				t.Errorf("correct %s v%d: %v", r.Kind, version, e)
+			}
+			if _, e = s.ReviseTransaction(ctx, u.ID, fmt.Sprint("void-", r.ID, version), r.ID, version, finance.TransactionInput{Reason: "Mistake"}, true); !errors.Is(e, finance.ErrNotCorrectable) {
+				t.Errorf("void %s v%d: %v", r.Kind, version, e)
+			}
+		}
+	}
+	if b := balances(t, s)[w.ID]; b != "80.00" {
+		t.Fatalf("balance %s", b)
+	}
+}
 func TestCreditPurchaseAndRepaymentAreNotDoubleCounted(t *testing.T) {
 	s := openStore(t)
 	u := user(t, s)
@@ -225,7 +263,7 @@ func TestRatesAreSnapshottedAndCrossCurrencyTransfersUseActualAmounts(t *testing
 	usd := createWallet(t, s, u, "USD", "USD", "", "100")
 	bdt := createWallet(t, s, u, "BDT", "BDT", "", "0")
 	input := finance.TransactionInput{Kind: "expense", WalletID: usd.ID, Amount: "1", Date: "2026-09-14"}
-	if _, e := s.CreateTransaction(ctx, u.ID, "no-rate", input); e != finance.ErrInvalid {
+	if _, e := s.CreateTransaction(ctx, u.ID, "no-rate", input); !errors.Is(e, finance.ErrRateRequired) {
 		t.Fatalf("missing rate: %v", e)
 	}
 	if _, e := s.SetRate(ctx, u.ID, "rate-1", "120", 1); e != nil {
@@ -269,7 +307,7 @@ func TestAdjustmentsAndArchivingUseCurrentWalletVersion(t *testing.T) {
 	if e != nil || adjusted.Amount != "-20.00" {
 		t.Fatalf("adjustment: %+v %v", adjusted, e)
 	}
-	if _, e = s.AdjustWallet(ctx, u.ID, "stale-adjust", w.ID, w.Version, "90", "Stale count"); e != finance.ErrConflict {
+	if _, e = s.AdjustWallet(ctx, u.ID, "stale-adjust", w.ID, w.Version, "90", "Stale count"); !errors.Is(e, finance.ErrStaleVersion) {
 		t.Fatalf("stale: %v", e)
 	}
 	ws, _ := s.Wallets(ctx)

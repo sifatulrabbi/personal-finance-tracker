@@ -1,6 +1,7 @@
 package finance_test
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -57,7 +58,7 @@ func TestFailedTransferRollsBackBothSidesAndCanRetry(t *testing.T) {
 	source := createWallet(t, s, u, "source", "BDT", "", "1000")
 	destination := createWallet(t, s, u, "destination", "BDT", "", finance.FormatMoney(finance.MaxMoney))
 	in := finance.TransactionInput{Kind: "transfer", WalletID: source.ID, ToWalletID: destination.ID, Amount: "1", Date: "2026-09-14"}
-	if _, err := s.CreateTransaction(ctx, u.ID, "transfer", in); err != finance.ErrInvalid {
+	if _, err := s.CreateTransaction(ctx, u.ID, "transfer", in); !errors.Is(err, finance.ErrInvalid) {
 		t.Fatalf("overflow: %v", err)
 	}
 	ws, err := s.Wallets(ctx)
@@ -96,7 +97,7 @@ func TestConcurrentCorrectionsRejectTheStaleVersion(t *testing.T) {
 		}(i)
 	}
 	one, two := <-results, <-results
-	if !((one == nil && two == finance.ErrConflict) || (two == nil && one == finance.ErrConflict)) {
+	if !((one == nil && errors.Is(two, finance.ErrStaleVersion)) || (two == nil && errors.Is(one, finance.ErrStaleVersion))) {
 		t.Fatalf("results: %v, %v", one, two)
 	}
 }

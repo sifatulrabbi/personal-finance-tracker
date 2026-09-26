@@ -36,6 +36,15 @@ type effect struct {
 	delta    int64
 }
 
+func validPage(limit, offset int) error {
+	if limit < 1 || limit > 200 {
+		return invalid("limit", "Use a limit from 1 to 200.")
+	}
+	if offset < 0 {
+		return invalid("offset", "Use an offset of zero or more.")
+	}
+	return nil
+}
 func validDate(date string) bool {
 	d, e := time.Parse("2006-01-02", date)
 	return e == nil && d.Year() >= 1900 && d.Year() <= 9999
@@ -60,16 +69,22 @@ func (s *Store) createTransaction(tx *sql.Tx, actor string, in TransactionInput)
 }
 func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect, error) {
 	r := Transaction{TransactionInput: in}
+	if in.Kind != "income" && in.Kind != "expense" && in.Kind != "transfer" {
+		return r, nil, invalid("kind", "Choose income, expense, or transfer.")
+	}
 	cid, err := categoryID(tx, in.Kind, in.CategoryID)
 	if err != nil {
 		return r, nil, err
 	}
 	r.CategoryID = cid
-	if !validDate(in.Date) || len(in.Note) > 2000 || len(in.Reason) > 500 {
-		return r, nil, ErrInvalid
+	if !validDate(in.Date) {
+		return r, nil, invalid("date", "Enter a date as YYYY-MM-DD.")
 	}
-	if in.Kind != "income" && in.Kind != "expense" && in.Kind != "transfer" {
-		return r, nil, ErrInvalid
+	if len(in.Note) > 2000 {
+		return r, nil, invalid("note", "Keep the note to at most 2,000 bytes.")
+	}
+	if len(in.Reason) > 500 {
+		return r, nil, invalid("reason", "Keep the reason to at most 500 bytes.")
 	}
 	w, e := wallet(tx, in.WalletID)
 	if e != nil {
@@ -77,30 +92,38 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 	}
 	amount, e := ParseMoney(in.Amount)
 	if e != nil || amount <= 0 {
-		return r, nil, ErrInvalid
+		return r, nil, invalid("amount", "Enter a positive amount with at most two decimal places.")
 	}
 	r.Amount = FormatMoney(amount)
-	rate := int64(0)
-	needsRate := w.Currency == "USD"
+	var to Wallet
 	if in.Kind == "transfer" {
-		to, e := wallet(tx, in.ToWalletID)
-		if e != nil {
-			return r, nil, e
+		if in.ToWalletID == w.ID {
+			return r, nil, invalid("to_wallet_id", "Choose a different wallet to transfer to.")
 		}
-		needsRate = needsRate || to.Currency == "USD"
+		if to, e = wallet(tx, in.ToWalletID); e != nil {
+			return r, nil, walletNotFound("to_wallet_id", e)
+		}
+	} else if in.ToWalletID != "" {
+		return r, nil, invalid("to_wallet_id", "Only transfers have a destination wallet.")
+	} else if in.ReceivedAmount != "" {
+		return r, nil, invalid("received_amount", "Only transfers have a received amount.")
 	}
+	rate := int64(0)
+	needsRate := w.Currency == "USD" || to.Currency == "USD"
 	if in.Rate != "" {
 		rate, e = ParseRate(in.Rate)
 		if e != nil {
-			return r, nil, e
+			return r, nil, invalid("rate", "Enter a positive rate with at most six decimal places.")
 		}
 	} else if needsRate {
 		set, e := settings(tx)
 		if e != nil {
 			return r, nil, e
 		}
-		rate, e = ParseRate(set.Rate)
-		if e != nil {
+		if set.Rate == "" {
+			return r, nil, ErrRateRequired
+		}
+		if rate, e = ParseRate(set.Rate); e != nil {
 			return r, nil, e
 		}
 	}
@@ -111,38 +134,28 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 	if w.Currency == "USD" {
 		bdt, e = Convert(amount, rate, "USD")
 		if e != nil {
-			return r, nil, e
+			return r, nil, invalid("amount", "This amount is larger than the supported limit at this rate.")
 		}
 	}
 	r.BDTAmount = FormatMoney(bdt)
 	if in.Kind == "transfer" {
-		if in.ToWalletID == w.ID {
-			return r, nil, ErrInvalid
-		}
-		to, e := wallet(tx, in.ToWalletID)
-		if e != nil {
-			return r, nil, walletNotFound("to_wallet_id", e)
-		}
 		received := amount
 		if in.ReceivedAmount != "" {
 			received, e = ParseMoney(in.ReceivedAmount)
 			if e != nil || received <= 0 {
-				return r, nil, ErrInvalid
+				return r, nil, invalid("received_amount", "Enter a positive received amount with at most two decimal places.")
 			}
 		} else if to.Currency != w.Currency {
 			received, e = Convert(amount, rate, w.Currency)
 			if e != nil || received <= 0 {
-				return r, nil, ErrInvalid
+				return r, nil, invalid("received_amount", "Enter the received amount; it cannot be derived from this amount and rate.")
 			}
 		}
 		if to.Currency == w.Currency && received != amount {
-			return r, nil, ErrInvalid
+			return r, nil, invalid("received_amount", "A transfer between wallets of the same currency must receive the amount sent.")
 		}
 		r.ReceivedAmount = FormatMoney(received)
 		return r, []effect{{w.ID, -amount}, {to.ID, received}}, nil
-	}
-	if in.ToWalletID != "" || in.ReceivedAmount != "" {
-		return r, nil, ErrInvalid
 	}
 	delta := amount
 	if in.Kind == "expense" {
@@ -150,6 +163,7 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 	}
 	return r, []effect{{w.ID, delta}}, nil
 }
+
 // keepArchivedBalances rejects a change whose net effect on any archived wallet is not zero. A new
 // record may not touch an archived wallet at all; a correction may keep one when that wallet's
 // balance stays the same (note, date, category, or a USD rate that only changes the BDT value).
@@ -204,7 +218,7 @@ func (s *Store) saveRevision(tx *sql.Tx, actor string, r Transaction, effects []
 			return r, e
 		}
 		if balance > MaxMoney || balance < -MaxMoney {
-			return r, ErrInvalid
+			return r, errBalanceLimit
 		}
 		if _, e = tx.Exec(`UPDATE wallets SET version=version+1 WHERE id=?`, ef.walletID); e != nil {
 			return r, e
@@ -212,6 +226,9 @@ func (s *Store) saveRevision(tx *sql.Tx, actor string, r Transaction, effects []
 	}
 	return r, nil
 }
+
+var errBalanceLimit = invalid("amount", "This would take a wallet balance beyond the supported limit.")
+
 func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, version int, in TransactionInput, void bool) (Transaction, error) {
 	request := struct {
 		ID      string
@@ -224,11 +241,21 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		if e != nil {
 			return old, e
 		}
-		if old.Version != version || old.Voided {
-			return old, ErrConflict
+		// Reconciliation records are final at every version, so this comes before the stale check.
+		if old.Kind == "opening" || old.Kind == "adjustment" {
+			return old, ErrNotCorrectable
 		}
-		if (void && strings.TrimSpace(in.Reason) == "") || len(in.Reason) > 500 || (old.Kind == "opening" || old.Kind == "adjustment") {
-			return old, ErrInvalid
+		if old.Version != version {
+			return old, ErrStaleVersion
+		}
+		if old.Voided {
+			return old, errVoided
+		}
+		if void && strings.TrimSpace(in.Reason) == "" {
+			return old, invalid("reason", "Enter a reason for voiding this record.")
+		}
+		if len(in.Reason) > 500 {
+			return old, invalid("reason", "Keep the reason to at most 500 bytes.")
 		}
 		previous, e := currentEntries(tx, tid, version)
 		if e != nil {
@@ -300,7 +327,7 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 				return r, e
 			}
 			if balance > MaxMoney || balance < -MaxMoney {
-				return r, ErrInvalid
+				return r, errBalanceLimit
 			}
 		}
 		if void {
@@ -320,6 +347,7 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		return r, nil
 	})
 }
+
 type entry struct {
 	id int64
 	effect
@@ -345,7 +373,9 @@ func currentEntries(tx *sql.Tx, tid string, version int) ([]entry, error) {
 func transaction(q querier, tid string) (Transaction, error) {
 	var r Transaction
 	var body string
-	e := q.QueryRow(`SELECT r.payload FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version WHERE t.id=?`, tid).Scan(&body)
+	var version int
+	var voided bool
+	e := q.QueryRow(`SELECT r.payload,t.version,t.voided FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version WHERE t.id=?`, tid).Scan(&body, &version, &voided)
 	if errors.Is(e, sql.ErrNoRows) {
 		return r, ErrNotFound
 	}
@@ -354,6 +384,8 @@ func transaction(q querier, tid string) (Transaction, error) {
 	}
 	e = json.Unmarshal([]byte(body), &r)
 	defaultCategory(&r)
+	// The row, not the payload, is authoritative: opening payloads were stored without a version.
+	r.ID, r.Version, r.Voided = tid, version, voided
 	return r, e
 }
 func (s *Store) History(ctx context.Context, tid string) ([]Transaction, error) {
@@ -386,8 +418,8 @@ func (s *Store) History(ctx context.Context, tid string) ([]Transaction, error) 
 	return out, rows.Err()
 }
 func (s *Store) Transactions(ctx context.Context, limit, offset int) ([]Transaction, error) {
-	if limit < 1 || limit > 200 || offset < 0 {
-		return nil, ErrInvalid
+	if e := validPage(limit, offset); e != nil {
+		return nil, e
 	}
 	rows, e := s.db.QueryContext(ctx, `SELECT r.payload,t.id,r.version,u.email,r.created_at FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version JOIN users u ON u.id=r.actor_id ORDER BY json_extract(r.payload,'$.date') DESC,r.created_at DESC,t.id LIMIT ? OFFSET ?`, limit, offset)
 	if e != nil {

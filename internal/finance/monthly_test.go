@@ -1,6 +1,7 @@
 package finance_test
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"simply-finance/internal/finance"
@@ -118,7 +119,7 @@ func TestMonthlyTargetsAreCopiedOnceAndVersioned(t *testing.T) {
 	if e != nil || next.Target.Amount != "40000.00" {
 		t.Fatalf("copy: %+v %v", next, e)
 	}
-	if _, e = s.SetMonthlyTarget(ctx, u.ID, "stale", "2026-09", "50000", first.Target.Version); e != finance.ErrConflict {
+	if _, e = s.SetMonthlyTarget(ctx, u.ID, "stale", "2026-09", "50000", first.Target.Version); !errors.Is(e, finance.ErrStaleVersion) {
 		t.Fatalf("stale: %v", e)
 	}
 	if _, e = s.SetMonthlyTarget(ctx, u.ID, "change", "2026-09", "50000", target.Version); e != nil {
@@ -128,7 +129,7 @@ func TestMonthlyTargetsAreCopiedOnceAndVersioned(t *testing.T) {
 	if e != nil || next.Target.Amount != "40000.00" {
 		t.Fatalf("independence: %+v %v", next, e)
 	}
-	if _, e = s.Monthly(ctx, "2026-13"); e != finance.ErrInvalid {
+	if _, e = s.Monthly(ctx, "2026-13"); !errors.Is(e, finance.ErrInvalid) {
 		t.Fatalf("month: %v", e)
 	}
 }

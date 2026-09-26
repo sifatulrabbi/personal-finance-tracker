@@ -32,11 +32,11 @@ func (s *Store) SetRate(ctx context.Context, actor, key, rate string, version in
 			return old, e
 		}
 		if old.Version != version {
-			return old, ErrConflict
+			return old, ErrStaleVersion
 		}
 		n, e := ParseRate(rate)
 		if e != nil {
-			return old, e
+			return old, invalid("rate", "Enter a positive rate with at most six decimal places.")
 		}
 		if _, e = tx.Exec(`UPDATE settings SET rate=?,version=version+1 WHERE id=1`, n); e != nil {
 			return old, e

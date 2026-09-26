@@ -1,6 +1,7 @@
 package finance_test
 
 import (
+	"errors"
 	"fmt"
 	"simply-finance/internal/finance"
 	"sync"
@@ -26,7 +27,7 @@ func TestConcurrentCategoryCreationKeepsOneExactName(t *testing.T) {
 	for e := range results {
 		if e == nil {
 			successes++
-		} else if e != finance.ErrConflict {
+		} else if !errors.Is(e, finance.ErrDuplicateName) {
 			t.Fatal(e)
 		}
 	}
@@ -38,7 +39,7 @@ func TestConcurrentCategoryCreationKeepsOneExactName(t *testing.T) {
 		t.Fatalf("separate type: %+v %v", c, e)
 	}
 	for i, name := range []string{"", "   "} {
-		if _, e = s.CreateCategory(ctx, u.ID, fmt.Sprint("invalid-", i), finance.CategoryInput{Name: name, Type: "expense"}); e != finance.ErrInvalid {
+		if _, e = s.CreateCategory(ctx, u.ID, fmt.Sprint("invalid-", i), finance.CategoryInput{Name: name, Type: "expense"}); !errors.Is(e, finance.ErrInvalid) {
 			t.Fatalf("empty name: %v", e)
 		}
 	}
@@ -125,7 +126,7 @@ func TestCategoriesKeepNamesAndEnforceTransactionType(t *testing.T) {
 		t.Fatalf("category: %+v %v", r, e)
 	}
 	in.Kind = "income"
-	if _, e = s.CreateTransaction(ctx, u.ID, "wrong-type", in); e != finance.ErrInvalid {
+	if _, e = s.CreateTransaction(ctx, u.ID, "wrong-type", in); !errors.Is(e, finance.ErrInvalid) {
 		t.Fatalf("wrong type: %v", e)
 	}
 	in.CategoryID = ""
@@ -135,7 +136,7 @@ func TestCategoriesKeepNamesAndEnforceTransactionType(t *testing.T) {
 	}
 	in.Kind = "transfer"
 	in.CategoryID = c.ID
-	if _, e = s.CreateTransaction(ctx, u.ID, "transfer", in); e != finance.ErrInvalid {
+	if _, e = s.CreateTransaction(ctx, u.ID, "transfer", in); !errors.Is(e, finance.ErrInvalid) {
 		t.Fatalf("transfer: %v", e)
 	}
 }

@@ -59,6 +59,8 @@ var (
 	ErrDuplicateName        = &Error{Code: CodeDuplicateName, Message: "A category with this name and type already exists.", Field: "name"}
 )
 
+var errVoided = &Error{Code: CodeAlreadySettled, Message: "This record was voided and can no longer change."}
+
 func invalid(field, message string) error {
 	return &Error{Code: CodeValidationFailed, Message: message, Field: field}
 }

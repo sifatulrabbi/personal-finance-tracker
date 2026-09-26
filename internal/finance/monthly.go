@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"time"
 )
@@ -26,6 +27,9 @@ type MonthlySpending struct {
 }
 
 func validMonth(month string) bool { return len(month) == 7 && validDate(month+"-01") }
+
+var errMonth = invalid("month", "Enter a month as YYYY-MM.")
+
 func monthlyTarget(tx *sql.Tx, month string) (MonthlyTarget, error) {
 	var out MonthlyTarget
 	date, _ := time.Parse("2006-01", month)
@@ -46,18 +50,18 @@ func (s *Store) SetMonthlyTarget(ctx context.Context, actor, key, month, amount 
 		Version       int
 	}{month, amount, version}, func(tx *sql.Tx) (MonthlyTarget, error) {
 		if !validMonth(month) {
-			return MonthlyTarget{}, ErrInvalid
+			return MonthlyTarget{}, errMonth
 		}
 		n, e := ParseMoney(amount)
 		if e != nil || n < 0 {
-			return MonthlyTarget{}, ErrInvalid
+			return MonthlyTarget{}, invalid("amount", "Enter a target of zero or more, with at most two decimal places.")
 		}
 		old, e := monthlyTarget(tx, month)
 		if e != nil {
 			return old, e
 		}
 		if old.Version != version {
-			return old, ErrConflict
+			return old, ErrStaleVersion
 		}
 		if _, e = tx.Exec(`UPDATE monthly_targets SET amount=?,version=version+1 WHERE month=?`, n, month); e != nil {
 			return old, e
@@ -77,7 +81,7 @@ func (s *Store) Monthly(ctx context.Context, month string) (MonthlySpending, err
 	}
 	out := MonthlySpending{Month: month, Categories: []CategorySpending{}}
 	if !validMonth(month) {
-		return out, ErrInvalid
+		return out, errMonth
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -132,7 +136,7 @@ func (s *Store) Monthly(ctx context.Context, month string) (MonthlySpending, err
 		a, ok := amounts[r.CategoryID]
 		if !ok {
 			rows.Close()
-			return out, ErrInvalid
+			return out, fmt.Errorf("monthly: expense %s has unknown category", r.ID)
 		}
 		a.Add(a, big.NewInt(n))
 		total.Add(total, big.NewInt(n))
