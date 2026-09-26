@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Plus, Pencil, SlidersHorizontal } from "lucide-react";
-import { type Wallet, moneyLabel } from "@/lib/api";
+import type { CardType, Currency, Wallet, WalletType } from "@/api/types";
+import { useWallets } from "@/cache/queries";
+import { useWrites } from "@/cache/writes";
+import { moneyLabel } from "@/money/format";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,43 +14,46 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Choice,
   MoneyField,
   SaveForm,
   TextField,
   Notes,
-  value,
 } from "@/components/forms";
-import { Modal, NoRecords } from "@/components/layout";
+import {
+  LoadError,
+  Modal,
+  NoRecords,
+  PageHeading,
+  useEditor,
+} from "@/components/layout";
 
-const types = [
+const types: { value: WalletType; label: string }[] = [
   { value: "physical", label: "Physical cash" },
   { value: "bank", label: "Bank account" },
   { value: "digital", label: "Digital wallet" },
   { value: "card", label: "Card" },
 ];
-export function Wallets({
-  wallets,
-  onSaved,
-}: {
-  wallets: Wallet[];
-  onSaved: () => void;
-}) {
-  const [editor, setEditor] = useState<{
-    mode: "create" | "edit" | "adjust";
-    wallet?: Wallet;
-  } | null>(null);
+
+type Editor = { mode: "create" } | { mode: "edit" | "adjust"; id: string };
+
+export function Wallets() {
+  const query = useWallets();
+  const wallets = query.data ?? [];
+  const editor = useEditor<Editor>();
   const [showArchived, setShowArchived] = useState(false);
-  const saved = () => {
-    setEditor(null);
-    onSaved();
-  };
+  // Read the wallet being edited from the cache so it is never a stale snapshot.
+  const current =
+    editor.value && editor.value.mode !== "create"
+      ? wallets.find((w) => w.id === (editor.value as { id: string }).id)
+      : undefined;
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold">Your wallets</h2>
-        <Button size="sm" onClick={() => setEditor({ mode: "create" })}>
+        <PageHeading>Your wallets</PageHeading>
+        <Button size="sm" onClick={(e) => editor.open({ mode: "create" }, e)}>
           <Plus data-icon="inline-start" />
           Add wallet
         </Button>
@@ -55,7 +61,14 @@ export function Wallets({
       <p className="text-sm text-muted-foreground">
         Cash you hold and credit you owe, kept separate.
       </p>
-      {!wallets.length ? (
+      <LoadError
+        error={query.error}
+        hasData={Boolean(query.data)}
+        onRetry={() => void query.refetch()}
+        what="wallets"
+      />
+      {query.isPending ? <Skeleton className="h-40 w-full" /> : null}
+      {query.data && !wallets.length ? (
         <NoRecords
           title="Start with a wallet"
           description="Add your cash, bank account, bKash, or card with its current balance."
@@ -79,14 +92,18 @@ export function Wallets({
                 {wallet.archived ? " · Archived" : ""}
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              <p className="break-all text-3xl font-semibold tracking-tight tabular-nums">
+            <CardContent className="@container flex flex-col gap-2">
+              {/* Never break inside a number: the size shrinks with the card instead. */}
+              <p
+                data-testid="wallet-balance"
+                className="text-[min(1.875rem,9cqi)] font-semibold tracking-tight whitespace-nowrap tabular-nums"
+              >
                 {moneyLabel(wallet.debt ?? wallet.balance, wallet.currency)}
               </p>
               {wallet.card_type === "credit" ? (
                 <p className="text-sm text-muted-foreground">
                   Available{" "}
-                  {moneyLabel(wallet.available_credit!, wallet.currency)} ·
+                  {moneyLabel(wallet.available_credit ?? "0.00", wallet.currency)} ·
                   Limit {moneyLabel(wallet.credit_limit, wallet.currency)}
                 </p>
               ) : null}
@@ -100,7 +117,7 @@ export function Wallets({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setEditor({ mode: "edit", wallet })}
+                onClick={(e) => editor.open({ mode: "edit", id: wallet.id }, e)}
               >
                 <Pencil data-icon="inline-start" />
                 Edit wallet
@@ -109,7 +126,7 @@ export function Wallets({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setEditor({ mode: "adjust", wallet })}
+                  onClick={(e) => editor.open({ mode: "adjust", id: wallet.id }, e)}
                 >
                   <SlidersHorizontal data-icon="inline-start" />
                   Adjust {wallet.card_type === "credit" ? "debt" : "balance"}
@@ -123,78 +140,92 @@ export function Wallets({
           {showArchived ? "Hide" : "Show"} archived wallets
         </Button>
       ) : null}
-      {editor?.mode === "create" ? (
-        <Modal
-          title="Add wallet"
-          description="Start with what you have today. No bank connection needed."
-          onClose={() => setEditor(null)}
-        >
-          <CreateWallet onSaved={saved} />
-        </Modal>
-      ) : null}
-      {editor?.mode === "edit" && editor.wallet ? (
-        <Modal
-          title="Edit wallet"
-          description="Use adjustments to change the balance. Currency and wallet type stay fixed."
-          onClose={() => setEditor(null)}
-        >
-          <EditWallet wallet={editor.wallet} onSaved={saved} />
-        </Modal>
-      ) : null}
-      {editor?.mode === "adjust" && editor.wallet ? (
-        <Modal
-          title={
-            editor.wallet.card_type === "credit"
-              ? "Adjust debt"
-              : "Adjust balance"
-          }
-          description="The difference is recorded with your reason. History stays intact."
-          onClose={() => setEditor(null)}
-        >
-          <SaveForm
-            path={`/wallets/${editor.wallet.id}/adjust`}
-            onSaved={saved}
-            label="Record adjustment"
-            body={(form) => ({
-              version: editor.wallet!.version,
-              balance: value(form, "balance"),
-              reason: value(form, "reason"),
-            })}
-          >
-            <MoneyField
-              label={
-                editor.wallet.card_type === "credit"
-                  ? "Actual debt owed"
-                  : "Actual balance"
-              }
-              name="balance"
-              min={undefined}
-              defaultValue={editor.wallet.debt ?? editor.wallet.balance}
-            />
-            <Notes label="Reason" name="reason" required />
-          </SaveForm>
-        </Modal>
-      ) : null}
+      <Modal
+        open={editor.isOpen}
+        onClose={editor.close}
+        returnFocus={editor.trigger}
+        {...modalText(editor.value, current)}
+      >
+        {editor.value?.mode === "create" ? (
+          <CreateWallet onSaved={editor.close} />
+        ) : null}
+        {editor.value?.mode === "edit" && current ? (
+          <EditWallet key={current.id} wallet={current} onSaved={editor.close} />
+        ) : null}
+        {editor.value?.mode === "adjust" && current ? (
+          <AdjustWallet key={current.id} wallet={current} onSaved={editor.close} />
+        ) : null}
+      </Modal>
     </section>
   );
 }
-function CreateWallet({ onSaved }: { onSaved: () => void }) {
-  const [type, setType] = useState("physical");
-  const [cardType, setCardType] = useState("debit");
+
+function modalText(editor: Editor | undefined, wallet: Wallet | undefined) {
+  if (editor?.mode === "edit")
+    return {
+      title: "Edit wallet",
+      description:
+        "Use adjustments to change the balance. Currency and wallet type stay fixed.",
+    };
+  if (editor?.mode === "adjust")
+    return {
+      title: wallet?.card_type === "credit" ? "Adjust debt" : "Adjust balance",
+      description:
+        "The difference is recorded with your reason. History stays intact.",
+    };
+  return {
+    title: "Add wallet",
+    description: "Start with what you have today. No bank connection needed.",
+  };
+}
+
+function AdjustWallet(props: { wallet: Wallet; onSaved: () => void }) {
+  const writes = useWrites();
+  // Snapshot at open: a background refetch must not swap in a newer version, or a
+  // concurrent change would be overwritten instead of reported as a conflict.
+  const [wallet] = useState(props.wallet);
+  const { onSaved } = props;
   return (
     <SaveForm
-      path="/wallets"
+      onSaved={onSaved}
+      label="Record adjustment"
+      body={(form) => ({
+        version: wallet.version,
+        balance: form.decimal("balance"),
+        reason: form.text("reason"),
+      })}
+      send={(body, key) => writes.adjustWallet(wallet.id, body, { key })}
+    >
+      <MoneyField
+        label={wallet.card_type === "credit" ? "Actual debt owed" : "Actual balance"}
+        name="balance"
+        allowNegative
+        defaultValue={wallet.debt ?? wallet.balance}
+      />
+      <Notes label="Reason" name="reason" required />
+    </SaveForm>
+  );
+}
+
+function CreateWallet({ onSaved }: { onSaved: () => void }) {
+  const writes = useWrites();
+  const [type, setType] = useState<WalletType>("physical");
+  const [cardType, setCardType] = useState<"debit" | "credit">("debit");
+  const credit = type === "card" && cardType === "credit";
+  return (
+    <SaveForm
       onSaved={onSaved}
       label="Create wallet"
       body={(form) => ({
-        name: value(form, "name"),
+        name: form.text("name"),
         type,
-        card_type: type === "card" ? cardType : "",
-        currency: value(form, "currency"),
-        opening_balance: value(form, "opening_balance"),
-        credit_limit: value(form, "credit_limit"),
-        details: value(form, "details"),
+        card_type: (type === "card" ? cardType : "") as CardType,
+        currency: form.text("currency") as Currency,
+        opening_balance: form.decimal("opening_balance"),
+        credit_limit: credit ? form.decimal("credit_limit") : "",
+        details: form.text("details"),
       })}
+      send={(body, key) => writes.createWallet(body, { key })}
     >
       <TextField
         label="Wallet name"
@@ -207,7 +238,7 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
         label="Wallet type"
         name="type"
         value={type}
-        onChange={setType}
+        onChange={(value) => setType(value as WalletType)}
         options={types}
       />
       {type === "card" ? (
@@ -215,7 +246,7 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
           label="Card type"
           name="card_type"
           value={cardType}
-          onChange={setCardType}
+          onChange={(value) => setCardType(value as "debit" | "credit")}
           options={[
             { value: "debit", label: "Debit / prepaid" },
             { value: "credit", label: "Credit" },
@@ -232,22 +263,13 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
         ]}
       />
       <MoneyField
-        label={
-          type === "card" && cardType === "credit"
-            ? "Opening debt"
-            : "Opening balance"
-        }
+        label={credit ? "Opening debt" : "Opening balance"}
         name="opening_balance"
-        min={undefined}
+        allowNegative
         defaultValue="0"
       />
-      {type === "card" && cardType === "credit" ? (
-        <MoneyField
-          label="Credit limit"
-          name="credit_limit"
-          min="0"
-          defaultValue="0"
-        />
+      {credit ? (
+        <MoneyField label="Credit limit" name="credit_limit" defaultValue="0" />
       ) : null}
       {type === "card" && cardType === "debit" ? (
         <p className="text-sm text-muted-foreground">
@@ -259,27 +281,31 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
     </SaveForm>
   );
 }
-function EditWallet({
-  wallet,
-  onSaved,
-}: {
-  wallet: Wallet;
-  onSaved: () => void;
-}) {
+
+function EditWallet(props: { wallet: Wallet; onSaved: () => void }) {
+  const writes = useWrites();
+  // Snapshot at open so the stale-edit check compares against what the user saw.
+  const [wallet] = useState(props.wallet);
+  const { onSaved } = props;
   return (
     <SaveForm
-      path={`/wallets/${wallet.id}`}
-      method="PUT"
       onSaved={onSaved}
       label="Save wallet"
+      // An explicit input shape: response-only fields such as balance and debt are never
+      // echoed back, so a new computed field on the server cannot break wallet edits.
       body={(form) => ({
-        ...wallet,
-        name: value(form, "name"),
-        details: value(form, "details"),
+        id: wallet.id,
+        name: form.text("name"),
+        type: wallet.type,
+        card_type: wallet.card_type,
+        currency: wallet.currency,
+        details: form.text("details"),
         credit_limit:
-          wallet.card_type === "credit" ? value(form, "credit_limit") : "0.00",
-        archived: value(form, "status") === "archived",
+          wallet.card_type === "credit" ? form.decimal("credit_limit") : "0.00",
+        archived: form.text("status") === "archived",
+        version: wallet.version,
       })}
+      send={(body, key) => writes.updateWallet(body, { key })}
     >
       <TextField
         label="Wallet name"
@@ -292,7 +318,6 @@ function EditWallet({
         <MoneyField
           label="Credit limit"
           name="credit_limit"
-          min="0"
           defaultValue={wallet.credit_limit}
         />
       ) : null}

@@ -1,40 +1,23 @@
-import { useEffect, useState } from "react";
-import { api, dhakaDate, moneyLabel, type MonthlySpending } from "@/lib/api";
-import {
-  ErrorMessage,
-  MoneyField,
-  SaveForm,
-  TextField,
-  value,
-} from "@/components/forms";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { useMonthly } from "@/cache/queries";
+import { useWrites } from "@/cache/writes";
+import { dhakaDate } from "@/lib/dates";
+import { moneyLabel } from "@/money/format";
+import { MoneyField, SaveForm, TextField } from "@/components/forms";
+import { LoadError, PageHeading } from "@/components/layout";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export function Monthly({ refreshToken }: { refreshToken: unknown }) {
+export function Monthly() {
+  const writes = useWrites();
   const [month, setMonth] = useState(dhakaDate().slice(0, 7));
-  const [data, setData] = useState<MonthlySpending | null>(null);
-  const [error, setError] = useState("");
-  const [revision, setRevision] = useState(0);
   const [saved, setSaved] = useState(false);
-  useEffect(() => {
-    let active = true;
-    setData(null);
-    setError("");
-    if (!/^\d{4}-\d{2}$/.test(month)) return;
-    api<MonthlySpending>(`/monthly?month=${encodeURIComponent(month)}`)
-      .then((result) => {
-        if (active) setData(result);
-      })
-      .catch(() => {
-        if (active) setError("Could not load this month. Please retry.");
-      });
-    return () => {
-      active = false;
-    };
-  }, [month, revision, refreshToken]);
+  const query = useMonthly(month);
+  // While another month loads, the previous month stays on screen (never a blank page).
+  const data = query.data;
+  const validMonth = /^\d{4}-\d{2}$/.test(month);
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-xl font-semibold">Monthly spending</h2>
+      <PageHeading>Monthly spending</PageHeading>
       <TextField
         label="Month"
         name="month"
@@ -47,47 +30,57 @@ export function Monthly({ refreshToken }: { refreshToken: unknown }) {
           setSaved(false);
         }}
       />
-      <ErrorMessage error={error} />
-      {error && (
-        <Button variant="outline" onClick={() => setRevision((v) => v + 1)}>
-          Retry
-        </Button>
-      )}
-      {!data && !error && month ? <Skeleton className="h-40 w-full" /> : null}
+      {!validMonth ? (
+        <p role="alert" className="text-sm text-destructive">
+          Enter a month as YYYY-MM.
+        </p>
+      ) : null}
+      <LoadError
+        error={query.error}
+        hasData={Boolean(data)}
+        onRetry={() => void query.refetch()}
+        what="this month"
+      />
+      {!data && query.isPending && validMonth ? (
+        <Skeleton data-testid="monthly-skeleton" className="h-40 w-full" />
+      ) : null}
       {data && (
-        <>
+        <div
+          data-testid="monthly-content"
+          aria-busy={query.isPlaceholderData}
+          className="flex flex-col gap-4"
+        >
           <p className="text-sm text-muted-foreground">
             Actual expenses in BDT · Asia/Dhaka
           </p>
           <p
             data-testid="monthly-total"
-            className="text-2xl font-semibold tabular-nums"
+            className="text-2xl font-semibold whitespace-nowrap tabular-nums"
           >
             {moneyLabel(data.spent, "BDT")}
           </p>
+          {/* Keyed by month only, so a save or a background refresh never remounts the
+              form and drops focus. The version is read at submit time. */}
           <SaveForm
-            key={`${data.month}-${data.target.version}`}
-            path={`/monthly/${data.month}/target`}
-            method="PUT"
+            key={data.month}
             label="Save target"
-            onSaved={() => {
-              setSaved(true);
-              setRevision((v) => v + 1);
-            }}
+            disabled={query.isPlaceholderData}
+            onSaved={() => setSaved(true)}
             body={(form) => ({
-              amount: value(form, "target"),
+              amount: form.decimal("target"),
               version: data.target.version,
             })}
+            send={(body, key) => writes.setMonthlyTarget(data.month, body, { key })}
           >
             <MoneyField
               label="Monthly target (BDT)"
               name="target"
-              min="0"
               defaultValue={data.target.amount}
               onChange={() => setSaved(false)}
               placeholder="No target set"
             />
           </SaveForm>
+          {/* Loaded data stays on screen during refetches, so this never flickers. */}
           {saved && <p role="status">Target saved.</p>}
           <p className="text-sm text-muted-foreground">
             Each share is a percentage of actual spending, not the target. USD
@@ -105,7 +98,7 @@ export function Monthly({ refreshToken }: { refreshToken: unknown }) {
                 <dt className="min-w-0 whitespace-pre-wrap break-words font-medium">
                   {category.name}
                 </dt>
-                <dd className="max-w-40 break-words text-right font-medium tabular-nums">
+                <dd className="text-right font-medium whitespace-nowrap tabular-nums">
                   {moneyLabel(category.spent, "BDT")}
                 </dd>
                 <dd className="col-span-2 text-sm text-muted-foreground">
@@ -144,7 +137,7 @@ export function Monthly({ refreshToken }: { refreshToken: unknown }) {
                     >
                       {category.name}
                     </th>
-                    <td className="break-words py-3 text-right tabular-nums">
+                    <td className="py-3 text-right whitespace-nowrap tabular-nums">
                       {moneyLabel(category.spent, "BDT")}
                     </td>
                     <td className="py-3 text-right tabular-nums">
@@ -160,7 +153,7 @@ export function Monthly({ refreshToken }: { refreshToken: unknown }) {
               No expenses recorded this month.
             </p>
           )}
-        </>
+        </div>
       )}
     </div>
   );
