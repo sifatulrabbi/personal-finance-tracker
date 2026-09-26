@@ -74,7 +74,8 @@ func serve(path string) error {
 	defer stop()
 	done := make(chan error, 1)
 	go func() { done <- server.ListenAndServe() }()
-	slog.Info("server starting", "address", server.Addr)
+	// Logged so a deployment behind a proxy can see whether login throttling knows the real client.
+	slog.Info("server starting", "address", server.Addr, "trusted_proxies", len(proxies))
 	select {
 	case err := <-done:
 		return err
