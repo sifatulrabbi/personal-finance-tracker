@@ -8,7 +8,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
-	"simply-finance/internal/httpapi"
+	"simply-finance/internal/auth"
 	"simply-finance/internal/ledger"
 	"testing"
 	"time"
@@ -16,13 +16,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func credentials(t *testing.T) []httpapi.Credential {
+func credentials(t *testing.T) []auth.Credential {
 	t.Helper()
 	h, e := bcrypt.GenerateFromPassword([]byte("correct horse battery"), 10)
 	if e != nil {
 		t.Fatal(e)
 	}
-	return []httpapi.Credential{{Email: "sifatul@example.test", PasswordHash: string(h), Name: "Sifatul"}, {Email: "wife@example.test", PasswordHash: string(h), Name: "Wife"}}
+	return []auth.Credential{{Email: "sifatul@example.test", PasswordHash: string(h), Name: "Sifatul"}, {Email: "wife@example.test", PasswordHash: string(h), Name: "Wife"}}
 }
 func request(t *testing.T, c *http.Client, method, url string, body any, key string) (int, []byte) {
 	t.Helper()
@@ -56,7 +56,7 @@ func TestAuthenticatedHouseholdHTTPWorkflow(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
-	h, e := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true})
+	h, e := newHandler(s, testConfig{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -117,8 +117,8 @@ func TestSessionRevocationAndRequestGuards(t *testing.T) {
 	}
 	defer s.Close()
 	users := credentials(t)
-	config := httpapi.Config{Users: users, Origin: "https://finance.example.test"}
-	handler, e := httpapi.New(s.Service, s.Store, config)
+	config := testConfig{Users: users, Origin: "https://finance.example.test"}
+	handler, e := newHandler(s, config)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -162,13 +162,13 @@ func TestSessionRevocationAndRequestGuards(t *testing.T) {
 		}
 	}
 	config.Users = users[1:]
-	removed, e := httpapi.New(s.Service, s.Store, config)
+	removed, e := newHandler(s, config)
 	if e != nil {
 		t.Fatal(e)
 	}
 	check(removed, 401)
 	config.Users = users
-	restored, e := httpapi.New(s.Service, s.Store, config)
+	restored, e := newHandler(s, config)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -182,7 +182,7 @@ func TestHTTPRatesDebtAndRecurringPaymentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	h, err := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: now})
+	h, err := newHandler(s, testConfig{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: now})
 	if err != nil {
 		t.Fatal(err)
 	}

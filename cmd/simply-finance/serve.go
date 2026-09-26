@@ -14,6 +14,7 @@ import (
 	_ "time/tzdata" // The image has no zoneinfo; the household time zone is embedded.
 
 	"simply-finance/internal/app"
+	"simply-finance/internal/auth"
 	"simply-finance/internal/httpapi"
 	"simply-finance/internal/ledger"
 	"simply-finance/internal/sqlite"
@@ -23,7 +24,7 @@ import (
 const householdTimezone = "Asia/Dhaka"
 
 func serve(path string) error {
-	var users []httpapi.Credential
+	var users []auth.Credential
 	if err := json.Unmarshal([]byte(os.Getenv("AUTH_USERS_JSON")), &users); err != nil {
 		return errors.New("AUTH_USERS_JSON must be a JSON array of emails and password_hash values")
 	}
@@ -44,11 +45,18 @@ func serve(path string) error {
 	if err != nil {
 		return err
 	}
-	handler, err := httpapi.New(finance, store, httpapi.Config{
-		Users: users, Origin: env("APP_ORIGIN", "http://localhost:47831"),
-		InsecureCookies: os.Getenv("ALLOW_INSECURE_COOKIES") == "true",
-		TrustedProxies:  proxies,
-	})
+	handler, err := func() (http.Handler, error) {
+		// Starting auth signs out sessions whose ENV credential was removed or changed.
+		sessions, err := auth.New(context.Background(), store, auth.Config{Users: users, Now: time.Now})
+		if err != nil {
+			return nil, err
+		}
+		return httpapi.New(httpapi.Deps{Finance: finance, Auth: sessions, Ready: store.Health}, httpapi.Config{
+			Origin:          env("APP_ORIGIN", "http://localhost:47831"),
+			InsecureCookies: os.Getenv("ALLOW_INSECURE_COOKIES") == "true",
+			TrustedProxies:  proxies,
+		})
+	}()
 	if err != nil {
 		if errors.Is(err, ledger.ErrInvalid) {
 			return errors.New("invalid authentication or origin configuration; HTTP requires ALLOW_INSECURE_COOKIES=true and HTTPS requires false")

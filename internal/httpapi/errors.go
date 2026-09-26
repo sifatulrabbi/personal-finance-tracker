@@ -38,7 +38,6 @@ var statusByCode = map[string]int{
 
 var (
 	errInvalidRequest   = &ledger.Error{Code: ledger.CodeValidationFailed, Message: "The request is invalid."}
-	errLoginFailed      = &ledger.Error{Code: ledger.CodeUnauthenticated, Message: "The email or password is incorrect."}
 	errForbidden        = &ledger.Error{Code: codeForbidden, Message: "Request origin rejected. Send X-CSRF-Protection: 1 from the app's origin."}
 	errMediaType        = &ledger.Error{Code: codeUnsupportedMediaType, Message: "Send the request body as application/json."}
 	errRouteNotFound    = &ledger.Error{Code: ledger.CodeNotFound, Message: "No API endpoint matches this path."}

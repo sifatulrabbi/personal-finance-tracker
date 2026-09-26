@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"simply-finance/internal/apptest"
-	"simply-finance/internal/httpapi"
 	"simply-finance/internal/ledger"
 	"strings"
 	"testing"
@@ -90,7 +89,7 @@ func errorServer(t *testing.T) (errorClient, *apptest.Household) {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { s.Close() })
-	h, e := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: now})
+	h, e := newHandler(s, testConfig{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: now})
 	if e != nil {
 		t.Fatal(e)
 	}

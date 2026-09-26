@@ -2,9 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,53 +11,54 @@ import (
 	"net/netip"
 	"net/url"
 	"simply-finance/internal/app"
+	"simply-finance/internal/auth"
 	"simply-finance/internal/ledger"
-	"simply-finance/internal/sqlite"
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
-type Credential struct {
-	Email        string `json:"email"`
-	PasswordHash string `json:"password_hash"`
-	Name         string `json:"name"`
-}
 type Config struct {
-	Users           []Credential
 	Origin          string
 	InsecureCookies bool
-	Now             func() time.Time
 	// TrustedProxies are the reverse proxies whose X-Forwarded-For header names the client for
 	// login throttling. Empty means the connecting address is the client.
 	TrustedProxies []netip.Prefix
 	// Logger receives the access log; nil uses slog.Default().
 	Logger *slog.Logger
 }
+
+// Deps are the services the HTTP API adapts. The transport holds no financial rules and no
+// credentials of its own.
+type Deps struct {
+	Finance *app.Service
+	Auth    *auth.Service
+	// Ready reports whether the database answers; it backs /healthz.
+	Ready func(context.Context) error
+}
+
 type Server struct {
-	app     *app.Service
-	store   *sqlite.Store
-	config  Config
-	users   map[string]Credential
-	dummy   []byte
-	compare func(hash, password []byte) error
-	limiter *loginLimiter
-	logger  *slog.Logger
+	app    *app.Service
+	auth   *auth.Service
+	ready  func(context.Context) error
+	config Config
+	logger *slog.Logger
 }
 type actorKey struct{}
 
-func New(svc *app.Service, store *sqlite.Store, config Config) (http.Handler, error) {
-	s, e := newServer(svc, store, config)
+func New(deps Deps, config Config) (http.Handler, error) {
+	s, e := newServer(deps, config)
 	if e != nil {
 		return nil, e
 	}
 	return s.handler(), nil
 }
-func newServer(svc *app.Service, store *sqlite.Store, config Config) (*Server, error) {
-	if config.Now == nil {
-		config.Now = time.Now
+
+// newServer checks the origin configuration: HTTP origins need insecure cookies and HTTPS origins
+// need secure ones. A bad configuration is ledger.ErrInvalid.
+func newServer(deps Deps, config Config) (*Server, error) {
+	if deps.Finance == nil || deps.Auth == nil || deps.Ready == nil {
+		return nil, errors.New("httpapi: finance, auth, and readiness services are required")
 	}
 	if config.Logger == nil {
 		config.Logger = slog.Default()
@@ -72,51 +70,14 @@ func newServer(svc *app.Service, store *sqlite.Store, config Config) (*Server, e
 	if config.InsecureCookies != (origin.Scheme == "http") {
 		return nil, ledger.ErrInvalid
 	}
-	s := &Server{app: svc, store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword, logger: config.Logger}
-	if len(config.Users) == 0 || len(config.Users) > 100 {
-		return nil, ledger.ErrInvalid
-	}
-	dummyCost := bcrypt.MinCost
-	for _, u := range config.Users {
-		email, e := ledger.NormalizeEmail(u.Email)
-		if e != nil || len(u.Name) > 120 {
-			return nil, ledger.ErrInvalid
-		}
-		if _, exists := s.users[email]; exists {
-			return nil, ledger.ErrInvalid
-		}
-		cost, e := bcrypt.Cost([]byte(u.PasswordHash))
-		if e != nil || cost < 10 || cost > 14 {
-			return nil, ledger.ErrInvalid
-		}
-		dummyCost = max(dummyCost, cost)
-		u.Email = email
-		s.users[email] = u
-	}
-	allowed := map[string]string{}
-	emails := []string{}
-	for email, u := range s.users {
-		allowed[email] = digest(u.PasswordHash)
-		emails = append(emails, email)
-	}
-	s.limiter = newLoginLimiter(config.Now, config.TrustedProxies, emails)
-	if e = store.ReconcileSessions(context.Background(), allowed); e != nil {
-		return nil, e
-	}
-	// Unknown emails are checked against a dummy hash at the slowest configured cost, so a wrong
-	// password takes at least as long for an unknown email as for an allowed one.
-	s.dummy, e = bcrypt.GenerateFromPassword([]byte("unconfigured-account-dummy"), dummyCost)
-	if e != nil {
-		return nil, e
-	}
-	return s, nil
+	return &Server{app: deps.Finance, auth: deps.Auth, ready: deps.Ready, config: config, logger: config.Logger}, nil
 }
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
-		if e := s.store.Health(ctx); e != nil {
+		if e := s.ready(ctx); e != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			json.NewEncoder(w).Encode(map[string]string{"status": "unavailable"})
@@ -392,7 +353,6 @@ func cursorLimit(r *http.Request) (int, error) {
 	l, _, e := page(r)
 	return l, e
 }
-func digest(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
 func (s *Server) cookie(w http.ResponseWriter, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{Name: "sf_session", Value: value, Path: "/", HttpOnly: true, Secure: !s.config.InsecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: maxAge})
 }
@@ -405,67 +365,31 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, e)
 		return
 	}
-	email, e := ledger.NormalizeEmail(in.Email)
-	account := email
-	if e != nil {
-		account = "invalid email"
+	request := auth.LoginRequest{Email: in.Email, Password: in.Password, Address: clientKey(r, s.config.TrustedProxies)}
+	if old, e := r.Cookie("sf_session"); e == nil {
+		request.PreviousToken = old.Value
 	}
-	address := s.limiter.clientKey(r)
-	if wait := s.limiter.begin(address, account); wait > 0 {
-		w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
+	out, e := s.auth.Login(r.Context(), request)
+	if a := entry(r); a != nil && out.User.ID != "" {
+		a.actorID = out.User.ID
+	}
+	var limited *auth.RateLimited
+	if errors.As(e, &limited) {
+		w.Header().Set("Retry-After", strconv.Itoa(int((limited.Wait+time.Second-1)/time.Second)))
 		writeError(w, errRateLimited)
 		return
 	}
-	credential, exists := s.users[email]
-	hash := s.dummy
-	if exists {
-		hash = []byte(credential.PasswordHash)
-	}
-	// bcrypt reads at most 72 bytes; a longer password is compared on its prefix and then refused,
-	// so rejecting it costs the same time as any other wrong password.
-	password := []byte(in.Password)
-	tooLong := len(password) > 72
-	if tooLong {
-		password = password[:72]
-	}
-	e = s.compare(hash, password)
-	if e != nil || !exists || tooLong {
-		writeError(w, errLoginFailed)
-		return
-	}
-	s.limiter.succeeded(address, account)
-	user, e := s.store.EnsureUser(r.Context(), email, credential.Name)
 	if e != nil {
 		respond(w, nil, e)
 		return
 	}
-	if a := entry(r); a != nil {
-		a.actorID = user.ID
-	}
-	var raw [32]byte
-	if _, e = rand.Read(raw[:]); e != nil {
-		respond(w, nil, e)
-		return
-	}
-	token := hex.EncodeToString(raw[:])
-	if old, e := r.Cookie("sf_session"); e == nil {
-		if e = s.store.DeleteSession(r.Context(), digest(old.Value)); e != nil {
-			respond(w, nil, e)
-			return
-		}
-	}
-	now := s.config.Now()
-	if e = s.store.SaveSession(r.Context(), digest(token), user.ID, digest(credential.PasswordHash), now.Add(7*24*time.Hour), now); e != nil {
-		respond(w, nil, e)
-		return
-	}
-	s.cookie(w, token, 7*24*3600)
-	respond(w, user, nil)
+	s.cookie(w, out.Token, int(auth.SessionLifetime/time.Second))
+	respond(w, out.User, nil)
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	c, e := r.Cookie("sf_session")
 	if e == nil {
-		e = s.store.DeleteSession(r.Context(), digest(c.Value))
+		e = s.auth.Logout(r.Context(), c.Value)
 	}
 	s.cookie(w, "", -1)
 	respond(w, map[string]bool{"ok": true}, e)
@@ -473,18 +397,13 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, e := r.Cookie("sf_session")
-		if e != nil || len(c.Value) != 64 {
+		if e != nil {
 			respond(w, nil, ledger.ErrUnauthorized)
 			return
 		}
-		u, hash, e := s.store.Session(r.Context(), digest(c.Value), s.config.Now())
+		u, e := s.auth.Authenticate(r.Context(), c.Value)
 		if e != nil {
 			respond(w, nil, e)
-			return
-		}
-		credential, ok := s.users[u.Email]
-		if !ok || digest(credential.PasswordHash) != hash {
-			respond(w, nil, ledger.ErrUnauthorized)
 			return
 		}
 		if a := entry(r); a != nil {

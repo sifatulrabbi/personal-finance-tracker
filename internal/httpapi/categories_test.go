@@ -6,7 +6,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
-	"simply-finance/internal/httpapi"
 	"simply-finance/internal/ledger"
 	"testing"
 	"time"
@@ -26,7 +25,7 @@ func TestCategoryAndMonthlyHTTP(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
-	h, e := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true})
+	h, e := newHandler(s, testConfig{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true})
 	if e != nil {
 		t.Fatal(e)
 	}

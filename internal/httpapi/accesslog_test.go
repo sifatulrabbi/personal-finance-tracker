@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"regexp"
-	"simply-finance/internal/httpapi"
 	"simply-finance/internal/ledger"
 	"strings"
 	"sync"
@@ -40,7 +39,7 @@ func TestAccessLogRecordsRequestsWithoutPrivateData(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
-	h, e := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true, Logger: logger})
+	h, e := newHandler(s, testConfig{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true, Logger: logger})
 	if e != nil {
 		t.Fatal(e)
 	}

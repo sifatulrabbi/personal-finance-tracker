@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"simply-finance/internal/apptest"
-	"simply-finance/internal/httpapi"
 	"simply-finance/internal/ledger"
 	"testing"
 	"time"
@@ -39,7 +38,7 @@ func newHousehold(t *testing.T) *household {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { s.Close() })
-	handler, e := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: clock.Now})
+	handler, e := newHandler(s, testConfig{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: clock.Now})
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -1,10 +1,6 @@
-package httpapi
+package auth
 
 import (
-	"errors"
-	"net/http"
-	"net/netip"
-	"strings"
 	"sync"
 	"time"
 )
@@ -86,7 +82,6 @@ func (t *failureTable) add(key string, now time.Time) *failures {
 type loginLimiter struct {
 	mu        sync.Mutex
 	now       func() time.Time
-	trusted   []netip.Prefix
 	addresses *failureTable
 	// Configured accounts are tracked outside the bounded tables so a spray of unknown emails can
 	// never evict a real account's failures. Unknown emails are still tracked, in a bounded table,
@@ -95,8 +90,8 @@ type loginLimiter struct {
 	unknown  *failureTable
 }
 
-func newLoginLimiter(now func() time.Time, trusted []netip.Prefix, emails []string) *loginLimiter {
-	l := &loginLimiter{now: now, trusted: trusted, addresses: newFailureTable(addressTableSize), accounts: map[string]*failures{}, unknown: newFailureTable(unknownAccountTableSize)}
+func newLoginLimiter(now func() time.Time, emails []string) *loginLimiter {
+	l := &loginLimiter{now: now, addresses: newFailureTable(addressTableSize), accounts: map[string]*failures{}, unknown: newFailureTable(unknownAccountTableSize)}
 	for _, email := range emails {
 		l.accounts[email] = &failures{}
 	}
@@ -144,76 +139,4 @@ func (l *loginLimiter) succeeded(address, email string) {
 	if f := l.account(email, now, false); f != nil {
 		f.count = 0
 	}
-}
-
-// clientKey identifies the client for throttling. The connecting address is used unless it is a
-// trusted proxy; then the right-most X-Forwarded-For address that is not itself a trusted proxy is
-// used, because each trusted proxy appends the address it received the request from and anything
-// further left may be forged by the client. IPv6 clients are grouped by /64.
-func (l *loginLimiter) clientKey(r *http.Request) string {
-	remote, ok := parseAddr(r.RemoteAddr)
-	if !ok {
-		return "unparsed"
-	}
-	client := remote
-	if l.isTrusted(remote) {
-		hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
-		for i := len(hops) - 1; i >= 0; i-- {
-			hop, ok := parseAddr(strings.TrimSpace(hops[i]))
-			if !ok {
-				break
-			}
-			client = hop
-			if !l.isTrusted(hop) {
-				break
-			}
-		}
-	}
-	if client.Is6() {
-		p, _ := client.Prefix(64)
-		return p.String()
-	}
-	return client.String()
-}
-
-func (l *loginLimiter) isTrusted(a netip.Addr) bool {
-	for _, p := range l.trusted {
-		if p.Contains(a) {
-			return true
-		}
-	}
-	return false
-}
-
-func parseAddr(s string) (netip.Addr, bool) {
-	if ap, e := netip.ParseAddrPort(s); e == nil {
-		return ap.Addr().Unmap(), true
-	}
-	a, e := netip.ParseAddr(strings.Trim(s, "[]"))
-	if e != nil {
-		return netip.Addr{}, false
-	}
-	return a.WithZone("").Unmap(), true
-}
-
-// ParseTrustedProxies reads a comma-separated list of CIDR ranges or single addresses, such as the
-// TRUSTED_PROXY_CIDRS environment variable. An empty string trusts no proxy.
-func ParseTrustedProxies(list string) ([]netip.Prefix, error) {
-	out := []netip.Prefix{}
-	if strings.TrimSpace(list) == "" {
-		return out, nil
-	}
-	for _, item := range strings.Split(list, ",") {
-		item = strings.TrimSpace(item)
-		if p, e := netip.ParsePrefix(item); e == nil {
-			out = append(out, p.Masked())
-			continue
-		}
-		a, e := netip.ParseAddr(item)
-		if e != nil || a.Zone() != "" {
-			return nil, errors.New("trusted proxies must be comma-separated IP addresses or CIDR ranges")
-		}
-		out = append(out, netip.PrefixFrom(a.Unmap(), a.Unmap().BitLen()))
-	}
-	return out, nil
 }
