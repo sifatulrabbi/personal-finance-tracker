@@ -118,6 +118,21 @@ func TestBackupCommandCreatesRestorableSnapshotWithoutAuthentication(t *testing.
 	if _, err = execute("verify-backup", "--database", corrupt); err == nil {
 		t.Fatal("verified a corrupt backup")
 	}
+	// Regression: verify-backup checked only SQLite pages, so a snapshot whose cached balance
+	// disagreed with its wallet entries passed a restore drill.
+	s.Close()
+	raw, err := sql.Open("sqlite", snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = raw.Exec(`INSERT INTO wallets(id,name,type,currency,details,credit_limit,balance_minor) VALUES('w','Cash','physical','BDT','',0,100)`)
+	raw.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = execute("verify-backup", "--database", snapshot); err == nil || !strings.Contains(err.Error(), "derived state") {
+		t.Fatalf("verified a backup whose cached balances disagree with its entries: %v", err)
+	}
 }
 
 func TestDatabaseFlagOverridesEnvironment(t *testing.T) {

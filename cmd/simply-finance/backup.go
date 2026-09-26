@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"simply-finance/internal/backup"
+	"simply-finance/internal/sqlite"
 
 	"github.com/spf13/cobra"
 )
@@ -53,6 +54,9 @@ func newVerifyBackupCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := backup.Verify(cmd.Context(), database); err != nil {
 				return err
+			}
+			if err := sqlite.VerifySnapshot(cmd.Context(), database); err != nil {
+				return fmt.Errorf("backup derived state: %w", err)
 			}
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), "backup verification completed")
 			return err

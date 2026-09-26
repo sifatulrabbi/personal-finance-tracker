@@ -6,10 +6,8 @@ services:
     env_file:
       - path: .env.runtime
         format: raw
-    environment:
-      # Comma-separated proxy addresses or CIDR ranges whose X-Forwarded-For is trusted for login
-      # throttling. Empty trusts none. Set it in .env when a reverse proxy fronts the service.
-      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+    # All runtime settings, including TRUSTED_PROXY_CIDRS, come from .env.runtime. Do not add an
+    # environment: block here: Compose gives it precedence and would silently blank those values.
     volumes:
       - finance-data:/data
     restart: unless-stopped

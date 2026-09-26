@@ -62,6 +62,18 @@ func OccurrenceDate(start, frequency string, index int) (string, error) {
 
 // DueDates lists a schedule's occurrence dates from occurrence index next through the date through
 // and its end date, and returns the index after the last one listed.
+// CatchUpFrom returns the first occurrence index at or after next whose date is on or after
+// earliest, so a reactivated schedule catches up only the dates inside the backfill window.
+func CatchUpFrom(s Schedule, next int, earliest string) int {
+	for ; next <= maxOccurrenceIndex; next++ {
+		date, e := OccurrenceDate(s.StartDate, s.Frequency, next)
+		if e != nil || date >= earliest {
+			break
+		}
+	}
+	return next
+}
+
 func DueDates(s Schedule, next int, through string) ([]string, int) {
 	dates := []string{}
 	for ; next <= maxOccurrenceIndex; next++ {

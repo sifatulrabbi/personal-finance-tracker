@@ -78,6 +78,20 @@ func TestDueDatesStopAtThroughAndEndDate(t *testing.T) {
 	}
 }
 
+func TestCatchUpFromSkipsDatesBeforeTheBackfillWindow(t *testing.T) {
+	s := ledger.Schedule{ScheduleInput: ledger.ScheduleInput{StartDate: "2020-01-06", Frequency: "weekly"}}
+	next := ledger.CatchUpFrom(s, 2, "2025-09-14")
+	date, _ := ledger.OccurrenceDate(s.StartDate, s.Frequency, next)
+	previous, _ := ledger.OccurrenceDate(s.StartDate, s.Frequency, next-1)
+	if date < "2025-09-14" || previous >= "2025-09-14" {
+		t.Fatalf("first kept occurrence %s (index %d), previous %s", date, next, previous)
+	}
+	// An index already inside the window is kept, so recent missed bills still come due.
+	if got := ledger.CatchUpFrom(s, 400, "2025-09-14"); got != 400 {
+		t.Fatalf("inside window moved to %d", got)
+	}
+}
+
 func TestTodayUsesTheHouseholdLocation(t *testing.T) {
 	dhaka, e := time.LoadLocation("Asia/Dhaka")
 	if e != nil {
