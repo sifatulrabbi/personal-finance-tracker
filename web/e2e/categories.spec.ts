@@ -1,5 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-import { submitLogin } from "./login";
+import { expect, test } from "@playwright/test";
+import { navigate, submitLogin } from "./login";
 
 test("inline categories remain available after canceling a record", async ({
   page,
@@ -40,14 +40,6 @@ test("inline categories remain available after canceling a record", async ({
       .getByText(name, { exact: true }),
   ).toBeVisible();
 });
-
-async function navigate(page: Page, name: string) {
-  await page.getByRole("button", { name: "Open menu", exact: true }).click();
-  await page
-    .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("link", { name, exact: true })
-    .click();
-}
 
 test("categories preserve record drafts and monthly shares use actual spending", async ({
   page,

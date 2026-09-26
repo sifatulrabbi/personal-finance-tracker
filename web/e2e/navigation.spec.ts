@@ -1,13 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { submitLogin } from "./login";
+import { navigate, signIn } from "./login";
 
 test("page URLs survive login, reload, and browser history", async ({ page }) => {
   await page.goto("/wallets");
-  await page.getByLabel("Email", { exact: true }).fill("test@example.test");
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("test-household-password");
-  await submitLogin(page);
+  await signIn(page);
 
   await expect(page).toHaveURL(/\/wallets$/);
   await expect(
@@ -42,11 +38,7 @@ test("page URLs survive login, reload, and browser history", async ({ page }) =>
 
 test("an unknown page stays visible until the user leaves it", async ({ page }) => {
   await page.goto("/does-not-exist");
-  await page.getByLabel("Email", { exact: true }).fill("test@example.test");
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("test-household-password");
-  await submitLogin(page);
+  await signIn(page);
 
   await expect(page).toHaveURL(/\/does-not-exist$/);
   await expect(
@@ -59,15 +51,46 @@ test("an unknown page stays visible until the user leaves it", async ({ page }) 
   ).toBeVisible();
 });
 
+test("a mixed-case or trailing-slash URL still labels and highlights its page", async ({
+  page,
+}) => {
+  await page.goto("/Wallets/");
+  await signIn(page);
+  await expect(
+    page.getByRole("region", { name: "Wallets", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("header")).toContainText("Wallets");
+  await expect(page.locator("header")).not.toContainText("Page not found");
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Navigation" })
+      .getByRole("link", { name: "Wallets", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+});
+
+test("signing out sends the next sign-in to Activity", async ({ page }) => {
+  await page.goto("/settings");
+  await signIn(page);
+  await expect(
+    page.getByRole("region", { name: "Settings", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page).toHaveURL(/\/activity$/);
+  await signIn(page);
+  await expect(page).toHaveURL(/\/activity$/);
+  await expect(
+    page.getByRole("region", { name: "Activity", exact: true }),
+  ).toBeVisible();
+  await navigate(page, "Bills");
+  await expect(page).toHaveURL(/\/bills$/);
+});
+
 test("mobile menu selects pages, fits phones, and restores focus", async ({
   page,
 }, testInfo) => {
   await page.goto("/");
-  await page.getByLabel("Email", { exact: true }).fill("test@example.test");
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("test-household-password");
-  await submitLogin(page);
+  await signIn(page);
   await expect(page).toHaveURL(/\/activity$/);
   const trigger = page.getByRole("button", { name: "Open menu", exact: true });
   const drawer = page.getByRole("dialog", { name: "Navigation" });

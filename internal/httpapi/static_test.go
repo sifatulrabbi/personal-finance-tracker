@@ -26,7 +26,7 @@ func TestFrontendServesOnlyPublicFilesAndPreservesAPI(t *testing.T) {
 	for _, tc := range []struct {
 		path   string
 		status int
-	}{{"/", 200}, {"/wallets", 200}, {"/unknown/nested", 200}, {"/assets/app.js", 200}, {"/assets/missing.js", 404}, {"/api/v1/wallets", 401}, {"/assets/", 404}, {"/.env", 404}, {"/../finance.sqlite", 404}} {
+	}{{"/", 200}, {"/wallets", 200}, {"/wallets/", 200}, {"/wallets//", 404}, {"/unknown/nested", 200}, {"/assets/app.js", 200}, {"/assets/missing.js", 404}, {"/assets/missing", 404}, {"/api/v1/wallets", 401}, {"/api", 401}, {"/assets/", 404}, {"/.env", 404}, {"/../finance.sqlite", 404}} {
 		r := httptest.NewRecorder()
 		h.ServeHTTP(r, httptest.NewRequest("GET", tc.path, nil))
 		if r.Code != tc.status {
@@ -35,8 +35,13 @@ func TestFrontendServesOnlyPublicFilesAndPreservesAPI(t *testing.T) {
 		if (tc.path == "/" || tc.path == "/wallets") && !strings.Contains(r.Header().Get("Content-Security-Policy"), "script-src 'self'") {
 			t.Fatal("missing frontend CSP")
 		}
-		if tc.path == "/wallets" && !strings.Contains(r.Body.String(), "Simply Finance") {
-			t.Fatal("client route did not serve the frontend document")
+		if (tc.path == "/wallets" || tc.path == "/wallets/") && !strings.Contains(r.Body.String(), "Simply Finance") {
+			t.Fatalf("%s: client route did not serve the frontend document", tc.path)
 		}
+	}
+	r := httptest.NewRecorder()
+	h.ServeHTTP(r, httptest.NewRequest("HEAD", "/wallets", nil))
+	if r.Code != 200 || r.Body.Len() != 0 {
+		t.Fatalf("HEAD client route: %d with %d body bytes", r.Code, r.Body.Len())
 	}
 }

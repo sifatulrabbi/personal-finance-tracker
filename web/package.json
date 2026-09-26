@@ -8,7 +8,7 @@
     "dev": "bun --bun vite --host 127.0.0.1 --port 47832 --strictPort",
     "build": "bun run typecheck && bun --bun vite build",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/lib",
+    "test": "bun test src/lib src/routes.test.ts",
     "test:e2e": "bun --bun playwright test"
   },
   "dependencies": {

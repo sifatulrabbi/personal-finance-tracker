@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Wallet as WalletIcon, RefreshCw, LogOut } from "lucide-react";
-import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api, APIError, loadData, type Data, type User } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,9 +19,10 @@ import { Bills } from "@/components/bills";
 import { Settings } from "@/components/settings";
 import { Navigation } from "@/components/navigation";
 import { Monthly } from "@/components/monthly";
-import { pageForPath, pages } from "@/routes";
+import { homePath, pageForPath } from "@/routes";
 
 export function App() {
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [data, setData] = useState<Data | null>(null);
@@ -88,6 +89,8 @@ export function App() {
       onLogout={async () => {
         try {
           await api("/logout", "POST", {});
+          // The next person to sign in on this device starts on Activity, not on the last user's page.
+          navigate(homePath, { replace: true });
           setUser(null);
           setData(null);
         } catch {
@@ -112,11 +115,12 @@ function AuthenticatedApp({
   onLogout: () => Promise<void>;
 }) {
   const location = useLocation();
+  if (location.pathname === "/") return <Navigate to={homePath} replace />;
   const page = pageForPath(location.pathname);
   return (
     <main className="app-shell mx-auto flex min-h-dvh max-w-md min-w-0 flex-col gap-6">
       <header className="app-header sticky top-0 z-40 flex min-w-0 items-center justify-between gap-3 bg-background pb-3">
-        <Navigation />
+        <Navigation current={page} />
         <div className="min-w-0 flex-1">
           <p className="text-sm text-muted-foreground">
             {page?.name ?? "Page not found"}
@@ -137,43 +141,30 @@ function AuthenticatedApp({
       </header>
       <ErrorMessage error={error} />
       {data ? (
-        <Routes>
-          <Route path="/" element={<Navigate to="/activity" replace />} />
-          {pages.map((page) => (
-            <Route
-              key={page.path}
-              path={page.path}
-              element={
-                <section aria-label={page.name}>
-                  {page.name === "Activity" && (
-                    <Activity data={data} onSaved={onRefresh} />
-                  )}
-                  {page.name === "Wallets" && (
-                    <Wallets
-                      wallets={data.wallets}
-                      onSaved={onRefresh}
-                    />
-                  )}
-                  {page.name === "Bills" && (
-                    <Bills data={data} onSaved={onRefresh} />
-                  )}
-                  {page.name === "Monthly spending" && (
-                    <Monthly refreshToken={data} />
-                  )}
-                  {page.name === "Settings" && (
-                    <Settings
-                      categories={data.categories}
-                      settings={data.settings}
-                      user={user}
-                      onSaved={onRefresh}
-                    />
-                  )}
-                </section>
-              }
-            />
-          ))}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        page ? (
+          <section aria-label={page.name}>
+            {page.path === "/activity" && (
+              <Activity data={data} onSaved={onRefresh} />
+            )}
+            {page.path === "/wallets" && (
+              <Wallets wallets={data.wallets} onSaved={onRefresh} />
+            )}
+            {page.path === "/bills" && (
+              <Bills data={data} onSaved={onRefresh} />
+            )}
+            {page.path === "/monthly" && <Monthly refreshToken={data} />}
+            {page.path === "/settings" && (
+              <Settings
+                categories={data.categories}
+                settings={data.settings}
+                user={user}
+                onSaved={onRefresh}
+              />
+            )}
+          </section>
+        ) : (
+          <NotFound />
+        )
       ) : (
         <Skeleton className="h-48 w-full" />
       )}
@@ -201,7 +192,7 @@ function NotFound() {
       </CardHeader>
       <CardContent>
         <Button asChild>
-          <Link to="/activity">Go to Activity</Link>
+          <Link to={homePath}>Go to Activity</Link>
         </Button>
       </CardContent>
     </Card>

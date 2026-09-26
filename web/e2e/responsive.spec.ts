@@ -1,19 +1,10 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { submitLogin } from "./login";
+import { navigate, submitLogin } from "./login";
 
 const viewports = [
   { name: "compact portrait", width: 320, height: 568 },
   { name: "short landscape", width: 667, height: 375 },
 ] as const;
-
-async function navigate(page: Page, name: string) {
-  await page.getByRole("button", { name: "Open menu", exact: true }).click();
-  await page
-    .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("link", { name, exact: true })
-    .click();
-  await expect(page.getByRole("dialog", { name: "Navigation" })).toHaveCount(0);
-}
 
 async function expectInsideViewport(
   locator: Locator,
