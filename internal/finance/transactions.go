@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 )
@@ -47,6 +48,9 @@ func (s *Store) createTransaction(tx *sql.Tx, actor string, in TransactionInput)
 	if e != nil {
 		return Transaction{}, e
 	}
+	if e = keepArchivedBalances(tx, in, nil, effects, "This wallet is archived. Choose an active wallet."); e != nil {
+		return Transaction{}, e
+	}
 	r.ID = id()
 	r.Version = 1
 	if _, e = tx.Exec(`INSERT INTO transactions(id,version) VALUES(?,1)`, r.ID); e != nil {
@@ -69,10 +73,7 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 	}
 	w, e := wallet(tx, in.WalletID)
 	if e != nil {
-		return r, nil, e
-	}
-	if w.Archived {
-		return r, nil, ErrInvalid
+		return r, nil, walletNotFound("wallet_id", e)
 	}
 	amount, e := ParseMoney(in.Amount)
 	if e != nil || amount <= 0 {
@@ -120,10 +121,7 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 		}
 		to, e := wallet(tx, in.ToWalletID)
 		if e != nil {
-			return r, nil, e
-		}
-		if to.Archived {
-			return r, nil, ErrInvalid
+			return r, nil, walletNotFound("to_wallet_id", e)
 		}
 		received := amount
 		if in.ReceivedAmount != "" {
@@ -151,6 +149,39 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 		delta = -amount
 	}
 	return r, []effect{{w.ID, delta}}, nil
+}
+// keepArchivedBalances rejects a change whose net effect on any archived wallet is not zero. A new
+// record may not touch an archived wallet at all; a correction may keep one when that wallet's
+// balance stays the same (note, date, category, or a USD rate that only changes the BDT value).
+func keepArchivedBalances(tx *sql.Tx, in TransactionInput, before, after []effect, message string) error {
+	net := map[string]int64{}
+	for _, ef := range after {
+		net[ef.walletID] += ef.delta
+	}
+	for _, ef := range before {
+		net[ef.walletID] -= ef.delta
+	}
+	changed := []string{}
+	for wid, delta := range net {
+		if delta != 0 {
+			changed = append(changed, wid)
+		}
+	}
+	sort.Strings(changed)
+	for _, wid := range changed {
+		w, e := wallet(tx, wid)
+		if e != nil {
+			return e
+		}
+		if w.Archived {
+			field := "wallet_id"
+			if wid == in.ToWalletID && wid != in.WalletID {
+				field = "to_wallet_id"
+			}
+			return archived(field, message)
+		}
+	}
+	return nil
 }
 func (s *Store) saveRevision(tx *sql.Tx, actor string, r Transaction, effects []effect) (Transaction, error) {
 	r.CreatedAt = s.now().UTC().Format(time.RFC3339Nano)
@@ -199,6 +230,10 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		if (void && strings.TrimSpace(in.Reason) == "") || len(in.Reason) > 500 || (old.Kind == "opening" || old.Kind == "adjustment") {
 			return old, ErrInvalid
 		}
+		previous, e := currentEntries(tx, tid, version)
+		if e != nil {
+			return old, e
+		}
 		r := old
 		var effects []effect
 		if !void {
@@ -206,11 +241,18 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 				in.Rate = old.Rate
 			}
 			if in.Kind != old.Kind {
-				return old, ErrInvalid
+				return old, invalid("kind", "A record's kind cannot change. Void it and record a new one.")
 			}
 			r, effects, e = s.prepare(tx, in)
 			if e != nil {
 				return r, e
+			}
+			before := make([]effect, len(previous))
+			for i, entry := range previous {
+				before[i] = entry.effect
+			}
+			if e = keepArchivedBalances(tx, in, before, effects, "This correction would change an archived wallet's balance. Void the record or unarchive the wallet first."); e != nil {
+				return old, e
 			}
 		} else {
 			r.Reason = in.Reason
@@ -225,34 +267,11 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		if e != nil {
 			return r, e
 		}
-		rows, e := tx.Query(`SELECT id,wallet_id,delta FROM wallet_entries WHERE transaction_id=? AND version=? AND reversal_of IS NULL`, tid, version)
-		if e != nil {
-			return r, e
-		}
-		type oldEffect struct {
-			id    int64
-			wid   string
-			delta int64
-		}
-		previous := []oldEffect{}
-		for rows.Next() {
-			var ef oldEffect
-			if e = rows.Scan(&ef.id, &ef.wid, &ef.delta); e != nil {
-				rows.Close()
+		for _, entry := range previous {
+			if _, e = tx.Exec(`INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta,reversal_of) VALUES(?,?,?,?,?)`, tid, r.Version, entry.walletID, -entry.delta, entry.id); e != nil {
 				return r, e
 			}
-			previous = append(previous, ef)
-		}
-		e = rows.Err()
-		rows.Close()
-		if e != nil {
-			return r, e
-		}
-		for _, ef := range previous {
-			if _, e = tx.Exec(`INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta,reversal_of) VALUES(?,?,?,?,?)`, tid, r.Version, ef.wid, -ef.delta, ef.id); e != nil {
-				return r, e
-			}
-			if _, e = tx.Exec(`UPDATE wallets SET version=version+1 WHERE id=?`, ef.wid); e != nil {
+			if _, e = tx.Exec(`UPDATE wallets SET version=version+1 WHERE id=?`, entry.walletID); e != nil {
 				return r, e
 			}
 		}
@@ -265,8 +284,8 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 			}
 		}
 		touched := map[string]bool{}
-		for _, ef := range previous {
-			touched[ef.wid] = true
+		for _, entry := range previous {
+			touched[entry.walletID] = true
 		}
 		for _, ef := range effects {
 			touched[ef.walletID] = true
@@ -296,6 +315,28 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		}
 		return r, nil
 	})
+}
+type entry struct {
+	id int64
+	effect
+}
+
+// currentEntries returns the wallet entries a revision applied, which a correction or void reverses.
+func currentEntries(tx *sql.Tx, tid string, version int) ([]entry, error) {
+	rows, e := tx.Query(`SELECT id,wallet_id,delta FROM wallet_entries WHERE transaction_id=? AND version=? AND reversal_of IS NULL`, tid, version)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []entry{}
+	for rows.Next() {
+		var en entry
+		if e = rows.Scan(&en.id, &en.walletID, &en.delta); e != nil {
+			return nil, e
+		}
+		out = append(out, en)
+	}
+	return out, rows.Err()
 }
 func transaction(q querier, tid string) (Transaction, error) {
 	var r Transaction
