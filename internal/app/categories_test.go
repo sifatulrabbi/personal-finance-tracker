@@ -1,0 +1,142 @@
+package app_test
+
+import (
+	"errors"
+	"fmt"
+	"simply-finance/internal/ledger"
+	"sync"
+	"testing"
+)
+
+func TestConcurrentCategoryCreationKeepsOneExactName(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	var wg sync.WaitGroup
+	results := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, e := s.CreateCategory(ctx, u.ID, fmt.Sprint("category-", i), ledger.CategoryInput{Name: "Food", Type: "expense"})
+			results <- e
+		}(i)
+	}
+	wg.Wait()
+	close(results)
+	successes := 0
+	for e := range results {
+		if e == nil {
+			successes++
+		} else if !errors.Is(e, ledger.ErrDuplicateName) {
+			t.Fatal(e)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("created %d categories", successes)
+	}
+	c, e := s.CreateCategory(ctx, u.ID, "income-food", ledger.CategoryInput{Name: "Food", Type: "income"})
+	if e != nil || c.Type != "income" {
+		t.Fatalf("separate type: %+v %v", c, e)
+	}
+	for i, name := range []string{"", "   "} {
+		if _, e = s.CreateCategory(ctx, u.ID, fmt.Sprint("invalid-", i), ledger.CategoryInput{Name: name, Type: "expense"}); !errors.Is(e, ledger.ErrInvalid) {
+			t.Fatalf("empty name: %v", e)
+		}
+	}
+}
+
+func TestBillKeepsCategoryFromOccurrence(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	w := createWallet(t, s, u, "Cash", "BDT", "", "1000")
+	c, e := s.CreateCategory(ctx, u.ID, "internet", ledger.CategoryInput{Name: "Wi-Fi", Type: "expense"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	a, e := s.CreateSchedule(ctx, u.ID, "schedule", ledger.ScheduleInput{Name: "Internet", WalletID: w.ID, Amount: "100", StartDate: "2026-09-01", Frequency: "monthly", CategoryID: c.ID})
+	if e != nil {
+		t.Fatal(e)
+	}
+	bills, e := s.Due(ctx)
+	if e != nil || len(bills) != 1 {
+		t.Fatalf("due: %+v %v", bills, e)
+	}
+	a.CategoryID = ""
+	if _, e = s.UpdateSchedule(ctx, u.ID, "change-category", a); e != nil {
+		t.Fatal(e)
+	}
+	r, e := s.ConfirmBill(ctx, u.ID, "pay", bills[0].ID, ledger.PaymentInput{Date: "2026-09-14"})
+	if e != nil || r.CategoryID != c.ID {
+		t.Fatalf("payment: %+v %v", r, e)
+	}
+}
+
+// Regression (C3): a correction that omits category_id keeps the prior category, like rate;
+// moving a record to Others takes an explicit Others ID.
+func TestCorrectionWithoutCategoryKeepsPriorCategory(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	groceries, e := s.CreateCategory(ctx, u.ID, "groceries", ledger.CategoryInput{Name: "Test pet care", Type: "expense"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	w := createWallet(t, s, u, "Cash", "BDT", "", "1000")
+	r, e := s.CreateTransaction(ctx, u.ID, "expense", ledger.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "100", Date: "2026-09-14", CategoryID: groceries.ID})
+	if e != nil {
+		t.Fatal(e)
+	}
+	r, e = s.ReviseTransaction(ctx, u.ID, "amount", r.ID, 1, ledger.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "120", Date: "2026-09-14"}, false)
+	if e != nil || r.CategoryID != groceries.ID {
+		t.Fatalf("omitted category: %+v %v", r, e)
+	}
+	month, e := s.Monthly(ctx, "2026-09")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, c := range month.Categories {
+		if c.CategoryID == groceries.ID && c.Spent != "120.00" {
+			t.Fatalf("monthly moved spending: %+v", month.Categories)
+		}
+	}
+	r, e = s.ReviseTransaction(ctx, u.ID, "others", r.ID, 2, ledger.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "120", Date: "2026-09-14", CategoryID: "others-expense"}, false)
+	if e != nil || r.CategoryID != "others-expense" {
+		t.Fatalf("explicit others: %+v %v", r, e)
+	}
+}
+
+func TestCategoriesKeepNamesAndEnforceTransactionType(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	all, e := s.Categories(ctx)
+	if e != nil || len(all) != 11 {
+		t.Fatalf("defaults: %+v %v", all, e)
+	}
+	c, e := s.CreateCategory(ctx, u.ID, "category", ledger.CategoryInput{Name: " Eating out / FOOD ", Type: "expense"})
+	if e != nil || c.Name != " Eating out / FOOD " {
+		t.Fatalf("name: %+v %v", c, e)
+	}
+	again, e := s.CreateCategory(ctx, u.ID, "category", ledger.CategoryInput{Name: c.Name, Type: c.Type})
+	if e != nil || again.ID != c.ID {
+		t.Fatalf("retry: %+v %v", again, e)
+	}
+	w := createWallet(t, s, u, "Cash", "BDT", "", "1000")
+	in := ledger.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "100", Date: "2026-09-14", CategoryID: c.ID}
+	r, e := s.CreateTransaction(ctx, u.ID, "expense", in)
+	if e != nil || r.CategoryID != c.ID {
+		t.Fatalf("category: %+v %v", r, e)
+	}
+	in.Kind = "income"
+	if _, e = s.CreateTransaction(ctx, u.ID, "wrong-type", in); !errors.Is(e, ledger.ErrInvalid) {
+		t.Fatalf("wrong type: %v", e)
+	}
+	in.CategoryID = ""
+	r, e = s.CreateTransaction(ctx, u.ID, "income", in)
+	if e != nil || r.CategoryID != "others-income" {
+		t.Fatalf("default: %+v %v", r, e)
+	}
+	in.Kind = "transfer"
+	in.CategoryID = c.ID
+	if _, e = s.CreateTransaction(ctx, u.ID, "transfer", in); !errors.Is(e, ledger.ErrInvalid) {
+		t.Fatalf("transfer: %v", e)
+	}
+}

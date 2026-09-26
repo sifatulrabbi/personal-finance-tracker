@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"simply-finance/internal/finance"
+	"simply-finance/internal/app"
+	"simply-finance/internal/ledger"
 	"testing"
 )
 
@@ -12,24 +13,24 @@ import (
 // {"items":[...],"next_cursor":...} instead.
 func TestTransactionListCursorPagesAndFilters(t *testing.T) {
 	h := newHousehold(t)
-	var bank, cash, card finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "1000"}, "bank", &bank)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Cash", Type: "physical"}, "cash", &cash)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Debit", Type: "card", CardType: "debit", BankWalletID: bank.ID}, "card", &card)
+	var bank, cash, card ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "1000"}, "bank", &bank)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Cash", Type: "physical"}, "cash", &cash)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Debit", Type: "card", CardType: "debit", BankWalletID: bank.ID}, "card", &card)
 	for i := 0; i < 5; i++ {
-		h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: card.ID, Amount: "1", Date: fmt.Sprintf("2026-09-0%d", i+1)}, fmt.Sprint("spend-", i), nil)
+		h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: card.ID, Amount: "1", Date: fmt.Sprintf("2026-09-0%d", i+1)}, fmt.Sprint("spend-", i), nil)
 	}
-	var voided finance.Transaction
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: cash.ID, Amount: "2", Date: "2026-09-10"}, "mistake", &voided)
+	var voided ledger.Transaction
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: cash.ID, Amount: "2", Date: "2026-09-10"}, "mistake", &voided)
 	h.me.ok("POST", "/transactions/"+voided.ID+"/void", map[string]any{"version": 1, "reason": "Typo"}, "void", nil)
 
-	var legacy []finance.Transaction
+	var legacy []ledger.Transaction
 	h.me.ok("GET", "/transactions?limit=3&offset=1", nil, "", &legacy)
 	if len(legacy) != 3 {
 		t.Fatalf("offset list: %+v", legacy)
 	}
 
-	var first, second finance.TransactionPage
+	var first, second app.TransactionPage
 	h.spouse.ok("GET", "/transactions?wallet_id="+bank.ID+"&limit=4", nil, "", &first)
 	if len(first.Items) != 4 || first.NextCursor == nil || first.Items[0].Kind != "opening" || first.Items[1].WalletID != card.ID {
 		t.Fatalf("first page: %+v", first)
@@ -44,7 +45,7 @@ func TestTransactionListCursorPagesAndFilters(t *testing.T) {
 		t.Fatalf("last page must carry next_cursor null: %d %s", status, raw)
 	}
 
-	var all finance.TransactionPage
+	var all app.TransactionPage
 	h.me.ok("GET", "/transactions?page=cursor", nil, "", &all)
 	if len(all.Items) != 7 {
 		t.Fatalf("voided records are left out by default: %+v", all.Items)
@@ -72,11 +73,11 @@ func TestTransactionListCursorPagesAndFilters(t *testing.T) {
 func TestAuditListCursorPages(t *testing.T) {
 	h := newHousehold(t)
 	for i := 0; i < 3; i++ {
-		h.me.ok("POST", "/wallets", finance.WalletInput{Name: fmt.Sprint("Wallet ", i), Type: "physical"}, fmt.Sprint("wallet-", i), nil)
+		h.me.ok("POST", "/wallets", ledger.WalletInput{Name: fmt.Sprint("Wallet ", i), Type: "physical"}, fmt.Sprint("wallet-", i), nil)
 	}
-	var legacy []finance.AuditEvent
+	var legacy []ledger.AuditEvent
 	h.me.ok("GET", "/audit?limit=2", nil, "", &legacy)
-	var first, second finance.AuditPage
+	var first, second app.AuditPage
 	h.me.ok("GET", "/audit?page=cursor&limit=2", nil, "", &first)
 	if len(legacy) != 2 || len(first.Items) != 2 || first.Items[0].ID != legacy[0].ID || first.NextCursor == nil {
 		t.Fatalf("first page: %+v, offset list %+v", first, legacy)

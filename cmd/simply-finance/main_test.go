@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"golang.org/x/crypto/bcrypt"
 	"os"
 	"path/filepath"
-	"simply-finance/internal/finance"
+	"simply-finance/internal/apptest"
+	"simply-finance/internal/sqlite"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func execute(args ...string) (string, error) {
@@ -46,11 +48,12 @@ func TestExplicitCommandsAndHelp(t *testing.T) {
 	if _, err := execute("migrate"); err != nil {
 		t.Fatal(err)
 	}
-	s, err := finance.Open(path, time.Now)
+	store, err := sqlite.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer store.Close()
+	s := apptest.Wrap(store, time.Now)
 	categories, err := s.Categories(context.Background())
 	if err != nil || len(categories) != 2 {
 		t.Fatal(categories, err)
@@ -97,7 +100,7 @@ func TestBackupCommandCreatesRestorableSnapshotWithoutAuthentication(t *testing.
 	if snapshot == "" {
 		t.Fatal("backup command did not publish a snapshot")
 	}
-	s, err := finance.Open(snapshot, time.Now)
+	s, err := sqlite.Open(snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}

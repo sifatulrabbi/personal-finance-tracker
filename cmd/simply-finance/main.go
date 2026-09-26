@@ -3,15 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/spf13/cobra"
-	"golang.org/x/crypto/bcrypt"
 	"io"
 	"os"
 	"os/signal"
-	"simply-finance/internal/finance"
+	"simply-finance/internal/sqlite"
 	"strings"
 	"syscall"
-	"time"
+
+	"github.com/spf13/cobra"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func newCommand() *cobra.Command {
@@ -27,11 +27,11 @@ func newCommand() *cobra.Command {
 			case "serve":
 				return serve(path)
 			case "migrate":
-				if err := finance.Migrate(path); err != nil {
+				if err := sqlite.Migrate(path); err != nil {
 					return err
 				}
 			case "seed":
-				s, err := finance.Open(path, time.Now)
+				s, err := sqlite.Open(path)
 				if err != nil {
 					return err
 				}

@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"simply-finance/internal/finance"
-	"simply-finance/internal/httpapi"
+	"simply-finance/internal/ledger"
 )
 
 func TestHandlerStartupDoesNotSeedUserProfiles(t *testing.T) {
@@ -20,7 +19,7 @@ func TestHandlerStartupDoesNotSeedUserProfiles(t *testing.T) {
 	}
 	defer s.Close()
 	users := credentials(t)
-	if _, err = httpapi.New(s, httpapi.Config{Users: users, Origin: "https://finance.example.test"}); err != nil {
+	if _, err = newHandler(s, testConfig{Users: users, Origin: "https://finance.example.test"}); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", path)
@@ -33,7 +32,7 @@ func TestHandlerStartupDoesNotSeedUserProfiles(t *testing.T) {
 		t.Fatal("startup seeded users", count, err)
 	}
 	users[0].Name = strings.Repeat("x", 121)
-	if _, err = httpapi.New(s, httpapi.Config{Users: users, Origin: "https://finance.example.test"}); err != finance.ErrInvalid {
+	if _, err = newHandler(s, testConfig{Users: users, Origin: "https://finance.example.test"}); err != ledger.ErrInvalid {
 		t.Fatal("invalid profile name accepted", err)
 	}
 }
@@ -55,11 +54,11 @@ func TestHTTPSRejectsInsecureSessionConfiguration(t *testing.T) {
 		{"http://localhost:47831", true, true},
 		{"http://localhost:47831", false, false},
 	} {
-		_, e := httpapi.New(s, httpapi.Config{Users: users, Origin: tc.origin, InsecureCookies: tc.insecure})
+		_, e := newHandler(s, testConfig{Users: users, Origin: tc.origin, InsecureCookies: tc.insecure})
 		if tc.valid && e != nil {
 			t.Errorf("valid config rejected: %s insecure=%v: %v", tc.origin, tc.insecure, e)
 		}
-		if !tc.valid && e != finance.ErrInvalid {
+		if !tc.valid && e != ledger.ErrInvalid {
 			t.Errorf("unsafe config accepted: %s insecure=%v: %v", tc.origin, tc.insecure, e)
 		}
 	}
@@ -71,7 +70,7 @@ func TestHealthReportsUnavailableDatabase(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
-	h, e := httpapi.New(s, httpapi.Config{Users: credentials(t), Origin: "https://finance.example.test"})
+	h, e := newHandler(s, testConfig{Users: credentials(t), Origin: "https://finance.example.test"})
 	if e != nil {
 		t.Fatal(e)
 	}

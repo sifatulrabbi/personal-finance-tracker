@@ -6,8 +6,8 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
-	"simply-finance/internal/finance"
-	"simply-finance/internal/httpapi"
+	"simply-finance/internal/apptest"
+	"simply-finance/internal/ledger"
 	"testing"
 	"time"
 )
@@ -19,7 +19,7 @@ type household struct {
 	path   string
 	base   string
 	clock  *testClock
-	store  *finance.Store
+	store  *apptest.Household
 	me     *member
 	spouse *member
 }
@@ -38,7 +38,7 @@ func newHousehold(t *testing.T) *household {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { s.Close() })
-	handler, e := httpapi.New(s, httpapi.Config{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: clock.Now})
+	handler, e := newHandler(s, testConfig{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: clock.Now})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -92,9 +92,9 @@ func (m *member) fails(method, path string, body any, key string, status int, co
 	return env
 }
 
-func (m *member) wallet(id string) finance.Wallet {
+func (m *member) wallet(id string) ledger.Wallet {
 	m.h.t.Helper()
-	var w finance.Wallet
+	var w ledger.Wallet
 	m.ok("GET", "/wallets/"+id, nil, "", &w)
 	return w
 }

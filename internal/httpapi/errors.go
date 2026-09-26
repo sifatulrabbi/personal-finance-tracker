@@ -5,11 +5,11 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"simply-finance/internal/finance"
+	"simply-finance/internal/ledger"
 	"strings"
 )
 
-// Transport-level codes; domain codes live in the finance package. See docs/adr/0008-api-error-envelope.md.
+// Transport-level codes; domain codes live in the ledger package. See docs/adr/0008-api-error-envelope.md.
 const (
 	codeForbidden            = "forbidden"
 	codeUnsupportedMediaType = "unsupported_media_type"
@@ -19,32 +19,31 @@ const (
 )
 
 var statusByCode = map[string]int{
-	finance.CodeValidationFailed:     http.StatusBadRequest,
-	finance.CodeArchivedWallet:       http.StatusBadRequest,
-	finance.CodeRateRequired:         http.StatusBadRequest,
-	finance.CodeNotCorrectable:       http.StatusBadRequest,
-	finance.CodeUnauthenticated:      http.StatusUnauthorized,
-	codeForbidden:                    http.StatusForbidden,
-	finance.CodeNotFound:             http.StatusNotFound,
-	codeMethodNotAllowed:             http.StatusMethodNotAllowed,
-	finance.CodeStaleVersion:         http.StatusConflict,
-	finance.CodeIdempotencyKeyReused: http.StatusConflict,
-	finance.CodeDuplicateName:        http.StatusConflict,
-	finance.CodeAlreadySettled:       http.StatusConflict,
-	codeUnsupportedMediaType:         http.StatusUnsupportedMediaType,
-	codeRateLimited:                  http.StatusTooManyRequests,
-	codeInternal:                     http.StatusInternalServerError,
+	ledger.CodeValidationFailed:     http.StatusBadRequest,
+	ledger.CodeArchivedWallet:       http.StatusBadRequest,
+	ledger.CodeRateRequired:         http.StatusBadRequest,
+	ledger.CodeNotCorrectable:       http.StatusBadRequest,
+	ledger.CodeUnauthenticated:      http.StatusUnauthorized,
+	codeForbidden:                   http.StatusForbidden,
+	ledger.CodeNotFound:             http.StatusNotFound,
+	codeMethodNotAllowed:            http.StatusMethodNotAllowed,
+	ledger.CodeStaleVersion:         http.StatusConflict,
+	ledger.CodeIdempotencyKeyReused: http.StatusConflict,
+	ledger.CodeDuplicateName:        http.StatusConflict,
+	ledger.CodeAlreadySettled:       http.StatusConflict,
+	codeUnsupportedMediaType:        http.StatusUnsupportedMediaType,
+	codeRateLimited:                 http.StatusTooManyRequests,
+	codeInternal:                    http.StatusInternalServerError,
 }
 
 var (
-	errInvalidRequest   = &finance.Error{Code: finance.CodeValidationFailed, Message: "The request is invalid."}
-	errLoginFailed      = &finance.Error{Code: finance.CodeUnauthenticated, Message: "The email or password is incorrect."}
-	errForbidden        = &finance.Error{Code: codeForbidden, Message: "Request origin rejected. Send X-CSRF-Protection: 1 from the app's origin."}
-	errMediaType        = &finance.Error{Code: codeUnsupportedMediaType, Message: "Send the request body as application/json."}
-	errRouteNotFound    = &finance.Error{Code: finance.CodeNotFound, Message: "No API endpoint matches this path."}
-	errMethodNotAllowed = &finance.Error{Code: codeMethodNotAllowed, Message: "This endpoint does not accept this method."}
-	errRateLimited      = &finance.Error{Code: codeRateLimited, Message: "Too many sign-in attempts. Wait for the time in the Retry-After header, then try again."}
-	errInternal         = &finance.Error{Code: codeInternal, Message: "Something went wrong on the server. Try again."}
+	errInvalidRequest   = &ledger.Error{Code: ledger.CodeValidationFailed, Message: "The request is invalid."}
+	errForbidden        = &ledger.Error{Code: codeForbidden, Message: "Request origin rejected. Send X-CSRF-Protection: 1 from the app's origin."}
+	errMediaType        = &ledger.Error{Code: codeUnsupportedMediaType, Message: "Send the request body as application/json."}
+	errRouteNotFound    = &ledger.Error{Code: ledger.CodeNotFound, Message: "No API endpoint matches this path."}
+	errMethodNotAllowed = &ledger.Error{Code: codeMethodNotAllowed, Message: "This endpoint does not accept this method."}
+	errRateLimited      = &ledger.Error{Code: codeRateLimited, Message: "Too many sign-in attempts. Wait for the time in the Retry-After header, then try again."}
+	errInternal         = &ledger.Error{Code: codeInternal, Message: "Something went wrong on the server. Try again."}
 )
 
 type errorDetail struct {
@@ -57,13 +56,13 @@ type errorDetail struct {
 // anything else, including a bare sql.ErrNoRows, is an unexpected fault and becomes 500 internal,
 // so a lookup bug is never disguised as "not found".
 func writeError(w http.ResponseWriter, e error) {
-	var fe *finance.Error
+	var fe *ledger.Error
 	switch {
 	case errors.As(e, &fe):
-	case errors.Is(e, finance.ErrInvalid):
+	case errors.Is(e, ledger.ErrInvalid):
 		fe = errInvalidRequest
-	case errors.Is(e, finance.ErrConflict):
-		fe = finance.ErrStaleVersion
+	case errors.Is(e, ledger.ErrConflict):
+		fe = ledger.ErrStaleVersion
 	default:
 		slog.Error("request failed", "error_type", strings.SplitN(e.Error(), ":", 2)[0])
 		fe = errInternal

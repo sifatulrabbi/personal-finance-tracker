@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http/httptest"
-	"simply-finance/internal/finance"
+	"simply-finance/internal/ledger"
 	"testing"
 )
 
@@ -21,11 +21,11 @@ func TestWriteErrorOnlyTrustsTypedErrors(t *testing.T) {
 		{sql.ErrNoRows, 500, "internal"},
 		{fmt.Errorf("scan: %w", sql.ErrNoRows), 500, "internal"},
 		{errors.New("disk I/O error"), 500, "internal"},
-		{finance.ErrNotFound, 404, "not_found"},
-		{fmt.Errorf("load: %w", finance.ErrNotFound), 404, "not_found"},
-		{finance.ErrInvalid, 400, "validation_failed"},
-		{finance.ErrConflict, 409, "stale_version"},
-		{&finance.Error{Code: "unlisted_code", Message: "x"}, 500, "internal"},
+		{ledger.ErrNotFound, 404, "not_found"},
+		{fmt.Errorf("load: %w", ledger.ErrNotFound), 404, "not_found"},
+		{ledger.ErrInvalid, 400, "validation_failed"},
+		{ledger.ErrConflict, 409, "stale_version"},
+		{&ledger.Error{Code: "unlisted_code", Message: "x"}, 500, "internal"},
 	} {
 		w := httptest.NewRecorder()
 		writeError(w, tc.err)

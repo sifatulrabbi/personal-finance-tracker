@@ -9,8 +9,8 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
-	"simply-finance/internal/finance"
-	"simply-finance/internal/httpapi"
+	"simply-finance/internal/apptest"
+	"simply-finance/internal/ledger"
 	"strings"
 	"testing"
 	"time"
@@ -81,7 +81,7 @@ func (c errorClient) expect(name string, status int, code, field string, gotStat
 	}
 }
 
-func errorServer(t *testing.T) (errorClient, *finance.Store) {
+func errorServer(t *testing.T) (errorClient, *apptest.Household) {
 	t.Helper()
 	now := func() time.Time { return time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC) }
 	s, e := openPrepared(t, filepath.Join(t.TempDir(), "errors.sqlite"), now)
@@ -89,7 +89,7 @@ func errorServer(t *testing.T) (errorClient, *finance.Store) {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { s.Close() })
-	h, e := httpapi.New(s, httpapi.Config{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: now})
+	h, e := newHandler(s, testConfig{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: now})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -153,7 +153,7 @@ func TestEveryAPIErrorUsesTheJSONEnvelope(t *testing.T) {
 	status, header, body = c.send("GET", "/transactions/missing/history", "", nil)
 	c.expect("missing record", 404, "not_found", "", status, header, body, "")
 
-	var cash, closed, usd finance.Wallet
+	var cash, closed, usd ledger.Wallet
 	c.create("/wallets", `{"name":"Cash","type":"physical","opening_balance":"1000"}`, "cash", &cash)
 	c.create("/wallets", `{"name":"Closed","type":"bank","opening_balance":"50"}`, "closed", &closed)
 	c.create("/wallets", `{"name":"Dollars","type":"bank","currency":"USD","opening_balance":"10"}`, "usd", &usd)
@@ -165,7 +165,7 @@ func TestEveryAPIErrorUsesTheJSONEnvelope(t *testing.T) {
 	status, header, body = c.send("POST", "/transactions", fmt.Sprintf(`{"kind":"expense","wallet_id":%q,"amount":"1","date":"2026-09-14"}`, "no-such-wallet"), map[string]string{"Idempotency-Key": "no-wallet"})
 	c.expect("unknown wallet", 404, "not_found", "wallet_id", status, header, body, "")
 
-	var expense finance.Transaction
+	var expense ledger.Transaction
 	c.create("/transactions", fmt.Sprintf(`{"kind":"expense","wallet_id":%q,"amount":"100","date":"2026-09-14"}`, cash.ID), "expense", &expense)
 	edit := fmt.Sprintf(`{"version":1,"kind":"expense","wallet_id":%q,"amount":"90","date":"2026-09-14"}`, cash.ID)
 	if status, _, body = c.send("PUT", "/transactions/"+expense.ID, edit, map[string]string{"Idempotency-Key": "edit"}); status != 200 {
@@ -176,7 +176,7 @@ func TestEveryAPIErrorUsesTheJSONEnvelope(t *testing.T) {
 	status, header, body = c.send("PUT", "/transactions/"+expense.ID, strings.Replace(edit, `"90"`, `"80"`, 1), map[string]string{"Idempotency-Key": "edit"})
 	c.expect("key reuse", 409, "idempotency_key_reused", "", status, header, body, "")
 
-	var list []finance.Transaction
+	var list []ledger.Transaction
 	if status, _, body = c.send("GET", "/transactions", "", nil); status != 200 || json.Unmarshal(body, &list) != nil {
 		t.Fatalf("list %d %s", status, body)
 	}
@@ -190,9 +190,9 @@ func TestEveryAPIErrorUsesTheJSONEnvelope(t *testing.T) {
 	status, header, body = c.send("POST", "/categories", `{"name":"Others","type":"expense"}`, map[string]string{"Idempotency-Key": "dup"})
 	c.expect("duplicate category", 409, "duplicate_name", "name", status, header, body, "")
 
-	var schedule finance.Schedule
+	var schedule ledger.Schedule
 	c.create("/schedules", fmt.Sprintf(`{"name":"Wi-Fi","wallet_id":%q,"amount":"10","frequency":"monthly","start_date":"2026-09-01"}`, cash.ID), "wifi", &schedule)
-	var due []finance.Bill
+	var due []ledger.Bill
 	if status, _, body = c.send("GET", "/bills/due", "", nil); status != 200 || json.Unmarshal(body, &due) != nil || len(due) != 1 {
 		t.Fatalf("due %d %s", status, body)
 	}

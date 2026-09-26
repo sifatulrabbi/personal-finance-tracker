@@ -44,7 +44,7 @@ func limitServer(t *testing.T, trusted string) loginProbe {
 	if e != nil {
 		t.Fatal(e)
 	}
-	h, e := httpapi.New(s, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true, Now: clock.Now, TrustedProxies: proxies})
+	h, e := newHandler(s, testConfig{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true, Now: clock.Now, TrustedProxies: proxies})
 	if e != nil {
 		t.Fatal(e)
 	}
