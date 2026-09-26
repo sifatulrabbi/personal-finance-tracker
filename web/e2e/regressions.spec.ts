@@ -1,5 +1,5 @@
 import { apiWrite, dhakaToday, expect, test } from "./fixtures";
-import { navigate, signIn } from "./login";
+import { mainNavigation, navigate, openMore, signIn, signOut, toast } from "./login";
 import type { Page } from "@playwright/test";
 
 // Regression tests for the measured bugs in the UX audit (.planning/overhaul/ux-audit.md,
@@ -111,7 +111,7 @@ test("Monthly never goes blank while it refetches", async ({ page }) => {
   });
   await page.getByLabel("Monthly target (BDT)").fill("4000");
   await page.getByRole("button", { name: "Save target", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Target saved");
+  await expect(toast(page, "Target saved")).toBeVisible();
   const refresh = page.waitForResponse((r) => r.url().includes("/api/v1/monthly?"));
   await page.getByRole("button", { name: "Refresh records" }).click();
   await refresh;
@@ -246,7 +246,7 @@ test("an expired session keeps the open form and asks to sign in again", async (
 test("signing out works when the session has already expired", async ({ page }) => {
   await signedIn(page, "/settings");
   await page.context().clearCookies();
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await signOut(page);
   await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/activity$/);
 });
@@ -305,25 +305,34 @@ test("an invalid bill amount is an error and is never sent as blank", async ({ p
   await expect(page.getByText("৳3,979.50", { exact: true })).toBeVisible();
 });
 
-test("choosing a page in the menu leaves no dim overlay over the new page", async ({
+test("choosing a page in the More menu leaves nothing over the new page", async ({
   page,
 }) => {
   await signedIn(page);
-  await page.getByRole("button", { name: "Open menu", exact: true }).click();
-  const drawer = page.getByRole("dialog", { name: "Navigation" });
-  await expect(drawer).toBeVisible();
-  await drawer.evaluate((element) =>
+  const menu = await openMore(page);
+  await menu.evaluate((element) =>
     element.getAnimations().forEach((animation) => animation.finish()),
   );
-  // Click and check two frames later, well inside the old ~200ms fade-out.
-  const overlays = await page.evaluate(async () => {
-    const link = [...document.querySelectorAll("a")].find(
-      (a) => a.textContent === "Wallets",
-    )!;
-    link.click();
+  // Choose and check two frames later, well inside the old ~200ms fade-out of the
+  // hamburger drawer this menu replaced.
+  const leftovers = await page.evaluate(async () => {
+    const item = [...document.querySelectorAll('[role="menuitem"]')].find(
+      (a) => a.textContent === "Settings",
+    ) as HTMLElement;
+    item.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    return document.querySelectorAll('[data-slot="dialog-overlay"]').length;
+    return document.querySelectorAll(
+      '[role="menu"], [data-slot="dialog-overlay"], [data-slot="drawer-overlay"]',
+    ).length;
   });
-  expect(overlays).toBe(0);
+  expect(leftovers).toBe(0);
+  await expect(page).toHaveURL(/\/settings$/);
+  // A tab never shows an overlay at all.
+  await mainNavigation(page).getByRole("link", { name: "Wallets", exact: true }).click();
   await expect(page).toHaveURL(/\/wallets$/);
+  expect(
+    await page.evaluate(
+      () => document.querySelectorAll('[data-slot="dialog-overlay"], [data-slot="drawer-overlay"]').length,
+    ),
+  ).toBe(0);
 });

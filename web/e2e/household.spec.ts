@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { navigate, submitLogin } from "./login";
+import { mainNavigation, navigate, openSheet, signOut, submitLogin, toast } from "./login";
 
 test("mobile household can record money and confirm bills", async ({
   page,
@@ -11,9 +11,7 @@ test("mobile household can record money and confirm bills", async ({
     .getByLabel("Password", { exact: true })
     .fill("test-household-password");
   await submitLogin(page);
-  await expect(
-    page.getByRole("button", { name: "Open menu", exact: true }),
-  ).toBeVisible();
+  await expect(mainNavigation(page)).toBeVisible();
   await navigate(page, "Wallets");
   await page.getByRole("button", { name: "Add wallet", exact: true }).click();
   await page.getByLabel("Wallet name").fill(`Cash ${suffix}`);
@@ -42,9 +40,7 @@ test("mobile household can record money and confirm bills", async ({
   await page
     .getByRole("button", { name: "Save settings", exact: true })
     .click();
-  await expect(
-    page.getByText("Settings saved.", { exact: true }),
-  ).toBeVisible();
+  await expect(toast(page, "Settings saved.")).toBeVisible();
   await navigate(page, "Bills");
   await page.getByRole("button", { name: "Add bill", exact: true }).click();
   await page.getByLabel("Bill name", { exact: true }).fill(`Wi-Fi ${suffix}`);
@@ -95,9 +91,7 @@ test("credit debt, transfers, adjustments, and corrections stay consistent", asy
     .getByLabel("Password", { exact: true })
     .fill("test-household-password");
   await submitLogin(page);
-  await expect(
-    page.getByRole("button", { name: "Open menu", exact: true }),
-  ).toBeVisible();
+  await expect(mainNavigation(page)).toBeVisible();
   const write = async (path: string, data: unknown) => {
     const response = await page.request.post(`/api/v1${path}`, {
       headers: {
@@ -219,8 +213,9 @@ test("credit debt, transfers, adjustments, and corrections stay consistent", asy
   await page.getByRole("button", { name: "Confirm void" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await navigate(page, "Wallets");
-  await expect(card.getByText("৳−150.00", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  // An overpaid card shows its negative debt with the minus before the currency symbol.
+  await expect(card.getByText("−৳150.00", { exact: true })).toBeVisible();
+  await signOut(page);
   await expect(
     page.getByRole("button", { name: "Sign in", exact: true }),
   ).toBeVisible();
@@ -236,9 +231,7 @@ test("blank payment uses the scheduled amount and long names fit a small phone",
     .getByLabel("Password", { exact: true })
     .fill("test-household-password");
   await submitLogin(page);
-  await expect(
-    page.getByRole("button", { name: "Open menu", exact: true }),
-  ).toBeVisible();
+  await expect(mainNavigation(page)).toBeVisible();
   const name = `${"LongWallet".repeat(9)}-${testInfo.project.name}`;
   const headers = {
     "X-CSRF-Protection": "1",
@@ -279,7 +272,7 @@ test("blank payment uses the scheduled amount and long names fit a small phone",
       .evaluate((element) => element.scrollWidth <= element.clientWidth),
   ).toBe(true);
   await expect(page.getByLabel("Amount paid")).toHaveValue("");
-  const bounds = await page.getByRole("dialog").boundingBox();
+  const bounds = await (await openSheet(page)).boundingBox();
   expect(bounds?.x).toBeGreaterThanOrEqual(0);
   expect(bounds?.y).toBeGreaterThanOrEqual(0);
   expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(320);
