@@ -291,6 +291,19 @@ describe("placeTransaction with cursor pages", () => {
     expect(rowsOf(out).map((r) => r.id)).toEqual([pages[0][0].id, pages[0][2].id]);
   });
 
+  // Correcting a debit card record on its bank's page must not make the row vanish until the
+  // refetch brings it back: the record names the card, not the bank.
+  test("a wallet list keeps a record that names another wallet, updated in place", () => {
+    const pages = pagesOf(3);
+    const byCard = { ...pages[0][1], wallet_id: "debit-card", amount: "80.00", version: 2 };
+    const out = placeTransaction(infinite(pages), byCard, { wallet_id: "bank" })!;
+    expect(rowsOf(out).map((r) => r.id)).toEqual(pages[0].map((r) => r.id));
+    expect(rowsOf(out)[1].amount).toBe("80.00");
+    // One that is not there yet is not guessed in; the refetch adds it.
+    const fresh = record({ wallet_id: "debit-card", date: "2026-12-01" });
+    expect(rowsOf(placeTransaction(infinite(pages), fresh, { wallet_id: "bank" }))).toHaveLength(3);
+  });
+
   test("a voided record stays in a list that includes voided records, and leaves others", () => {
     const pages = pagesOf(3);
     const voided = { ...pages[0][0], voided: true, version: 2 };

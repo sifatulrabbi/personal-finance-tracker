@@ -66,6 +66,19 @@ export function placeTransaction(
   filters: TransactionFilters = {},
 ): TransactionPages | undefined {
   if (!data) return data;
+  // A record that names another wallet may still belong in a wallet's list (a bank lists
+  // its debit cards' records). Only the server knows, so such a record is updated where it
+  // already is, never removed or added here; the list's refetch settles it.
+  const otherWallet =
+    matchesFilters(record, { ...filters, wallet_id: undefined }) && !matchesFilters(record, filters);
+  if (otherWallet)
+    return {
+      ...data,
+      pages: data.pages.map((page) => ({
+        ...page,
+        items: page.items.map((row) => (row.id === record.id ? record : row)),
+      })),
+    };
   const pages = data.pages.map((page) => ({
     ...page,
     items: page.items.filter((row) => row.id !== record.id),
