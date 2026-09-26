@@ -2,22 +2,25 @@ import { useState } from "react";
 import { useMonthly } from "@/cache/queries";
 import { useWrites } from "@/cache/writes";
 import { dhakaDate } from "@/lib/dates";
-import { moneyLabel } from "@/money/format";
 import { MoneyField, SaveForm, TextField } from "@/components/forms";
-import { LoadError, PageHeading } from "@/components/layout";
+import { LoadError, PageIntro, Section } from "@/components/layout";
+import { Money } from "@/components/money";
+import { dismissSaved } from "@/components/feedback";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const targetSaved = "monthly-target-saved";
 
 export function Monthly() {
   const writes = useWrites();
   const [month, setMonth] = useState(dhakaDate().slice(0, 7));
-  const [saved, setSaved] = useState(false);
   const query = useMonthly(month);
   // While another month loads, the previous month stays on screen (never a blank page).
   const data = query.data;
   const validMonth = /^\d{4}-\d{2}$/.test(month);
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeading>Monthly spending</PageHeading>
+    <>
+      <PageIntro description="Actual expenses in BDT, by Asia/Dhaka calendar month." />
       <TextField
         label="Month"
         name="month"
@@ -27,7 +30,7 @@ export function Monthly() {
         value={month}
         onChange={(event) => {
           setMonth(event.target.value);
-          setSaved(false);
+          dismissSaved(targetSaved);
         }}
       />
       {!validMonth ? (
@@ -42,30 +45,29 @@ export function Monthly() {
         what="this month"
       />
       {!data && query.isPending && validMonth ? (
-        <Skeleton data-testid="monthly-skeleton" className="h-40 w-full" />
+        <Skeleton data-testid="monthly-skeleton" className="h-40 w-full rounded-xl" />
       ) : null}
       {data && (
         <div
           data-testid="monthly-content"
           aria-busy={query.isPlaceholderData}
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-6"
         >
-          <p className="text-sm text-muted-foreground">
-            Actual expenses in BDT · Asia/Dhaka
-          </p>
-          <p
-            data-testid="monthly-total"
-            className="text-2xl font-semibold whitespace-nowrap tabular-nums"
-          >
-            {moneyLabel(data.spent, "BDT")}
-          </p>
+          <Card>
+            <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-label text-muted-foreground">Spent this month</p>
+            <p data-testid="monthly-total" className="text-display">
+              <Money amount={data.spent} currency="BDT" />
+            </p>
+          </div>
           {/* Keyed by month only, so a save or a background refresh never remounts the
               form and drops focus. The version is read at submit time. */}
           <SaveForm
             key={data.month}
             label="Save target"
+            saved={{ message: "Target saved.", id: targetSaved }}
             disabled={query.isPlaceholderData}
-            onSaved={() => setSaved(true)}
             body={(form) => ({
               amount: form.decimal("target"),
               version: data.target.version,
@@ -75,31 +77,34 @@ export function Monthly() {
             <MoneyField
               label="Monthly target (BDT)"
               name="target"
+              currency="BDT"
               defaultValue={data.target.amount}
-              onChange={() => setSaved(false)}
+              // The confirmation no longer matches the field once it is edited.
+              onChange={() => dismissSaved(targetSaved)}
               placeholder="No target set"
             />
           </SaveForm>
-          {/* Loaded data stays on screen during refetches, so this never flickers. */}
-          {saved && <p role="status">Target saved.</p>}
+            </CardContent>
+          </Card>
+          <Section title="By category">
           <p className="text-sm text-muted-foreground">
             Each share is a percentage of actual spending, not the target. USD
             expenses use their saved exchange rates.
           </p>
           <dl
             data-testid="monthly-mobile-list"
-            className="flex min-w-0 flex-col sm:hidden"
+            className="flex min-w-0 flex-col divide-y overflow-hidden rounded-xl border bg-card sm:hidden"
           >
             {data.categories.map((category) => (
               <div
                 key={category.category_id}
-                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-b py-3"
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 px-4 py-3"
               >
                 <dt className="min-w-0 whitespace-pre-wrap break-words font-medium">
                   {category.name}
                 </dt>
-                <dd className="text-right font-medium whitespace-nowrap tabular-nums">
-                  {moneyLabel(category.spent, "BDT")}
+                <dd className="text-right font-medium">
+                  <Money amount={category.spent} currency="BDT" />
                 </dd>
                 <dd className="col-span-2 text-sm text-muted-foreground">
                   {category.percentage}% of monthly spending
@@ -109,7 +114,7 @@ export function Monthly() {
           </dl>
           <div
             data-testid="monthly-table"
-            className="hidden min-w-0 max-w-full overflow-x-auto sm:block"
+            className="hidden min-w-0 max-w-full overflow-x-auto rounded-xl border bg-card px-4 sm:block"
           >
             <table className="w-full table-fixed text-sm">
               <caption className="sr-only">
@@ -130,15 +135,15 @@ export function Monthly() {
               </thead>
               <tbody>
                 {data.categories.map((category) => (
-                  <tr key={category.category_id} className="border-b">
+                  <tr key={category.category_id} className="border-b last:border-0">
                     <th
                       scope="row"
                       className="whitespace-pre-wrap break-words py-3 pr-2 text-left font-normal"
                     >
                       {category.name}
                     </th>
-                    <td className="py-3 text-right whitespace-nowrap tabular-nums">
-                      {moneyLabel(category.spent, "BDT")}
+                    <td className="py-3 text-right">
+                      <Money amount={category.spent} currency="BDT" />
                     </td>
                     <td className="py-3 text-right tabular-nums">
                       {category.percentage}%
@@ -153,8 +158,9 @@ export function Monthly() {
               No expenses recorded this month.
             </p>
           )}
+          </Section>
         </div>
       )}
-    </div>
+    </>
   );
 }

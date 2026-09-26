@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, CalendarDays } from "lucide-react";
+import { Plus, CalendarCheck, Repeat } from "lucide-react";
 import type { Bill, Category, Frequency, Schedule, Settings, Wallet } from "@/api/types";
 import {
   useCategories,
@@ -24,21 +24,27 @@ import {
 } from "@/components/ui/card";
 import {
   Choice,
-  ErrorMessage,
   MoneyField,
   Notes,
   RateField,
   SaveForm,
   TextField,
   WalletChoice,
+  WarningMessage,
 } from "@/components/forms";
 import {
+  EmptyState,
+  List,
+  ListRow,
+  ListSkeleton,
   LoadError,
   Modal,
-  NoRecords,
-  PageHeading,
+  PageIntro,
+  RowIcon,
+  Section,
   useEditor,
 } from "@/components/layout";
+import { Money } from "@/components/money";
 import { CategoryChoice } from "@/components/categories";
 
 type Editor =
@@ -60,34 +66,38 @@ export function Bills() {
   const ready = Boolean(walletsQuery.data && categoriesQuery.data && settingsQuery.data);
   const value = editor.value;
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <PageHeading>Recurring bills</PageHeading>
-        <Button
-          size="sm"
-          disabled={!ready || !wallets.some((w) => !w.archived)}
-          onClick={(e) => editor.open({ type: "create" }, e)}
-        >
-          <Plus data-icon="inline-start" />
-          Add bill
-        </Button>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        Due dates, not automatic payments. Confirm when you have paid.
-      </p>
-      <h3 className="flex items-center gap-2 font-semibold">
-        <CalendarDays className="size-4" />
-        Due now <Badge variant="secondary">{bills.length}</Badge>
-      </h3>
+    <>
+      <PageIntro
+        description="Due dates, not automatic payments. Confirm when you have paid."
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!ready || !wallets.some((w) => !w.archived)}
+            onClick={(e) => editor.open({ type: "create" }, e)}
+          >
+            <Plus data-icon="inline-start" />
+            Add bill
+          </Button>
+        }
+      />
+      <Section
+        title={
+          <>
+            Due now <Badge variant={bills.length ? "warning" : "secondary"}>{bills.length}</Badge>
+          </>
+        }
+      >
       <LoadError
         error={due.error}
         hasData={Boolean(due.data)}
         onRetry={() => void due.refetch()}
         what="due bills"
       />
-      {due.isPending ? <Skeleton className="h-32 w-full" /> : null}
+      {due.isPending ? <Skeleton className="h-36 w-full rounded-xl" /> : null}
       {due.data && !bills.length ? (
-        <NoRecords
+        <EmptyState
+          icon={<CalendarCheck />}
           title="Nothing due"
           description="Your unpaid bills appear here when their due date arrives."
         />
@@ -97,24 +107,29 @@ export function Bills() {
         return (
           <Card key={bill.id} role="article" aria-label={`Due ${bill.name}`}>
             <CardHeader>
-              <CardTitle>{bill.name}</CardTitle>
-              <CardDescription>
-                Due {bill.due_date} · {wallet?.name}
-              </CardDescription>
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <CardTitle className="break-words">{bill.name}</CardTitle>
+                  <CardDescription>
+                    Due {bill.due_date} · {wallet?.name}
+                  </CardDescription>
+                </div>
+                <Money
+                  className="text-heading"
+                  amount={bill.amount}
+                  currency={wallet?.currency ?? "BDT"}
+                />
+              </div>
             </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-semibold whitespace-nowrap tabular-nums">
-                {moneyLabel(bill.amount, wallet?.currency ?? "BDT")}
-              </p>
-              {bill.note ? (
-                <p className="break-words text-sm text-muted-foreground">
-                  {bill.note}
-                </p>
-              ) : null}
-            </CardContent>
-            <CardFooter className="flex flex-col items-stretch gap-2 sm:flex-row">
+            {bill.note ? (
+              <CardContent>
+                <p className="break-words text-sm text-muted-foreground">{bill.note}</p>
+              </CardContent>
+            ) : null}
+            <CardFooter className="flex gap-2">
               <Button
-                className="w-full sm:w-auto"
+                className="flex-1 sm:flex-none"
+                variant="outline"
                 size="sm"
                 disabled={!ready}
                 onClick={(e) => editor.open({ type: "pay", bill }, e)}
@@ -122,9 +137,9 @@ export function Bills() {
                 Confirm payment
               </Button>
               <Button
-                className="w-full sm:w-auto"
                 variant="ghost"
                 size="sm"
+                className="text-muted-foreground"
                 onClick={(e) => editor.open({ type: "skip", bill }, e)}
               >
                 Skip
@@ -133,47 +148,62 @@ export function Bills() {
           </Card>
         );
       })}
-      <h3 className="mt-3 font-semibold">Your schedules</h3>
+      </Section>
+      <Section title="Your schedules">
       <LoadError
         error={schedulesQuery.error}
         hasData={Boolean(schedulesQuery.data)}
         onRetry={() => void schedulesQuery.refetch()}
         what="schedules"
       />
+      {schedulesQuery.isPending ? <ListSkeleton rows={2} /> : null}
       {schedulesQuery.data && !schedules.length ? (
         <p className="text-sm text-muted-foreground">
           Add rent, Wi-Fi, or another regular bill.
         </p>
       ) : null}
-      {schedules.map((schedule) => (
-        <div
-          key={schedule.id}
-          className="flex items-start justify-between gap-3 rounded-xl border bg-card p-4"
-        >
-          <div className="flex min-w-0 flex-col gap-1">
-            <p className="break-words font-medium">{schedule.name}</p>
-            <p className="text-sm text-muted-foreground">
-              {schedule.frequency} ·{" "}
-              {moneyLabel(
-                schedule.amount,
-                wallets.find((w) => w.id === schedule.wallet_id)?.currency ?? "BDT",
-              )}
-            </p>
-            {!schedule.active ? (
-              <Badge variant="outline">Inactive</Badge>
-            ) : null}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label={`Edit ${schedule.name}`}
-            disabled={!ready}
-            onClick={(e) => editor.open({ type: "edit", schedule }, e)}
-          >
-            Edit
-          </Button>
-        </div>
-      ))}
+      {schedules.length ? (
+        <List>
+          {schedules.map((schedule) => (
+            <ListRow
+              key={schedule.id}
+              leading={
+                <RowIcon>
+                  <Repeat />
+                </RowIcon>
+              }
+              title={schedule.name}
+              subtitle={
+                <>
+                  <span className="capitalize">{schedule.frequency}</span> ·{" "}
+                  {moneyLabel(
+                    schedule.amount,
+                    wallets.find((w) => w.id === schedule.wallet_id)?.currency ?? "BDT",
+                  )}
+                  {!schedule.active ? (
+                    <>
+                      {" "}
+                      <Badge variant="outline">Inactive</Badge>
+                    </>
+                  ) : null}
+                </>
+              }
+              trailing={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Edit ${schedule.name}`}
+                  disabled={!ready}
+                  onClick={(e) => editor.open({ type: "edit", schedule }, e)}
+                >
+                  Edit
+                </Button>
+              }
+            />
+          ))}
+        </List>
+      ) : null}
+      </Section>
       <Modal
         open={editor.isOpen}
         onClose={editor.close}
@@ -209,6 +239,7 @@ export function Bills() {
           <SaveForm
             key={value.bill.id}
             label="Skip this occurrence"
+            saved="Bill skipped"
             onSaved={editor.close}
             body={(form) => ({ reason: form.text("reason") })}
             send={(body, key) => writes.skipBill(value.bill.id, body, { key })}
@@ -217,7 +248,7 @@ export function Bills() {
           </SaveForm>
         ) : null}
       </Modal>
-    </section>
+    </>
   );
 }
 
@@ -270,6 +301,7 @@ function ScheduleForm({
     <SaveForm
       disabled={categoryEditing || !walletAvailable}
       label={initial ? "Save bill" : "Create bill"}
+      saved={initial ? "Bill saved" : "Bill created"}
       onSaved={onSaved}
       body={(form) => ({
         input: {
@@ -303,7 +335,10 @@ function ScheduleForm({
       />
       <WalletChoice wallets={wallets} value={walletID} onChange={setWalletID} />
       {!walletAvailable && (
-        <ErrorMessage error="This wallet is archived or unavailable. Reactivate it in Wallets, or explicitly select an active wallet before saving." />
+        <WarningMessage>
+          This wallet is archived or unavailable. Reactivate it in Wallets, or explicitly
+          select an active wallet before saving.
+        </WarningMessage>
       )}
       <CategoryChoice
         type="expense"
@@ -314,6 +349,7 @@ function ScheduleForm({
       <MoneyField
         label="Expected amount"
         name="amount"
+        currency={wallets.find((w) => w.id === walletID)?.currency}
         defaultValue={initial?.amount}
       />
       {!initial ? (
@@ -381,6 +417,7 @@ function PaymentForm({
     <SaveForm
       onSaved={onSaved}
       label="Record payment"
+      saved="Payment recorded"
       disabled={!walletAvailable}
       body={(form) => ({
         // Empty means "use the expected amount" (ADR 0004). Text that does not parse, such
@@ -400,19 +437,23 @@ function PaymentForm({
         onChange={setWalletID}
       />
       {!walletAvailable && (
-        <ErrorMessage error="This wallet is archived or unavailable. Reactivate it in Wallets, or explicitly choose an active payment wallet." />
+        <WarningMessage>
+          This wallet is archived or unavailable. Reactivate it in Wallets, or explicitly
+          choose an active payment wallet.
+        </WarningMessage>
       )}
       <MoneyField
         label="Amount paid"
         name="amount"
+        currency={currency}
         required={changedCurrency}
         placeholder={changedCurrency ? "Enter actual amount" : bill.amount}
+        hint={
+          changedCurrency
+            ? `The bill expects ${bill.amount} ${expectedCurrency}. Enter the actual payment in ${currency}.`
+            : `Empty amount uses ${bill.amount}. Payment is recorded in ${currency}.`
+        }
       />
-      <p className="text-sm text-muted-foreground">
-        {changedCurrency
-          ? `The bill expects ${bill.amount} ${expectedCurrency}. Enter the actual payment in ${currency}.`
-          : `Empty amount uses ${bill.amount}. Payment is recorded in ${currency}.`}
-      </p>
       {currency === "USD" ? (
         <RateField
           label="Exchange rate (BDT per USD)"

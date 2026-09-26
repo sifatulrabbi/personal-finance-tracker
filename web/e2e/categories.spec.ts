@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { navigate, submitLogin } from "./login";
+import { mainNavigation, navigate, submitLogin, toast } from "./login";
 
 test("inline categories remain available after canceling a record", async ({
   page,
@@ -10,9 +10,7 @@ test("inline categories remain available after canceling a record", async ({
     .getByLabel("Password", { exact: true })
     .fill("test-household-password");
   await submitLogin(page);
-  await expect(
-    page.getByRole("button", { name: "Open menu", exact: true }),
-  ).toBeVisible();
+  await expect(mainNavigation(page)).toBeVisible();
   const wallet = await page.request.post("/api/v1/wallets", {
     headers: {
       "X-CSRF-Protection": "1",
@@ -127,7 +125,7 @@ test("categories preserve record drafts and monthly shares use actual spending",
   await expect(page.getByTestId("monthly-total")).toHaveText("৳800.00");
   await page.getByLabel("Monthly target (BDT)").fill("4000");
   await page.getByRole("button", { name: "Save target", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Target saved");
+  await expect(toast(page, "Target saved")).toBeVisible();
   const row = page
     .getByTestId("monthly-mobile-list")
     .locator(":scope > div")

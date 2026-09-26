@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { navigate, signIn } from "./login";
+import { mainNavigation, navigate, openMore, signIn, signOut } from "./login";
 
 test("page URLs survive login, reload, and browser history", async ({ page }) => {
   await page.goto("/wallets");
@@ -16,11 +16,7 @@ test("page URLs survive login, reload, and browser history", async ({ page }) =>
     page.getByRole("region", { name: "Wallets", exact: true }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Open menu", exact: true }).click();
-  await page
-    .getByRole("dialog", { name: "Navigation" })
-    .getByRole("link", { name: "Bills", exact: true })
-    .click();
+  await navigate(page, "Bills");
   await expect(page).toHaveURL(/\/bills$/);
 
   await page.goBack();
@@ -61,11 +57,16 @@ test("a mixed-case or trailing-slash URL still labels and highlights its page", 
   ).toBeVisible();
   await expect(page.locator("header")).toContainText("Wallets");
   await expect(page.locator("header")).not.toContainText("Page not found");
-  await page.getByRole("button", { name: "Open menu", exact: true }).click();
   await expect(
-    page
-      .getByRole("dialog", { name: "Navigation" })
-      .getByRole("link", { name: "Wallets", exact: true }),
+    mainNavigation(page).getByRole("link", { name: "Wallets", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+
+  // A page from the More menu is highlighted inside the menu.
+  await page.goto("/Settings/");
+  await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible();
+  const menu = await openMore(page);
+  await expect(
+    menu.getByRole("menuitem", { name: "Settings", exact: true }),
   ).toHaveAttribute("aria-current", "page");
 });
 
@@ -75,7 +76,7 @@ test("signing out sends the next sign-in to Activity", async ({ page }) => {
   await expect(
     page.getByRole("region", { name: "Settings", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await signOut(page);
   await expect(page).toHaveURL(/\/activity$/);
   await signIn(page);
   await expect(page).toHaveURL(/\/activity$/);
@@ -86,66 +87,62 @@ test("signing out sends the next sign-in to Activity", async ({ page }) => {
   await expect(page).toHaveURL(/\/bills$/);
 });
 
-test("mobile menu selects pages, fits phones, and restores focus", async ({
+test("the tab bar and More menu select pages, fit phones, and restore focus", async ({
   page,
 }, testInfo) => {
   await page.goto("/");
   await signIn(page);
   await expect(page).toHaveURL(/\/activity$/);
-  const trigger = page.getByRole("button", { name: "Open menu", exact: true });
-  const drawer = page.getByRole("dialog", { name: "Navigation" });
+  const nav = mainNavigation(page);
+  const more = nav.getByRole("button", { name: "More", exact: true });
   for (const width of [320, 390, 448]) {
     await page.setViewportSize({ width, height: 700 });
     for (const { name, path } of [
       { name: "Activity", path: "/activity" },
       { name: "Wallets", path: "/wallets" },
       { name: "Bills", path: "/bills" },
+    ]) {
+      const tab = nav.getByRole("link", { name, exact: true });
+      const bounds = await tab.boundingBox();
+      expect(bounds!.height).toBeGreaterThanOrEqual(44);
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      await tab.click();
+      await expect(page).toHaveURL(new RegExp(`${path}$`));
+      await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
+      await expect(tab).toHaveAttribute("aria-current", "page");
+      // Only the current tab is marked.
+      await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+    }
+    for (const { name, path } of [
       { name: "Monthly spending", path: "/monthly" },
       { name: "Settings", path: "/settings" },
     ]) {
-      await trigger.click();
-      const item = drawer.getByRole("link", { name, exact: true });
+      const menu = await openMore(page);
+      const item = menu.getByRole("menuitem", { name, exact: true });
       await expect(item).toBeVisible();
       const bounds = await item.boundingBox();
       expect(bounds!.height).toBeGreaterThanOrEqual(44);
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
-      expect(bounds!.x + bounds!.width).toBeLessThan(width);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
       await item.click();
-      await expect(drawer).toHaveCount(0);
+      await expect(page.getByRole("menu")).toHaveCount(0);
       await expect(page).toHaveURL(new RegExp(`${path}$`));
-      await expect(
-        page.getByRole("region", { name, exact: true }),
-      ).toBeVisible();
-      await trigger.click();
-      await expect(
-        drawer.getByRole("link", { name, exact: true }),
-      ).toHaveAttribute("aria-current", "page");
+      await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
+      // No tab claims a page that lives in More.
+      await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
+      await openMore(page);
       await page.keyboard.press("Escape");
-      await expect(drawer).toHaveCount(0);
-      await expect(trigger).toBeFocused();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(more).toBeFocused();
     }
   }
-  await trigger.click();
-  await drawer.getByRole("button", { name: "Close menu" }).focus();
-  await page.keyboard.press("Shift+Tab");
-  await expect(
-    drawer.getByRole("link", { name: "Settings", exact: true }),
-  ).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(
-    drawer.getByRole("button", { name: "Close menu" }),
-  ).toBeFocused();
   await page.screenshot({
     path: testInfo.outputPath("navigation.png"),
     animations: "disabled",
   });
-  await page.mouse.click(440, 350);
-  await expect(drawer).toHaveCount(0);
-  await expect(trigger).toBeFocused();
-  await trigger.click();
-  await drawer.getByRole("button", { name: "Close menu" }).click();
-  await expect(drawer).toHaveCount(0);
 
+  // The tab bar stays on screen at the bottom of a long, scrolled page.
   for (let index = 0; index < 12; index++) {
     const response = await page.request.post("/api/v1/wallets", {
       headers: {
@@ -161,9 +158,7 @@ test("mobile menu selects pages, fits phones, and restores focus", async ({
     expect(response.ok()).toBe(true);
   }
   await page.reload();
-  await trigger.click();
-  await drawer.getByRole("link", { name: "Wallets", exact: true }).click();
-  await expect(drawer).toHaveCount(0);
+  await navigate(page, "Wallets");
   await page.setViewportSize({ width: 320, height: 700 });
   await expect
     .poll(() =>
@@ -174,10 +169,14 @@ test("mobile menu selects pages, fits phones, and restores focus", async ({
     )
     .toBeGreaterThan(300);
   await expect(async () => {
-    const bounds = await trigger.boundingBox();
-    expect(bounds!.y).toBeGreaterThanOrEqual(0);
-    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(80);
+    const bounds = await nav.boundingBox();
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(700.5);
+    expect(bounds!.y).toBeGreaterThan(600);
   }).toPass({ timeout: 1500 });
-  await trigger.click();
-  await expect(drawer).toBeVisible();
+  // The page title stays pinned at the top while scrolled.
+  const title = page.getByRole("heading", { level: 1, name: "Wallets" });
+  const titleBounds = await title.boundingBox();
+  expect(titleBounds!.y).toBeGreaterThanOrEqual(0);
+  expect(titleBounds!.y + titleBounds!.height).toBeLessThanOrEqual(80);
+  await openMore(page);
 });

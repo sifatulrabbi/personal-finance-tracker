@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
-import { navigate, submitLogin } from "./login";
+import { mainNavigation, navigate, openSheet, submitLogin } from "./login";
 
 const viewports = [
   { name: "compact portrait", width: 320, height: 568 },
@@ -42,8 +42,8 @@ async function expectModalContained(
   viewport: { width: number; height: number },
   { hasForm = true }: { hasForm?: boolean } = {},
 ) {
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible();
+  // Measured once the sheet has slid into place.
+  const dialog = await openSheet(page);
   await expectInsideViewport(dialog, viewport);
   expect(
     await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth),
@@ -88,6 +88,8 @@ async function closeModal(page: Page) {
 test("every page and financial modal stays inside compact mobile viewports", async ({
   page,
 }, testInfo) => {
+  // Opens and closes about twenty sheets at two viewport sizes, each with its animation.
+  test.setTimeout(90_000);
   const suffix = `responsive-${testInfo.project.name}`;
   await page.goto("/");
   await page.getByLabel("Email", { exact: true }).fill("test@example.test");
@@ -251,26 +253,32 @@ test("safe areas and a keyboard-sized viewport keep mobile controls reachable", 
     { left: safeLeft, right: safeRight },
   );
 
-  const menu = page.getByRole("button", { name: "Open menu", exact: true });
+  const title = page.getByRole("heading", { level: 1 });
   const refresh = page.getByRole("button", {
     name: "Refresh records",
     exact: true,
   });
-  const menuBounds = await menu.boundingBox();
+  const titleBounds = await title.boundingBox();
   const refreshBounds = await refresh.boundingBox();
-  expect(menuBounds!.x).toBeGreaterThanOrEqual(safeLeft);
+  expect(titleBounds!.x).toBeGreaterThanOrEqual(safeLeft);
+  expect(titleBounds!.y).toBeGreaterThanOrEqual(20);
   expect(refreshBounds!.x + refreshBounds!.width).toBeLessThanOrEqual(
     viewport.width - safeRight,
   );
 
-  await menu.click();
-  const drawer = page.getByRole("dialog", { name: "Navigation" });
-  const drawerBounds = await drawer.boundingBox();
-  expect(drawerBounds!.x).toBeGreaterThanOrEqual(safeLeft);
-  expect(drawerBounds!.x + drawerBounds!.width).toBeLessThanOrEqual(
-    viewport.width - safeRight,
-  );
-  await drawer.getByRole("link", { name: "Wallets", exact: true }).click();
+  // Every tab bar control sits inside the side insets and above the bottom inset.
+  const nav = mainNavigation(page);
+  const controls = [
+    ...(await nav.getByRole("link").all()),
+    ...(await nav.getByRole("button").all()),
+  ];
+  for (const control of controls) {
+    const bounds = (await control.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(safeLeft);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width - safeRight);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height - 18);
+  }
+  await nav.getByRole("link", { name: "Wallets", exact: true }).click();
 
   await page.getByRole("button", { name: "Add wallet", exact: true }).click();
   await page.getByLabel("Wallet name", { exact: true }).focus();

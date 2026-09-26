@@ -3,6 +3,7 @@ import { errorMessage } from "@/api/errors";
 import { mutationKey, type MutationKey } from "@/api/idempotency";
 import type { Category } from "@/api/types";
 import { useWrites } from "@/cache/writes";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -80,7 +81,14 @@ export function CategoryChoice({
         options={options.map((c) => ({ value: c.id, label: c.name }))}
       />
       {!editing ? (
-        <Button type="button" variant="outline" onClick={() => toggle(true)}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="-mt-2 self-start text-primary"
+          onClick={() => toggle(true)}
+        >
+          <Plus data-icon="inline-start" />
           New category
         </Button>
       ) : (
@@ -102,6 +110,7 @@ export function CategoryChoice({
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
+              variant="outline"
               disabled={busy || !name.trim()}
               onClick={() => void create()}
             >
@@ -139,12 +148,12 @@ export function CategorySettings({ categories }: { categories: Category[] }) {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <ul className="flex flex-col gap-2">
+                <ul className="flex flex-wrap gap-2">
                   {categories
                     .filter((c) => c.type === type)
                     .map((c) => (
                       <li
-                        className="whitespace-pre-wrap break-words"
+                        className="max-w-full rounded-full bg-muted px-3 py-1 text-sm whitespace-pre-wrap break-words"
                         key={c.id}
                       >
                         {c.name}
@@ -155,6 +164,7 @@ export function CategorySettings({ categories }: { categories: Category[] }) {
                     a half-typed name in the other form. This form clears only itself. */}
                 <SaveForm
                   label="Create category"
+                  saved="Category created"
                   resetOnSuccess
                   body={(form) => ({
                     name: form.text(`${type}_category_name`),

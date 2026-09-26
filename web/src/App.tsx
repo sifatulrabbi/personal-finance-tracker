@@ -1,12 +1,7 @@
 import { useLayoutEffect, useState, type FormEvent } from "react";
-import { Wallet as WalletIcon, RefreshCw, LogOut } from "lucide-react";
+import { Wallet as WalletIcon, CloudOff, SearchX } from "lucide-react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import {
-  QueryClientProvider,
-  useIsFetching,
-  useQueryClient,
-  type QueryClient,
-} from "@tanstack/react-query";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import type { ApiClient } from "@/api/client";
 import { errorMessage, isApiError } from "@/api/errors";
 import type { User } from "@/api/types";
@@ -28,12 +23,15 @@ import {
 } from "@/components/ui/dialog";
 import { FieldGroup } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Toaster } from "@/components/ui/sonner";
 import { TextField, ErrorMessage } from "@/components/forms";
+import { EmptyState } from "@/components/layout";
+import { AppShell } from "@/components/shell";
+import { ThemeProvider } from "@/theme/provider";
 import { Wallets } from "@/components/wallets";
 import { Activity } from "@/components/activity";
 import { Bills } from "@/components/bills";
 import { Settings } from "@/components/settings";
-import { Navigation } from "@/components/navigation";
 import { Monthly } from "@/components/monthly";
 import { homePath, pageForPath } from "@/routes";
 
@@ -47,11 +45,18 @@ export function App({
   queryClient: QueryClient;
 }) {
   return (
-    <QueryClientProvider client={queryClient}>
-      <SessionProvider api={api}>
-        <Root />
-      </SessionProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider api={api}>
+          <Root />
+        </SessionProvider>
+      </QueryClientProvider>
+      <Toaster
+        position="top-center"
+        offset={{ top: "max(1rem, env(safe-area-inset-top))" }}
+        mobileOffset={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
+      />
+    </ThemeProvider>
   );
 }
 
@@ -60,7 +65,7 @@ function Root() {
   switch (state.status) {
     case "checking":
       return (
-        <main className="app-login mx-auto flex min-h-dvh max-w-md flex-col gap-4">
+        <main className={`${loginFrame} gap-4`}>
           <Skeleton className="h-12 w-48" />
           <Skeleton className="h-48 w-full" />
         </main>
@@ -68,9 +73,15 @@ function Root() {
     case "unreachable":
       // A signed-in user must not think they were logged out because the server is down.
       return (
-        <main className="app-login mx-auto flex min-h-dvh max-w-md min-w-0 flex-col justify-center gap-6">
+        <main className={`${loginFrame} justify-center gap-6`}>
           <Card>
             <CardHeader>
+              <div
+                aria-hidden
+                className="mb-2 flex size-11 items-center justify-center rounded-full bg-destructive-muted text-destructive"
+              >
+                <CloudOff className="size-5" />
+              </div>
               <CardTitle role="heading" aria-level={1}>
                 Cannot reach Simply Finance
               </CardTitle>
@@ -97,10 +108,6 @@ function Root() {
 
 function AuthenticatedApp({ user }: { user: User }) {
   const location = useLocation();
-  const queryClient = useQueryClient();
-  const fetching = useIsFetching() > 0;
-  const { signOut } = useSession();
-  const [signOutError, setSignOutError] = useState("");
   // Each page opens at the top instead of at the previous page's scroll position.
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
@@ -108,32 +115,9 @@ function AuthenticatedApp({ user }: { user: User }) {
   if (location.pathname === "/") return <Navigate to={homePath} replace />;
   const page = pageForPath(location.pathname);
   return (
-    <main className="app-shell mx-auto flex min-h-dvh max-w-md min-w-0 flex-col gap-6">
-      <header className="app-header sticky top-0 z-40 flex min-w-0 items-center justify-between gap-3 bg-background pb-3">
-        <Navigation current={page} />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm text-muted-foreground">
-            {page?.name ?? "Page not found"}
-          </p>
-          <h1 className="text-xl font-semibold tracking-tight">
-            Simply Finance
-          </h1>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11"
-          aria-label="Refresh records"
-          aria-busy={fetching}
-          disabled={fetching}
-          // Refreshes what is on screen; loaded content stays visible meanwhile.
-          onClick={() => void queryClient.invalidateQueries()}
-        >
-          <RefreshCw className={fetching ? "animate-spin" : undefined} />
-        </Button>
-      </header>
+    <AppShell page={page} user={user}>
       {page ? (
-        <section aria-label={page.name}>
+        <section aria-label={page.name} className="flex min-w-0 flex-col gap-6">
           {page.path === "/activity" && <Activity />}
           {page.path === "/wallets" && <Wallets />}
           {page.path === "/bills" && <Bills />}
@@ -143,42 +127,28 @@ function AuthenticatedApp({ user }: { user: User }) {
       ) : (
         <NotFound />
       )}
-      <ErrorMessage error={signOutError} />
-      <Button
-        variant="ghost"
-        onClick={() => {
-          setSignOutError("");
-          signOut().catch((error) =>
-            setSignOutError(errorMessage(error, "Could not sign out. Please retry.")),
-          );
-        }}
-      >
-        <LogOut data-icon="inline-start" />
-        Sign out
-      </Button>
-    </main>
+    </AppShell>
   );
 }
 
 function NotFound() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          Page not found
-        </CardTitle>
-        <CardDescription>
-          This address does not match a Simply Finance page.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <EmptyState
+      icon={<SearchX />}
+      title="Page not found"
+      description="This address does not match a Simply Finance page."
+      action={
         <Button asChild>
           <Link to={homePath}>Go to Activity</Link>
         </Button>
-      </CardContent>
-    </Card>
+      }
+    />
   );
 }
+
+// The signed-out screens: one centered column inside the safe area.
+const loginFrame =
+  "mx-auto flex min-h-dvh w-full max-w-md min-w-0 flex-col pt-[max(3rem,var(--safe-area-top))] pr-[max(1.25rem,var(--safe-area-right))] pb-[max(3rem,var(--safe-area-bottom))] pl-[max(1.25rem,var(--safe-area-left))]";
 
 // Wrong credentials come back as 401. The legacy body says "authentication required",
 // which reads like a timeout, so it gets a clearer sentence; a server message is kept.
@@ -233,7 +203,9 @@ function LoginForm({
           required
         />
         <ErrorMessage error={error} />
-        <Button disabled={busy}>{busy ? "Signing in…" : submitLabel}</Button>
+        <Button size="lg" disabled={busy}>
+          {busy ? "Signing in…" : submitLabel}
+        </Button>
       </FieldGroup>
     </form>
   );
@@ -251,14 +223,14 @@ function SessionExpired({ open, email }: { open: boolean; email: string }) {
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
       >
-        <DialogHeader className="shrink-0 border-b py-4 pr-4 pl-4 sm:py-5 sm:pl-6">
+        <DialogHeader className="shrink-0 border-b px-5 pt-5 pb-4">
           <DialogTitle>Sign in again</DialogTitle>
           <DialogDescription>
             Your session ended. Sign in to continue; anything you were typing
             is still there.
           </DialogDescription>
         </DialogHeader>
-        <div data-slot="dialog-body" className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+        <div data-slot="dialog-body" className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           <FieldGroup>
             <LoginForm email={email} submitLabel="Sign in and continue" />
             <Button variant="ghost" onClick={() => void signOut().catch(() => {})}>
@@ -273,15 +245,18 @@ function SessionExpired({ open, email }: { open: boolean; email: string }) {
 
 function LoginScreen() {
   return (
-    <main className="app-login mx-auto flex min-h-dvh max-w-md min-w-0 flex-col justify-center gap-8">
+    <main className={`${loginFrame} justify-center gap-8`}>
       <div className="flex flex-col gap-3">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+        <div
+          aria-hidden
+          className="flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground"
+        >
           <WalletIcon className="size-6" />
         </div>
         <p className="text-sm font-medium text-muted-foreground">
           A little clarity, every day.
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight">
+        <h1 className="text-display tracking-tight">
           Simply Finance
         </h1>
         <p className="text-muted-foreground">

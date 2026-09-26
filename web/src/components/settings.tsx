@@ -9,25 +9,28 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FieldDescription } from "@/components/ui/field";
 import { RateField, SaveForm } from "@/components/forms";
-import { LoadError, PageHeading } from "@/components/layout";
+import { LoadError, PageIntro, Section } from "@/components/layout";
 import { CategorySettings } from "@/components/categories";
+import { ThemeChoice } from "@/components/shell";
+import { dismissSaved } from "@/components/feedback";
+
+const settingsSaved = "settings-saved";
 
 export function Settings({ user }: { user: User }) {
   const writes = useWrites();
   const settingsQuery = useSettings();
   const categoriesQuery = useCategories();
   const settings = settingsQuery.data;
-  const [saved, setSaved] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
   const audit = useAudit(showAudit);
   const events = audit.data?.pages.flat() ?? [];
   return (
-    <section className="flex flex-col gap-4">
-      <PageHeading>Household settings</PageHeading>
+    <>
+      <PageIntro description="Shared by everyone in the household, except the theme." />
       <LoadError
         error={categoriesQuery.error}
         hasData={Boolean(categoriesQuery.data)}
@@ -59,7 +62,7 @@ export function Settings({ user }: { user: User }) {
             // read from the latest settings at submit time.
             <SaveForm
               label="Save settings"
-              onSaved={() => setSaved(true)}
+              saved={{ message: "Settings saved.", id: settingsSaved }}
               body={(form) => ({
                 rate: form.decimal("rate"),
                 version: settings.version,
@@ -70,24 +73,29 @@ export function Settings({ user }: { user: User }) {
                 label="Default exchange rate (BDT per USD)"
                 name="rate"
                 defaultValue={settings.rate}
-                onChange={() => setSaved(false)}
+                // The confirmation no longer matches the field once it is edited.
+                onChange={() => dismissSaved(settingsSaved)}
                 placeholder="For example, 125.00"
               />
-              <p className="text-sm text-muted-foreground">
+              <FieldDescription>
                 Existing records keep their saved rates. No live exchange-rate
                 service is used.
-              </p>
+              </FieldDescription>
             </SaveForm>
           ) : settingsQuery.isPending ? (
             <Skeleton className="h-24 w-full" />
           ) : null}
         </CardContent>
       </Card>
-      {saved ? (
-        <Alert role="status">
-          <AlertDescription>Settings saved.</AlertDescription>
-        </Alert>
-      ) : null}
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>Saved on this device only.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ThemeChoice />
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Your household account</CardTitle>
@@ -101,7 +109,7 @@ export function Settings({ user }: { user: User }) {
           <p>Timezone: {settings?.timezone ?? "Asia/Dhaka"}</p>
         </CardContent>
       </Card>
-      <h3 className="font-semibold">Change log</h3>
+      <Section title="Change log">
       <p className="text-sm text-muted-foreground">
         Wallet, schedule, and settings changes. Open an Activity record for its
         transaction history.
@@ -115,9 +123,9 @@ export function Settings({ user }: { user: User }) {
       {events.map((event) => (
         <details
           key={event.id}
-          className="rounded-lg border bg-card p-3 text-sm"
+          className="rounded-xl border bg-card p-3 text-sm"
         >
-          <summary className="cursor-pointer break-words">
+          <summary className="min-h-11 cursor-pointer break-words py-1">
             {event.action} · {event.actor_email}
             <span className="block text-xs text-muted-foreground">
               {new Date(event.created_at).toLocaleString("en-US", {
@@ -140,12 +148,14 @@ export function Settings({ user }: { user: User }) {
       {!showAudit || audit.hasNextPage ? (
         <Button
           variant="outline"
+          className="self-start"
           disabled={audit.isFetching}
           onClick={() => (showAudit ? void audit.fetchNextPage() : setShowAudit(true))}
         >
           {audit.isFetching ? "Loading…" : showAudit ? "Load older changes" : "View change log"}
         </Button>
       ) : null}
-    </section>
+      </Section>
+    </>
   );
 }

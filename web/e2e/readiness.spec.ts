@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { navigate, submitLogin } from "./login";
+import { navigate, submitLogin, toast } from "./login";
 
 test("archived wallets are never silently replaced in transfers or bills", async ({
   page,
@@ -60,7 +60,7 @@ test("archived wallets are never silently replaced in transfers or bills", async
     "PUT",
   );
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Money records" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
   // Each test starts on a fresh database, so the record is on the first page.
   await page.getByText(note, { exact: true }).click();
   await page.getByRole("button", { name: "Correct record" }).click();
@@ -117,14 +117,14 @@ test("saved messages disappear when rate or target has unsaved edits", async ({
   await page
     .getByRole("button", { name: "Save settings", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("Settings saved");
+  await expect(toast(page, "Settings saved")).toBeVisible();
   await rate.fill("126");
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(toast(page, "Settings saved")).toHaveCount(0);
   await navigate(page, "Monthly spending");
   const target = page.getByLabel("Monthly target (BDT)");
   await target.fill("4000");
   await page.getByRole("button", { name: "Save target", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Target saved");
+  await expect(toast(page, "Target saved")).toBeVisible();
   await target.fill("5000");
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(toast(page, "Target saved")).toHaveCount(0);
 });
