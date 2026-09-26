@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"fmt"
 	"simply-finance/internal/finance"
+	"simply-finance/internal/money"
 	"sort"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func perfDatabase(t *testing.T) string {
 		tid := fmt.Sprintf("t%06d", i)
 		date := start.AddDate(0, 0, i/10).Format("2006-01-02")
 		created := start.Add(time.Duration(i) * time.Minute).Format("2006-01-02T15:04:05.000000000Z")
-		amount := finance.FormatMoney(int64(100 + i%5000))
+		amount := money.FormatMoney(int64(100 + i%5000))
 		payload := fmt.Sprintf(`{"kind":"expense","wallet_id":"cash","amount":%q,"date":%q,"note":"n","reason":"","id":%q,"version":1,"voided":false,"bdt_amount":%q,"actor_email":"old@example.test","created_at":%q}`, amount, date, tid, amount, created)
 		for _, step := range []struct {
 			st   *sql.Stmt

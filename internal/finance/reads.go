@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"simply-finance/internal/money"
 	"sort"
 )
 
@@ -226,19 +227,19 @@ func summary(tx dbtx, today, upcomingThrough string) (Summary, error) {
 		t := byCurrency[w.Currency]
 		switch {
 		case w.CardType == "credit":
-			t.debt.Add(t.debt, big.NewInt(mustMoney(w.Debt)))
-			t.available.Add(t.available, big.NewInt(mustMoney(w.AvailableCredit)))
+			t.debt.Add(t.debt, big.NewInt(money.MustMoney(w.Debt)))
+			t.available.Add(t.available, big.NewInt(money.MustMoney(w.AvailableCredit)))
 		case w.CardType == "debit" && !w.legacyDebit():
 		default:
 			if w.legacyDebit() {
 				out.LegacyDebitCards++
 			}
-			t.cash.Add(t.cash, big.NewInt(mustMoney(w.Balance)))
+			t.cash.Add(t.cash, big.NewInt(money.MustMoney(w.Balance)))
 		}
 	}
 	for _, currency := range []string{"BDT", "USD"} {
 		t := byCurrency[currency]
-		out.Totals = append(out.Totals, CurrencyTotal{currency, decimalHundredths(t.cash), decimalHundredths(t.debt), decimalHundredths(t.available)})
+		out.Totals = append(out.Totals, CurrencyTotal{currency, money.FormatHundredths(t.cash), money.FormatHundredths(t.debt), money.FormatHundredths(t.available)})
 	}
 	month, e := monthly(tx, today[:7])
 	if e != nil {

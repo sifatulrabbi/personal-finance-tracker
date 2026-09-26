@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"simply-finance/internal/money"
 )
 
 // MonthlyTarget is a month's own saved target or, when it has none, the latest earlier saved one.
@@ -47,7 +48,7 @@ func monthlyTarget(q querier, month string) (MonthlyTarget, error) {
 		return out, e
 	}
 	if n.Valid {
-		out.Amount = FormatMoney(n.Int64)
+		out.Amount = money.FormatMoney(n.Int64)
 	}
 	if saved == month {
 		out.Version = version
@@ -64,7 +65,7 @@ func (s *Store) SetMonthlyTarget(ctx context.Context, actor, key, month, amount 
 		if !validMonth(month) {
 			return MonthlyTarget{}, errMonth
 		}
-		n, e := ParseMoney(amount)
+		n, e := money.ParseMoney(amount)
 		if e != nil || n < 0 {
 			return MonthlyTarget{}, invalid("amount", "Enter a target of zero or more, with at most two decimal places.")
 		}
@@ -78,22 +79,11 @@ func (s *Store) SetMonthlyTarget(ctx context.Context, actor, key, month, amount 
 		if _, e = tx.Exec(`INSERT INTO monthly_targets(month,amount,version) VALUES(?,?,?) ON CONFLICT(month) DO UPDATE SET amount=excluded.amount,version=excluded.version`, month, n, old.Version+1); e != nil {
 			return old, e
 		}
-		out := MonthlyTarget{Amount: FormatMoney(n), Version: old.Version + 1}
+		out := MonthlyTarget{Amount: money.FormatMoney(n), Version: old.Version + 1}
 		return out, s.audit(tx, actor, month, "monthly.target", old, out)
 	})
 }
 
-// decimalHundredths formats a count of hundredths, such as minor units, as a decimal string. The
-// sign is formatted separately because the summary's cash and debt totals can be negative.
-func decimalHundredths(n *big.Int) string {
-	sign := ""
-	if n.Sign() < 0 {
-		sign = "-"
-	}
-	whole, fraction := new(big.Int), new(big.Int)
-	whole.QuoRem(new(big.Int).Abs(n), big.NewInt(100), fraction)
-	return sign + whole.String() + "." + leftPad(fraction.String(), 2)
-}
 func (s *Store) Monthly(ctx context.Context, month string) (MonthlySpending, error) {
 	if month == "" {
 		month = s.today()[:7]
@@ -158,18 +148,18 @@ func monthly(tx dbtx, month string) (MonthlySpending, error) {
 	if e = rows.Err(); e != nil {
 		return out, e
 	}
-	out.Spent = decimalHundredths(total)
+	out.Spent = money.FormatHundredths(total)
 	for i := range out.Categories {
 		c := &out.Categories[i]
 		n := amounts[c.CategoryID]
-		c.Spent = decimalHundredths(n)
+		c.Spent = money.FormatHundredths(n)
 		percent := new(big.Int)
 		if total.Sign() > 0 {
 			percent.Mul(n, big.NewInt(10000))
 			percent.Add(percent, new(big.Int).Quo(total, big.NewInt(2)))
 			percent.Quo(percent, total)
 		}
-		c.Percentage = decimalHundredths(percent)
+		c.Percentage = money.FormatHundredths(percent)
 	}
 	return out, nil
 }

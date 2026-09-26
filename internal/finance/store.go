@@ -10,13 +10,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	_ "modernc.org/sqlite"
 	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
+	"simply-finance/internal/money"
 	"strings"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 //go:embed migrations/*.sql
@@ -397,13 +399,13 @@ func (s *Store) CreateWallet(ctx context.Context, actor, key string, in WalletIn
 		opening, limit := int64(0), int64(0)
 		var e error
 		if in.OpeningBalance != "" {
-			opening, e = ParseMoney(in.OpeningBalance)
+			opening, e = money.ParseMoney(in.OpeningBalance)
 			if e != nil {
 				return zero, invalid("opening_balance", "Enter an opening balance with at most two decimal places.")
 			}
 		}
 		if in.CreditLimit != "" {
-			limit, e = ParseMoney(in.CreditLimit)
+			limit, e = money.ParseMoney(in.CreditLimit)
 			if e != nil || limit < 0 {
 				return zero, invalid("credit_limit", "Enter a credit limit of zero or more, with at most two decimal places.")
 			}
@@ -438,7 +440,7 @@ func (s *Store) CreateWallet(ctx context.Context, actor, key string, in WalletIn
 		if _, e = tx.Exec(`INSERT INTO transactions(id,version) VALUES(?,1)`, tid); e != nil {
 			return zero, e
 		}
-		payload, _ := json.Marshal(map[string]any{"kind": "opening", "wallet_id": wid, "amount": FormatMoney(opening), "date": s.today()})
+		payload, _ := json.Marshal(map[string]any{"kind": "opening", "wallet_id": wid, "amount": money.FormatMoney(opening), "date": s.today()})
 		if e = writeRevision(tx, tid, 1, false, payload, actor, s.instant()); e != nil {
 			return zero, e
 		}
@@ -480,11 +482,11 @@ func scanWallet(row scanner) (Wallet, error) {
 		return w, e
 	}
 	w.balance = balance
-	w.CreditLimit = FormatMoney(limit)
-	w.Balance = FormatMoney(balance)
+	w.CreditLimit = money.FormatMoney(limit)
+	w.Balance = money.FormatMoney(balance)
 	if w.CardType == "credit" {
-		w.Debt = FormatMoney(-balance)
-		w.AvailableCredit = FormatMoney(limit + balance)
+		w.Debt = money.FormatMoney(-balance)
+		w.AvailableCredit = money.FormatMoney(limit + balance)
 		w.Balance = "0.00"
 	}
 	return w, nil

@@ -1,6 +1,9 @@
 package finance
 
-import "errors"
+import (
+	"errors"
+	"simply-finance/internal/money"
+)
 
 // Error codes are part of the HTTP API contract; see docs/adr/0008-api-error-envelope.md.
 const (
@@ -44,7 +47,7 @@ func (e *Error) Is(target error) bool {
 
 // ErrInvalid and ErrConflict are classes. Returned bare, they map to validation_failed and
 // stale_version with generic messages; prefer a specific *Error.
-var ErrInvalid = errors.New("invalid input")
+var ErrInvalid = money.ErrInvalid
 var ErrConflict = errors.New("conflicting change")
 
 var (

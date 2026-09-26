@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"simply-finance/internal/money"
 	"sort"
 	"strings"
 	"time"
@@ -97,11 +98,11 @@ func (s *Store) prepare(tx dbtx, in TransactionInput) (Transaction, []effect, er
 	if e != nil {
 		return r, nil, walletNotFound("wallet_id", e)
 	}
-	amount, e := ParseMoney(in.Amount)
+	amount, e := money.ParseMoney(in.Amount)
 	if e != nil || amount <= 0 {
 		return r, nil, invalid("amount", "Enter a positive amount with at most two decimal places.")
 	}
-	r.Amount = FormatMoney(amount)
+	r.Amount = money.FormatMoney(amount)
 	var to Wallet
 	if in.Kind == "transfer" {
 		if in.ToWalletID == w.ID {
@@ -125,7 +126,7 @@ func (s *Store) prepare(tx dbtx, in TransactionInput) (Transaction, []effect, er
 	usesUSD := w.Currency == "USD" || to.Currency == "USD"
 	needsRate := (in.Kind != "transfer" && w.Currency == "USD") || (in.Kind == "transfer" && to.Currency != w.Currency && in.ReceivedAmount == "")
 	if in.Rate != "" {
-		rate, e = ParseRate(in.Rate)
+		rate, e = money.ParseRate(in.Rate)
 		if e != nil {
 			return r, nil, invalid("rate", "Enter a positive rate with at most six decimal places.")
 		}
@@ -135,7 +136,7 @@ func (s *Store) prepare(tx dbtx, in TransactionInput) (Transaction, []effect, er
 			return r, nil, e
 		}
 		if set.Rate != "" {
-			if rate, e = ParseRate(set.Rate); e != nil {
+			if rate, e = money.ParseRate(set.Rate); e != nil {
 				return r, nil, e
 			}
 		} else if needsRate {
@@ -143,25 +144,25 @@ func (s *Store) prepare(tx dbtx, in TransactionInput) (Transaction, []effect, er
 		}
 	}
 	if rate > 0 {
-		r.Rate = FormatRate(rate)
+		r.Rate = money.FormatRate(rate)
 	}
 	bdt := amount
 	if w.Currency == "USD" && rate > 0 {
-		bdt, e = Convert(amount, rate, "USD")
+		bdt, e = money.Convert(amount, rate, "USD")
 		if e != nil {
 			return r, nil, invalid("amount", "This amount is larger than the supported limit at this rate.")
 		}
 	}
-	r.BDTAmount = FormatMoney(bdt)
+	r.BDTAmount = money.FormatMoney(bdt)
 	if in.Kind == "transfer" {
 		received := amount
 		if in.ReceivedAmount != "" {
-			received, e = ParseMoney(in.ReceivedAmount)
+			received, e = money.ParseMoney(in.ReceivedAmount)
 			if e != nil || received <= 0 {
 				return r, nil, invalid("received_amount", "Enter a positive received amount with at most two decimal places.")
 			}
 		} else if to.Currency != w.Currency {
-			received, e = Convert(amount, rate, w.Currency)
+			received, e = money.Convert(amount, rate, w.Currency)
 			if e != nil || received <= 0 {
 				return r, nil, invalid("received_amount", "Enter the received amount; it cannot be derived from this amount and rate.")
 			}
@@ -169,7 +170,7 @@ func (s *Store) prepare(tx dbtx, in TransactionInput) (Transaction, []effect, er
 		if to.Currency == w.Currency && received != amount {
 			return r, nil, invalid("received_amount", "A transfer between wallets of the same currency must receive the amount sent.")
 		}
-		r.ReceivedAmount = FormatMoney(received)
+		r.ReceivedAmount = money.FormatMoney(received)
 		// Without a rate, a USD transfer's BDT value is known only when BDT is received.
 		if w.Currency == "USD" && rate == 0 {
 			r.BDTAmount = ""

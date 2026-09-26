@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"simply-finance/internal/finance"
+	"simply-finance/internal/money"
 )
 
 func TestConcurrentRetriesAcrossConnectionsOnlyDeductOnce(t *testing.T) {
@@ -56,7 +57,7 @@ func TestFailedTransferRollsBackBothSidesAndCanRetry(t *testing.T) {
 	s := openStore(t)
 	u := user(t, s)
 	source := createWallet(t, s, u, "source", "BDT", "", "1000")
-	destination := createWallet(t, s, u, "destination", "BDT", "", finance.FormatMoney(finance.MaxMoney))
+	destination := createWallet(t, s, u, "destination", "BDT", "", money.FormatMoney(money.MaxMoney))
 	in := finance.TransactionInput{Kind: "transfer", WalletID: source.ID, ToWalletID: destination.ID, Amount: "1", Date: "2026-09-14"}
 	if _, err := s.CreateTransaction(ctx, u.ID, "transfer", in); !errors.Is(err, finance.ErrInvalid) {
 		t.Fatalf("overflow: %v", err)
@@ -127,7 +128,7 @@ func TestWalletListIsOneConsistentTransferSnapshot(t *testing.T) {
 		}
 		var total int64
 		for _, w := range ws {
-			n, _ := finance.ParseMoney(w.Balance)
+			n, _ := money.ParseMoney(w.Balance)
 			total += n
 		}
 		if total != 200000 {

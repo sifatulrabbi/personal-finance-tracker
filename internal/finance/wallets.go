@@ -3,6 +3,7 @@ package finance
 import (
 	"context"
 	"encoding/json"
+	"simply-finance/internal/money"
 	"strings"
 )
 
@@ -31,7 +32,7 @@ func (s *Store) AdjustWallet(ctx context.Context, actor, key, wid string, balanc
 		if strings.TrimSpace(reason) == "" || len(reason) > 500 {
 			return r, invalid("reason", "Enter a reason of at most 500 bytes.")
 		}
-		desired, e := ParseMoney(target)
+		desired, e := money.ParseMoney(target)
 		if e != nil {
 			return r, invalid("balance", "Enter a balance with at most two decimal places.")
 		}
@@ -45,17 +46,16 @@ func (s *Store) AdjustWallet(ctx context.Context, actor, key, wid string, balanc
 		if delta == 0 {
 			return r, invalid("balance", "The wallet already has this balance.")
 		}
-		if delta > MaxMoney || delta < -MaxMoney {
+		if delta > money.MaxMoney || delta < -money.MaxMoney {
 			return r, invalid("balance", "This adjustment is larger than the supported limit.")
 		}
-		r = Transaction{ID: id(), Version: 1, TransactionInput: TransactionInput{Kind: "adjustment", WalletID: wid, Amount: FormatMoney(delta), Date: s.today(), Reason: reason, Note: "Balance set to " + FormatMoney(mustMoney(target))}}
+		r = Transaction{ID: id(), Version: 1, TransactionInput: TransactionInput{Kind: "adjustment", WalletID: wid, Amount: money.FormatMoney(delta), Date: s.today(), Reason: reason, Note: "Balance set to " + money.FormatMoney(money.MustMoney(target))}}
 		if _, e = tx.Exec(`INSERT INTO transactions(id,version) VALUES(?,1)`, r.ID); e != nil {
 			return r, e
 		}
 		return s.saveRevision(tx, actor, r, []effect{{wid, delta, "wallet_id"}})
 	})
 }
-func mustMoney(s string) int64 { n, _ := ParseMoney(s); return n }
 
 // UpdateWallet edits a wallet's metadata. Only the editable fields and the identity form the
 // request fingerprint, so a retry that echoes refreshed read-only fields (balance, versions) still
@@ -82,7 +82,7 @@ func (s *Store) UpdateWallet(ctx context.Context, actor, key string, in Wallet) 
 				return old, invalid(f.field, "A wallet's type, card type, currency, and bank link cannot change.")
 			}
 		}
-		limit, e := ParseMoney(in.CreditLimit)
+		limit, e := money.ParseMoney(in.CreditLimit)
 		if e != nil || limit < 0 {
 			return old, invalid("credit_limit", "Enter a credit limit of zero or more, with at most two decimal places.")
 		}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"simply-finance/internal/money"
 	"strings"
 )
 
@@ -73,7 +74,7 @@ func validateSchedule(tx dbtx, in ScheduleInput, active bool, previous *Schedule
 	if in.EndDate != "" && (!validDate(in.EndDate) || in.EndDate < in.StartDate) {
 		return invalid("end_date", "Enter an end date as YYYY-MM-DD, on or after the start date.")
 	}
-	n, e := ParseMoney(in.Amount)
+	n, e := money.ParseMoney(in.Amount)
 	if e != nil || n <= 0 {
 		return invalid("amount", "Enter a positive amount with at most two decimal places.")
 	}
@@ -96,7 +97,7 @@ func (s *Store) CreateSchedule(ctx context.Context, actor, key string, in Schedu
 		if e := validateSchedule(tx, in, true, nil, s.addDays(-MaxScheduleBackfillDays)); e != nil {
 			return out, e
 		}
-		out.Amount = FormatMoney(mustMoney(in.Amount))
+		out.Amount = money.FormatMoney(money.MustMoney(in.Amount))
 		out.CategoryID, _ = categoryID(tx, "expense", in.CategoryID)
 		body, e := json.Marshal(out.ScheduleInput)
 		if e != nil {
@@ -275,7 +276,7 @@ func (s *Store) UpdateSchedule(ctx context.Context, actor, key string, in Schedu
 		if e = validateSchedule(tx, in.ScheduleInput, in.Active, &old, ""); e != nil {
 			return in, e
 		}
-		in.Amount = FormatMoney(mustMoney(in.Amount))
+		in.Amount = money.FormatMoney(money.MustMoney(in.Amount))
 		in.CategoryID, _ = categoryID(tx, "expense", in.CategoryID)
 		in.Version++
 		body, e := json.Marshal(in.ScheduleInput)

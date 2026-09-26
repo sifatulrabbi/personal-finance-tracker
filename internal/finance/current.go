@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"simply-finance/internal/money"
 )
 
 // currentColumns are the queryable facts of a transaction's current revision, stored as typed
@@ -31,7 +32,7 @@ func columnsOf(payload string) (currentColumns, error) {
 	c.ToWalletID = sql.NullString{String: r.ToWalletID, Valid: r.ToWalletID != ""}
 	c.CategoryID = sql.NullString{String: r.CategoryID, Valid: r.CategoryID != ""}
 	if r.BDTAmount != "" {
-		n, e := ParseMoney(r.BDTAmount)
+		n, e := money.ParseMoney(r.BDTAmount)
 		if e != nil {
 			return c, fmt.Errorf("bdt_amount %q: %w", r.BDTAmount, e)
 		}
@@ -80,7 +81,7 @@ func balanceWithinLimit(tx dbtx, walletID string) error {
 	if e := tx.QueryRow(`SELECT balance_minor FROM wallets WHERE id=?`, walletID).Scan(&balance); e != nil {
 		return e
 	}
-	if balance > MaxMoney || balance < -MaxMoney {
+	if balance > money.MaxMoney || balance < -money.MaxMoney {
 		return errBalanceLimit
 	}
 	return nil

@@ -3,6 +3,7 @@ package finance
 import (
 	"context"
 	"database/sql"
+	"simply-finance/internal/money"
 )
 
 type Settings struct {
@@ -17,7 +18,7 @@ func settings(q querier) (Settings, error) {
 	var rate sql.NullInt64
 	e := q.QueryRow(`SELECT rate,version FROM settings WHERE id=1`).Scan(&rate, &out.Version)
 	if rate.Valid {
-		out.Rate = FormatRate(rate.Int64)
+		out.Rate = money.FormatRate(rate.Int64)
 	}
 	return out, e
 }
@@ -36,7 +37,7 @@ func (s *Store) SetRate(ctx context.Context, actor, key, rate string, version in
 		if old.Version != version {
 			return old, ErrStaleVersion
 		}
-		n, e := ParseRate(rate)
+		n, e := money.ParseRate(rate)
 		if e != nil {
 			return old, invalid("rate", "Enter a positive rate with at most six decimal places.")
 		}
