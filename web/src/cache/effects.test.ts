@@ -58,6 +58,7 @@ const wallet: Wallet = {
   balance: "100.00",
   archived: false,
   version: 1,
+  balance_version: 1,
 };
 
 function seeded() {
