@@ -167,7 +167,7 @@ test("wallets are grouped, open a detail page, and survive a deep-link reload", 
   await page.reload();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Visa");
   await expect(page.getByTestId("wallet-balance")).toHaveText("৳1,250.00");
-  await expect(page.getByRole("link", { name: "Open Activity" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Filter in Activity" })).toBeVisible();
 
   // Archive from the detail page, with a confirmation and a toast.
   await page.getByRole("link", { name: "Back to Wallets" }).click();

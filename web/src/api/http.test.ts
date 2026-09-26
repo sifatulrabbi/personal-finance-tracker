@@ -64,6 +64,30 @@ test("the F3 read endpoints use the documented paths", async () => {
   ]);
 });
 
+test("the record list opts in to cursor pages and sends only set filters", async () => {
+  const { seen, fetch } = recordingFetch(
+    () => new Response(JSON.stringify({ items: [], next_cursor: null })),
+  );
+  const api = createHttpClient({ fetch });
+  await api.transactionPage({ limit: 50 });
+  await api.transactionPage({
+    limit: 50,
+    cursor: "abc/+=",
+    wallet_id: "w 1",
+    kind: "expense",
+    category_id: "",
+    from: "2026-09-01",
+    to: "2026-09-30",
+    include_voided: true,
+  });
+  await api.transaction("t/1");
+  expect(seen.map((s) => s.url)).toEqual([
+    "/api/v1/transactions?page=cursor&limit=50",
+    "/api/v1/transactions?page=cursor&limit=50&cursor=abc%2F%2B%3D&wallet_id=w+1&kind=expense&from=2026-09-01&to=2026-09-30&include_voided=true",
+    "/api/v1/transactions/t%2F1",
+  ]);
+});
+
 test("a failed response becomes an ApiError with the server's message", async () => {
   const { fetch } = recordingFetch(
     () =>

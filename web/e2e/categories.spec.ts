@@ -8,6 +8,7 @@ import {
   submitLogin,
   toast,
 } from "./login";
+import { categoryRadio, kindRadio, openAddRecord, typeAmount } from "./records";
 
 test("inline categories remain available after canceling a record", async ({
   page,
@@ -28,16 +29,14 @@ test("inline categories remain available after canceling a record", async ({
   });
   expect(wallet.ok()).toBe(true);
   await page.reload();
-  await page.getByRole("button", { name: "Add record", exact: true }).click();
-  await page.getByRole("button", { name: "New category", exact: true }).click();
+  const sheet = await openAddRecord(page);
+  await sheet.getByRole("button", { name: "New category", exact: true }).click();
   const name = `Saved without record ${info.project.name}`;
-  await page.getByLabel("New category name").fill(name);
-  await page
+  await sheet.getByLabel("New category name").fill(name);
+  await sheet
     .getByRole("button", { name: "Create and select", exact: true })
     .click();
-  await expect(
-    page.getByLabel("Category", { exact: true }).locator("option:checked"),
-  ).toHaveText(name);
+  await expect(categoryRadio(sheet, name)).toBeChecked();
   await page.keyboard.press("Escape");
   await navigate(page, "Settings");
   await expect(
@@ -81,52 +80,43 @@ test("categories preserve record drafts and monthly shares use actual spending",
   expect(response.ok()).toBe(true);
   await page.reload();
   await navigate(page, "Activity");
-  await page.getByRole("button", { name: "Add record", exact: true }).click();
-  await page.getByLabel("Amount", { exact: true }).fill("200");
+  let sheet = await openAddRecord(page);
+  await typeAmount(sheet, "200");
   const month = info.project.name === "mobile-chromium" ? "2025-04" : "2025-05";
-  await page.getByLabel("Date", { exact: true }).fill(`${month}-10`);
-  await page
+  await sheet.getByLabel("Date", { exact: true }).fill(`${month}-10`);
+  await sheet
     .getByLabel("Note", { exact: true })
     .fill(`Category draft ${info.project.name}`);
-  await page.getByRole("button", { name: "New category", exact: true }).click();
-  await page
+  await sheet.getByRole("button", { name: "New category", exact: true }).click();
+  // Save waits while a category is being created.
+  await expect(sheet.getByRole("button", { name: "Save record", exact: true })).toBeDisabled();
+  await sheet
     .getByLabel("New category name")
     .fill(`Eating out ${info.project.name}`);
-  await page
+  await sheet
     .getByRole("button", { name: "Create and select", exact: true })
     .click();
-  await expect(
-    page.getByLabel("Category", { exact: true }).locator("option:checked"),
-  ).toHaveText(`Eating out ${info.project.name}`);
-  await expect(page.getByLabel("Amount", { exact: true })).toHaveValue("200");
-  await expect(page.getByLabel("Note", { exact: true })).toHaveValue(
+  await expect(categoryRadio(sheet, `Eating out ${info.project.name}`)).toBeChecked();
+  await expect(sheet.getByLabel("Amount", { exact: true })).toHaveValue("200");
+  await expect(sheet.getByLabel("Note", { exact: true })).toHaveValue(
     `Category draft ${info.project.name}`,
   );
-  await page.getByRole("button", { name: "Save record", exact: true }).click();
+  await sheet.getByRole("button", { name: "Save record", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "Add record", exact: true }).click();
-  await page.getByLabel("Transaction type").selectOption("income");
-  await expect(
-    page.getByLabel("Category", { exact: true }).locator("option:checked"),
-  ).toHaveText("Others");
-  await expect(
-    page.getByLabel("Category", { exact: true }).locator("option"),
-  ).toContainText(["Others", `Salary ${info.project.name}`]);
-  await expect(
-    page
-      .getByLabel("Category", { exact: true })
-      .locator("option")
-      .filter({ hasText: `Eating out ${info.project.name}` }),
-  ).toHaveCount(0);
-  await page.getByLabel("Transaction type").selectOption("transfer");
-  await expect(page.getByLabel("Category", { exact: true })).toHaveCount(0);
-  await page.getByLabel("Transaction type").selectOption("expense");
-  await expect(
-    page.getByLabel("Category", { exact: true }).locator("option:checked"),
-  ).toHaveText("Others");
-  await page.getByLabel("Amount", { exact: true }).fill("600");
-  await page.getByLabel("Date", { exact: true }).fill(`${month}-11`);
-  await page.getByRole("button", { name: "Save record", exact: true }).click();
+  sheet = await openAddRecord(page);
+  await kindRadio(sheet, "income").check();
+  await expect(categoryRadio(sheet, "Others")).toBeChecked();
+  const categories = sheet.getByRole("group", { name: "Category", exact: true }).getByRole("radio");
+  await expect(categories).toHaveCount(2);
+  await expect(categoryRadio(sheet, `Salary ${info.project.name}`)).toBeVisible();
+  await expect(categoryRadio(sheet, `Eating out ${info.project.name}`)).toHaveCount(0);
+  await kindRadio(sheet, "transfer").check();
+  await expect(sheet.getByRole("group", { name: "Category", exact: true })).toHaveCount(0);
+  await kindRadio(sheet, "expense").check();
+  await expect(categoryRadio(sheet, "Others")).toBeChecked();
+  await typeAmount(sheet, "600");
+  await sheet.getByLabel("Date", { exact: true }).fill(`${month}-11`);
+  await sheet.getByRole("button", { name: "Save record", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await navigate(page, "Monthly spending");
   await chooseMonth(page, month);
@@ -155,22 +145,21 @@ test("categories preserve record drafts and monthly shares use actual spending",
   await page
     .getByRole("button", { name: "Correct record", exact: true })
     .click();
-  await page
-    .getByLabel("Category", { exact: true })
-    .selectOption({ label: "Others" });
-  await page.getByLabel("Reason for correction").fill("Correct category");
-  await page
+  sheet = page.getByRole("dialog");
+  await expect(categoryRadio(sheet, `Eating out ${info.project.name}`)).toBeChecked();
+  await categoryRadio(sheet, "Others").check();
+  await sheet.getByLabel("Reason for correction").fill("Correct category");
+  await sheet
     .getByRole("button", { name: "Save correction", exact: true })
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page
     .getByText(`Category draft ${info.project.name}`, { exact: true })
     .click();
-  await expect(
-    page
-      .getByRole("dialog")
-      .getByText(`Category: Eating out ${info.project.name}`, { exact: true }),
-  ).toBeVisible();
+  // The current record is in Others; the first version keeps its original category.
+  const history = page.getByRole("dialog").getByTestId("history-entry");
+  await expect(history.first()).toContainText("Others");
+  await expect(history.last()).toContainText(`Eating out ${info.project.name}`);
   await page.keyboard.press("Escape");
   await navigate(page, "Monthly spending");
   await chooseMonth(page, month);
@@ -201,7 +190,7 @@ test("categories preserve record drafts and monthly shares use actual spending",
   await expect(
     page
       .getByRole("dialog")
-      .getByText(`Category: Eating out ${info.project.name}`, { exact: true })
+      .getByText(`Eating out ${info.project.name}`, { exact: true })
       .first(),
   ).toBeVisible();
 });

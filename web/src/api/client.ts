@@ -20,6 +20,8 @@ import type {
   Transaction,
   TransactionCorrection,
   TransactionInput,
+  TransactionPage,
+  TransactionQuery,
   TransactionVoid,
   UpcomingBill,
   User,
@@ -48,7 +50,11 @@ export interface ApiClient {
   updateWallet(input: WalletUpdate, options: WriteOptions): Promise<Wallet>;
   adjustWallet(id: string, input: WalletAdjustment, options: WriteOptions): Promise<Transaction>;
 
+  // Deprecated offset list; kept for callers that still page by offset.
   transactions(page: Page): Promise<Transaction[]>;
+  // The cursor-paged, filtered list. Always opts in with page=cursor.
+  transactionPage(query: TransactionQuery): Promise<TransactionPage>;
+  transaction(id: string): Promise<Transaction>;
   createTransaction(input: TransactionInput, options: WriteOptions): Promise<Transaction>;
   correctTransaction(id: string, input: TransactionCorrection, options: WriteOptions): Promise<Transaction>;
   voidTransaction(id: string, input: TransactionVoid, options: WriteOptions): Promise<Transaction>;

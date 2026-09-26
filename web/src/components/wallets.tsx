@@ -9,7 +9,6 @@ import {
   CircleAlert,
   CreditCard,
   Landmark,
-  List as ListIcon,
   Pencil,
   Plus,
   SlidersHorizontal,
@@ -50,6 +49,7 @@ import {
   useEditor,
 } from "@/components/layout";
 import { Money } from "@/components/money";
+import { ActivityFeed } from "@/components/activity-feed";
 import { useHeaderTitle } from "@/components/shell";
 
 const types: { value: WalletType; label: string }[] = [
@@ -390,22 +390,17 @@ export function WalletDetail({ id }: { id: string }) {
           </div>
         </CardContent>
       </Card>
-      <Section title="Recent activity">
-        {/* A per-wallet record list arrives with the Activity redesign; until then, a
-            clear way to the full list. */}
-        <List>
-          <ListRow
-            to="/activity"
-            leading={
-              <RowIcon>
-                <ListIcon />
-              </RowIcon>
-            }
-            title="Open Activity"
-            subtitle="A list of this wallet's own records is coming here soon."
-            trailing={<ChevronRight aria-hidden className="size-5 text-muted-foreground" />}
-          />
-        </List>
+      <Section
+        title="Activity"
+        action={
+          <Button asChild variant="ghost" size="sm" className="text-primary">
+            <Link to={`/activity?wallet=${encodeURIComponent(wallet.id)}`}>Filter in Activity</Link>
+          </Button>
+        }
+      >
+        {/* This wallet's records, and for a bank its linked debit cards' records (the
+            server's wallet filter), with the same rows and detail sheet as Activity. */}
+        <ActivityFeed walletId={wallet.id} />
       </Section>
       <WalletEditors editor={editor} wallets={wallets} detail={wallet} />
     </>

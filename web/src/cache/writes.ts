@@ -53,6 +53,12 @@ export function createWrites(api: ApiClient, client: QueryClient) {
       effects.transactionRevised(client, record);
       return record;
     },
+    // Reads the record's latest version (for example after a 409) and puts it in every list.
+    async refreshTransaction(id: string) {
+      const record = await api.transaction(id);
+      effects.transactionRefreshed(client, record);
+      return record;
+    },
     async createCategory(input: CategoryInput, o: WriteOptions) {
       const category = await api.createCategory(input, o);
       effects.categoryCreated(client, category);

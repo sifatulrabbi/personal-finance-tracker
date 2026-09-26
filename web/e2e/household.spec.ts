@@ -10,6 +10,7 @@ import {
   toast,
   walletRow,
 } from "./login";
+import { addRecord } from "./records";
 
 test("mobile household can record money and confirm bills", async ({
   page,
@@ -34,14 +35,7 @@ test("mobile household can record money and confirm bills", async ({
     page.getByText(`Cash ${suffix}`, { exact: true }).first(),
   ).toBeVisible();
   await navigate(page, "Activity");
-  await page.getByRole("button", { name: "Add record", exact: true }).click();
-  await page
-    .getByLabel("Wallet", { exact: true })
-    .selectOption({ label: `Cash ${suffix} · BDT` });
-  await page.getByLabel("Amount", { exact: true }).fill("125.50");
-  await page.getByLabel("Note", { exact: true }).fill(`Groceries ${suffix}`);
-  await page.getByRole("button", { name: "Save record", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await addRecord(page, { wallet: `Cash ${suffix}`, amount: "125.50", note: `Groceries ${suffix}` });
   await expect(
     page.getByText(`Groceries ${suffix}`, { exact: true }),
   ).toBeVisible();
@@ -147,46 +141,14 @@ test("credit debt, transfers, adjustments, and corrections stay consistent", asy
     to?: string,
   ) => {
     await navigate(page, "Activity");
-    await page.getByRole("button", { name: "Add record", exact: true }).click();
-    await page.getByLabel("Transaction type").selectOption(kind);
-    await page
-      .getByLabel(kind === "transfer" ? "From wallet" : "Wallet", {
-        exact: true,
-      })
-      .selectOption({ label: wallet });
-    if (to)
-      await page
-        .getByLabel("To wallet", { exact: true })
-        .selectOption({ label: to });
-    await page.getByLabel("Amount", { exact: true }).fill(amount);
-    await page.getByLabel("Note", { exact: true }).fill(note);
-    await page
-      .getByRole("button", { name: "Save record", exact: true })
-      .click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await addRecord(page, { kind: kind as "expense" | "income" | "transfer", wallet, to, amount, note });
     await expect(page.getByText(note, { exact: true })).toBeVisible();
   };
-  await record(
-    "expense",
-    `Card ${suffix} · BDT · Credit`,
-    "200",
-    `Card purchase ${suffix}`,
-  );
-  await record(
-    "transfer",
-    `Bank ${suffix} · BDT`,
-    "150",
-    `Repayment ${suffix}`,
-    `Card ${suffix} · BDT · Credit`,
-  );
-  await record("income", `Bank ${suffix} · BDT`, "100", `Income ${suffix}`);
-  await record(
-    "transfer",
-    `USD ${suffix} · USD`,
-    "10",
-    `Exchange ${suffix}`,
-    `Bank ${suffix} · BDT`,
-  );
+  await record("expense", `Card ${suffix}`, "200", `Card purchase ${suffix}`);
+  // A credit card repayment is a transfer from the bank to the card, not an expense.
+  await record("transfer", `Bank ${suffix}`, "150", `Repayment ${suffix}`, `Card ${suffix}`);
+  await record("income", `Bank ${suffix}`, "100", `Income ${suffix}`);
+  await record("transfer", `USD ${suffix}`, "10", `Exchange ${suffix}`, `Bank ${suffix}`);
   await navigate(page, "Wallets");
   const bank = walletRow(page, `Bank ${suffix}`);
   const card = walletRow(page, `Card ${suffix}`);
@@ -210,9 +172,9 @@ test("credit debt, transfers, adjustments, and corrections stay consistent", asy
   await page.getByRole("button", { name: "Save correction" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByText(`Card purchase ${suffix}`, { exact: true }).click();
-  await expect(
-    page.getByText("Version 2 · ৳180.00", { exact: true }),
-  ).toBeVisible();
+  const latest = page.getByTestId("history-entry").first();
+  await expect(latest).toContainText("Version 2 · Corrected");
+  await expect(latest.getByTestId("history-amount")).toHaveText("−৳180.00");
   await page.getByRole("button", { name: "Void record", exact: true }).click();
   await page
     .getByLabel("Reason", { exact: true })

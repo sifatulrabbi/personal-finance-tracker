@@ -1,5 +1,6 @@
 import type { ApiClient, WriteOptions } from "./client";
 import { ApiError, errorFromBody, networkError } from "./errors";
+import type { TransactionQuery } from "./types";
 
 type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 
@@ -11,6 +12,19 @@ export type HttpClientOptions = {
 };
 
 const enc = encodeURIComponent;
+
+// The query string of a cursor-paged record list. page=cursor always opts in, so the answer
+// is a page object even without filters; empty filters are left out.
+export function transactionQuery(query: TransactionQuery) {
+  const params = new URLSearchParams({ page: "cursor", limit: String(query.limit) });
+  if (query.cursor) params.set("cursor", query.cursor);
+  for (const name of ["wallet_id", "kind", "category_id", "from", "to"] as const) {
+    const value = query[name];
+    if (value) params.set(name, value);
+  }
+  if (query.include_voided) params.set("include_voided", "true");
+  return params.toString();
+}
 
 export function createHttpClient(options: HttpClientOptions = {}): ApiClient {
   const doFetch: Fetch = options.fetch ?? ((input, init) => fetch(input, init));
@@ -80,6 +94,8 @@ export function createHttpClient(options: HttpClientOptions = {}): ApiClient {
     adjustWallet: (id, input, o) => request("POST", `/wallets/${enc(id)}/adjust`, input, o),
 
     transactions: (p) => get(page("/transactions", p)),
+    transactionPage: (query) => get(`/transactions?${transactionQuery(query)}`),
+    transaction: (id) => get(`/transactions/${enc(id)}`),
     createTransaction: (input, o) => request("POST", "/transactions", input, o),
     correctTransaction: (id, input, o) => request("PUT", `/transactions/${enc(id)}`, input, o),
     voidTransaction: (id, input, o) => request("POST", `/transactions/${enc(id)}/void`, input, o),
