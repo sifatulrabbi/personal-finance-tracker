@@ -227,6 +227,25 @@ export type AuditEvent = {
 
 export type Page = { limit: number; offset: number };
 
+// Filters of the cursor-paged record list (docs/api.md, Lists). Omitted fields do not
+// filter. Voided records are left out unless include_voided is true.
+export type TransactionFilters = {
+  wallet_id?: string;
+  kind?: TransactionKind;
+  category_id?: string;
+  from?: string;
+  to?: string;
+  include_voided?: boolean;
+};
+
+export type TransactionQuery = TransactionFilters & {
+  limit: number;
+  // The previous page's next_cursor, sent unchanged. Omitted for the first page.
+  cursor?: string;
+};
+
+export type TransactionPage = { items: Transaction[]; next_cursor: string | null };
+
 // Error codes from the shared error contract (PLAN.md, "Working method"). Legacy bodies carry
 // no code; the client derives one from the status.
 export type ErrorCode =
