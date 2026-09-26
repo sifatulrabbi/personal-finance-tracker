@@ -51,7 +51,7 @@ type PaymentInput struct {
 // due bills its first read can create (53 for a weekly schedule).
 const MaxScheduleBackfillDays = 366
 
-func validateSchedule(tx *sql.Tx, in ScheduleInput, active bool, previous *Schedule, earliest string) error {
+func validateSchedule(tx dbtx, in ScheduleInput, active bool, previous *Schedule, earliest string) error {
 	if _, e := categoryID(tx, "expense", in.CategoryID); e != nil {
 		return e
 	}
@@ -91,7 +91,7 @@ func validateSchedule(tx *sql.Tx, in ScheduleInput, active bool, previous *Sched
 	return nil
 }
 func (s *Store) CreateSchedule(ctx context.Context, actor, key string, in ScheduleInput) (Schedule, error) {
-	return write(ctx, s, actor, key, "schedule.create", in, func(tx *sql.Tx) (Schedule, error) {
+	return write(ctx, s, actor, key, "schedule.create", in, func(tx dbtx) (Schedule, error) {
 		out := Schedule{ScheduleInput: in, ID: id(), Version: 1, Active: true}
 		if e := validateSchedule(tx, in, true, nil, s.addDays(-MaxScheduleBackfillDays)); e != nil {
 			return out, e
@@ -108,7 +108,7 @@ func (s *Store) CreateSchedule(ctx context.Context, actor, key string, in Schedu
 		return out, s.audit(tx, actor, out.ID, "create", nil, out)
 	})
 }
-func schedules(tx *sql.Tx) ([]Schedule, error) {
+func schedules(tx dbtx) ([]Schedule, error) {
 	rows, e := tx.Query(`SELECT id,payload,version,active FROM recurring_schedules ORDER BY id`)
 	if e != nil {
 		return nil, e
@@ -131,15 +131,8 @@ func schedules(tx *sql.Tx) ([]Schedule, error) {
 	}
 	return out, rows.Err()
 }
-func (s *Store) Schedules(ctx context.Context) ([]Schedule, error) {
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return nil, e
-	}
-	defer tx.Rollback()
-	return schedules(tx)
-}
-func (s *Store) materialize(tx *sql.Tx) error {
+func (s *Store) Schedules(ctx context.Context) ([]Schedule, error) { return read(ctx, s, schedules) }
+func (s *Store) materialize(tx dbtx) error {
 	all, e := schedules(tx)
 	if e != nil {
 		return e
@@ -170,13 +163,11 @@ func (s *Store) materialize(tx *sql.Tx) error {
 	}
 	return nil
 }
-func (s *Store) Due(ctx context.Context) ([]Bill, error) {
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return nil, e
-	}
-	defer tx.Rollback()
-	if e = s.materialize(tx); e != nil {
+
+// Due stores the occurrences that have come due, so it runs as a write, and lists the due ones.
+func (s *Store) Due(ctx context.Context) ([]Bill, error) { return change(ctx, s, s.due) }
+func (s *Store) due(tx dbtx) ([]Bill, error) {
+	if e := s.materialize(tx); e != nil {
 		return nil, e
 	}
 	rows, e := tx.Query(`SELECT id,schedule_id,due_date,wallet_id,amount,name,note,status,category_id FROM bill_occurrences WHERE status='due' ORDER BY due_date,id`)
@@ -194,15 +185,9 @@ func (s *Store) Due(ctx context.Context) ([]Bill, error) {
 	}
 	e = rows.Err()
 	rows.Close()
-	if e != nil {
-		return nil, e
-	}
-	if e = tx.Commit(); e != nil {
-		return nil, e
-	}
-	return out, nil
+	return out, e
 }
-func bill(tx *sql.Tx, bid string) (Bill, error) {
+func bill(tx dbtx, bid string) (Bill, error) {
 	var b Bill
 	var tid sql.NullString
 	e := tx.QueryRow(`SELECT id,schedule_id,due_date,wallet_id,amount,name,note,status,transaction_id,category_id FROM bill_occurrences WHERE id=?`, bid).Scan(&b.ID, &b.ScheduleID, &b.DueDate, &b.WalletID, &b.Amount, &b.Name, &b.Note, &b.Status, &tid, &b.CategoryID)
@@ -216,7 +201,7 @@ func (s *Store) ConfirmBill(ctx context.Context, actor, key, bid string, in Paym
 	return write(ctx, s, actor, key, "bill.confirm", struct {
 		ID    string
 		Input PaymentInput
-	}{bid, in}, func(tx *sql.Tx) (Transaction, error) {
+	}{bid, in}, func(tx dbtx) (Transaction, error) {
 		var out Transaction
 		b, e := bill(tx, bid)
 		if e != nil {
@@ -260,7 +245,7 @@ func (s *Store) ConfirmBill(ctx context.Context, actor, key, bid string, in Paym
 	})
 }
 func (s *Store) UpdateSchedule(ctx context.Context, actor, key string, in Schedule) (Schedule, error) {
-	return write(ctx, s, actor, key, "schedule.update", in, func(tx *sql.Tx) (Schedule, error) {
+	return write(ctx, s, actor, key, "schedule.update", in, func(tx dbtx) (Schedule, error) {
 		if e := s.materialize(tx); e != nil {
 			return in, e
 		}
@@ -304,7 +289,7 @@ func (s *Store) UpdateSchedule(ctx context.Context, actor, key string, in Schedu
 	})
 }
 func (s *Store) SkipBill(ctx context.Context, actor, key, bid, reason string) (Bill, error) {
-	return write(ctx, s, actor, key, "bill.skip", struct{ ID, Reason string }{bid, reason}, func(tx *sql.Tx) (Bill, error) {
+	return write(ctx, s, actor, key, "bill.skip", struct{ ID, Reason string }{bid, reason}, func(tx dbtx) (Bill, error) {
 		b, e := bill(tx, bid)
 		if e != nil {
 			return b, e

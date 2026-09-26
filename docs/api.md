@@ -2,7 +2,7 @@
 
 All application endpoints use `/api/v1`. Amounts and rates are decimal strings, dates are `YYYY-MM-DD` in Asia/Dhaka, and audit timestamps are UTC instants. New timestamps use the fixed-width form `2006-01-02T15:04:05.000000000Z`; older rows may have fewer fraction digits. Authentication uses the `sf_session` HTTP-only cookie. Send `Content-Type: application/json` and `X-CSRF-Protection: 1` on every write, including login. Browser requests must use the configured `APP_ORIGIN`; no cross-origin client access is enabled.
 
-Every financial or settings mutation requires an `Idempotency-Key` header of 1–128 characters. Reuse the key only when retrying the exact same request. Keys and their stored responses are kept for 30 days; a retry within that window replays the first response, and after it the key counts as new, so do not retry a write older than 30 days. Corrections and metadata edits include the previously read `version`. A wallet has two versions: `version` changes only with its metadata (name, details, credit limit, archive status), so recording activity never makes a rename stale; `balance_version` changes with every balance effect and guards adjustments. A wallet edit's key covers only its editable fields, `id`, and `version`, so a retry that echoes refreshed read-only fields such as `balance` still replays. List endpoints for transactions and audit accept `limit` (1–200) and `offset`.
+Every financial or settings mutation requires an `Idempotency-Key` header of 1–128 characters. Reuse the key only when retrying the exact same request. Keys and their stored responses are kept for 30 days; a retry within that window replays the first response, and after it the key counts as new, so do not retry a write older than 30 days. Corrections and metadata edits include the previously read `version`. A wallet has two versions: `version` changes only with its metadata (name, details, credit limit, archive status), so recording activity never makes a rename stale; `balance_version` changes with every balance effect and guards adjustments. A wallet edit's key covers only its editable fields, `id`, and `version`, so a retry that echoes refreshed read-only fields such as `balance` still replays. Lists of transactions and audit events page by cursor; see [Lists](#lists).
 
 ## Errors
 
@@ -42,7 +42,7 @@ Every API and `/healthz` response carries an `X-Request-ID` header. The server l
 | GET | `/wallets/{id}` | Read one wallet. |
 | PUT | `/wallets/{id}` | Update name, details, credit limit, or archive status with the wallet's `version`. Type and currency are immutable. |
 | POST | `/wallets/{id}/adjust` | Set a target `balance` with `balance_version` and `reason`. For credit cards, the target means debt owed. |
-| GET, POST | `/transactions` | List records or create income, expense, or transfer. |
+| GET, POST | `/transactions` | List records (see [Lists](#lists)) or create income, expense, or transfer. |
 | GET | `/transactions/{id}` | Read one record's current revision, with `voided`, `actor_email`, and `created_at`. |
 | PUT | `/transactions/{id}` | Correct a record with its current `version` and an optional `reason`. |
 | POST | `/transactions/{id}/void` | Reverse a record with `version` and `reason`. |
@@ -59,7 +59,15 @@ Every API and `/healthz` response carries an `X-Request-ID` header. The server l
 | GET | `/bills/upcoming?days=N` | Occurrences of active schedules dated after today through today plus `N` days (1–366, default 30), earliest first, at most 200. Computed on each read and never stored, so they have no `id`. |
 | POST | `/bills/{id}/confirm` | Record payment with optional `date` (defaults to the due date), `amount`, `wallet_id`, `rate`, and `note`. |
 | POST | `/bills/{id}/skip` | Skip an unpaid occurrence with a `reason`. |
-| GET | `/audit` | Read wallet, schedule, bill-status, and settings changes. |
+| GET | `/audit` | Read wallet, schedule, bill-status, and settings changes, newest first (see [Lists](#lists)). |
+
+## Lists
+
+`GET /transactions` and `GET /audit` return a page `{"items":[...],"next_cursor":"..."}` when the request opts in with `page=cursor`, a `cursor`, or (for transactions) any filter. `limit` is 1–200 (default 100). To read the next page, send the previous page's `next_cursor` unchanged as `cursor`, with the same filters; `next_cursor` is `null` on the last page. A cursor is opaque: it encodes the position of the last item, not an offset, so records added while paging never make a page repeat or skip a record, and deep pages cost the same as the first. A record corrected while paging moves to its new position, as it would in a fresh list. An unreadable cursor returns `validation_failed` on `cursor`, and `offset` is refused on a cursor-paged request.
+
+Transactions are ordered by `date`, then by the time of the current revision, newest first; records written at the same instant keep their write order. Filters combine: `wallet_id` matches records that name the wallet as source (`wallet_id`) or destination (`to_wallet_id`), and for a bank wallet also the records made with its linked debit cards, because those move its balance; for a debit card it matches only the card's own records. `kind` is `income`, `expense`, `transfer`, `opening`, or `adjustment`; `category_id` matches the resolved category (legacy records count as Others); `from` and `to` are inclusive dates; voided records are left out unless `include_voided=true`. An unknown wallet or category matches nothing. The audit list takes only `cursor` and `limit`.
+
+Deprecated: without those parameters both lists keep their original answer, a bare JSON array paged with `limit` and `offset` (0 or more), which includes voided records. Offset pages shift when records are added and cost more the deeper they go; new clients should use cursors.
 
 ## Financial behavior
 

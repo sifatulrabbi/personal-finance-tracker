@@ -22,10 +22,69 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
+// Store owns two connection pools on one SQLite file (see ADR 0012). writer has one connection
+// and begins every transaction with BEGIN IMMEDIATE, so writes queue in order instead of failing
+// on a lock upgrade. reader is a small read-only pool with deferred transactions: in WAL mode each
+// read transaction sees one committed snapshot and never waits for a writer. Code reaches the
+// pools only through write and read, whose closures receive the open transaction and nothing else.
 type Store struct {
-	db  *sql.DB
-	now func() time.Time
+	writer *sql.DB
+	reader *sql.DB
+	now    func() time.Time
 }
+
+// readConnections bounds concurrent read transactions. The household has a few users, so a few
+// connections cover a page load's parallel requests.
+const readConnections = 4
+
+// dbtx is one open transaction bound to its request context, so every statement inside it stops
+// when the request is cancelled. Its methods mirror *sql.Tx without the Context suffix.
+type dbtx struct {
+	ctx context.Context
+	tx  *sql.Tx
+}
+
+func (t dbtx) Exec(query string, args ...any) (sql.Result, error) {
+	return t.tx.ExecContext(t.ctx, query, args...)
+}
+func (t dbtx) Query(query string, args ...any) (*sql.Rows, error) {
+	return t.tx.QueryContext(t.ctx, query, args...)
+}
+func (t dbtx) QueryRow(query string, args ...any) *sql.Row {
+	return t.tx.QueryRowContext(t.ctx, query, args...)
+}
+
+// read runs fn in one read-only snapshot on the reader pool.
+func read[T any](ctx context.Context, s *Store, fn func(dbtx) (T, error)) (T, error) {
+	var zero T
+	tx, e := s.reader.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if e != nil {
+		return zero, e
+	}
+	defer tx.Rollback()
+	out, e := fn(dbtx{ctx, tx})
+	if e != nil {
+		return zero, e
+	}
+	return out, tx.Commit()
+}
+
+// change runs fn in one write transaction without an idempotency key, for session bookkeeping and
+// for reads that store due bills. Financial writes use write instead.
+func change[T any](ctx context.Context, s *Store, fn func(dbtx) (T, error)) (T, error) {
+	var zero T
+	tx, e := s.writer.BeginTx(ctx, nil)
+	if e != nil {
+		return zero, e
+	}
+	defer tx.Rollback()
+	out, e := fn(dbtx{ctx, tx})
+	if e != nil {
+		return zero, e
+	}
+	return out, tx.Commit()
+}
+
 type User struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
@@ -60,39 +119,61 @@ type Wallet struct {
 	// with every balance effect and guards adjustments.
 	Version        int `json:"version"`
 	BalanceVersion int `json:"balance_version"`
+	// balance is the signed cached balance in minor units (negative for credit-card debt).
+	balance int64
 }
 
 func Open(path string, now func() time.Time) (*Store, error) {
 	return openDatabase(path, now, false)
 }
 
+// openDatabase opens the writer first, which creates the file when create is set and switches it to
+// WAL, and then the read-only pool. synchronous stays at SQLite's default FULL: a committed money
+// write survives power loss.
 func openDatabase(path string, now func() time.Time, create bool) (*Store, error) {
 	abs, e := filepath.Abs(path)
 	if e != nil {
 		return nil, e
 	}
-	u := url.URL{Scheme: "file", Path: abs}
-	q := u.Query()
-	if !create {
-		q.Set("mode", "rw")
+	pool := func(mode, lock string, pragmas ...string) (*sql.DB, error) {
+		u := url.URL{Scheme: "file", Path: abs}
+		q := u.Query()
+		if mode != "" {
+			q.Set("mode", mode)
+		}
+		for _, p := range append([]string{"foreign_keys(1)", "busy_timeout(5000)"}, pragmas...) {
+			q.Add("_pragma", p)
+		}
+		q.Set("_txlock", lock)
+		u.RawQuery = q.Encode()
+		db, e := sql.Open("sqlite", u.String())
+		if e != nil {
+			return nil, e
+		}
+		if e = db.Ping(); e != nil {
+			db.Close()
+			return nil, e
+		}
+		return db, nil
 	}
-	q.Add("_pragma", "foreign_keys(1)")
-	q.Add("_pragma", "busy_timeout(5000)")
-	q.Add("_pragma", "journal_mode(WAL)")
-	q.Set("_txlock", "immediate")
-	u.RawQuery = q.Encode()
-	db, e := sql.Open("sqlite", u.String())
+	mode := "rw"
+	if create {
+		mode = ""
+	}
+	writer, e := pool(mode, "immediate", "journal_mode(WAL)")
 	if e != nil {
 		return nil, e
 	}
-	db.SetMaxOpenConns(1)
-	s := &Store{db: db, now: now}
+	writer.SetMaxOpenConns(1)
+	reader, e := pool("rw", "deferred", "query_only(1)")
+	if e != nil {
+		writer.Close()
+		return nil, e
+	}
+	reader.SetMaxOpenConns(readConnections)
+	s := &Store{writer: writer, reader: reader, now: now}
 	if now == nil {
 		s.now = time.Now
-	}
-	if e = db.Ping(); e != nil {
-		db.Close()
-		return nil, e
 	}
 	return s, nil
 }
@@ -108,45 +189,55 @@ func Migrate(path string) error {
 	defer s.Close()
 	return s.migrate()
 }
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error { return errors.Join(s.reader.Close(), s.writer.Close()) }
 
 func (s *Store) Health(ctx context.Context) error {
 	var version int
-	return s.db.QueryRowContext(ctx, `SELECT version FROM settings WHERE id=1`).Scan(&version)
+	return s.reader.QueryRowContext(ctx, `SELECT version FROM settings WHERE id=1`).Scan(&version)
 }
+
+// migrate applies the embedded migrations that are not recorded yet, all in one transaction. When
+// any was applied it checks the derived state before committing, so a backfill that disagrees with
+// the Go reading of the stored payloads leaves the database unchanged.
 func (s *Store) migrate() error {
-	tx, e := s.db.Begin()
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback()
-	if _, e = tx.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations(name TEXT PRIMARY KEY)`); e != nil {
-		return e
-	}
-	files, e := migrations.ReadDir("migrations")
-	if e != nil {
-		return e
-	}
-	for _, f := range files {
-		var count int
-		if e = tx.QueryRow(`SELECT count(*) FROM schema_migrations WHERE name=?`, f.Name()).Scan(&count); e != nil {
-			return e
+	_, e := change(context.Background(), s, func(tx dbtx) (struct{}, error) {
+		var none struct{}
+		if _, e := tx.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations(name TEXT PRIMARY KEY)`); e != nil {
+			return none, e
 		}
-		if count > 0 {
-			continue
-		}
-		b, e := migrations.ReadFile("migrations/" + f.Name())
+		files, e := migrations.ReadDir("migrations")
 		if e != nil {
-			return e
+			return none, e
 		}
-		if _, e = tx.Exec(string(b)); e != nil {
-			return fmt.Errorf("migration %s: %w", f.Name(), e)
+		applied := false
+		for _, f := range files {
+			var count int
+			if e = tx.QueryRow(`SELECT count(*) FROM schema_migrations WHERE name=?`, f.Name()).Scan(&count); e != nil {
+				return none, e
+			}
+			if count > 0 {
+				continue
+			}
+			b, e := migrations.ReadFile("migrations/" + f.Name())
+			if e != nil {
+				return none, e
+			}
+			if _, e = tx.Exec(string(b)); e != nil {
+				return none, fmt.Errorf("migration %s: %w", f.Name(), e)
+			}
+			if _, e = tx.Exec(`INSERT INTO schema_migrations VALUES(?)`, f.Name()); e != nil {
+				return none, e
+			}
+			applied = true
 		}
-		if _, e = tx.Exec(`INSERT INTO schema_migrations VALUES(?)`, f.Name()); e != nil {
-			return e
+		if applied {
+			if e = verifyDerived(tx); e != nil {
+				return none, fmt.Errorf("migration check: %w", e)
+			}
 		}
-	}
-	return tx.Commit()
+		return none, nil
+	})
+	return e
 }
 func id() string {
 	var b [16]byte
@@ -174,13 +265,14 @@ func (s *Store) EnsureUser(ctx context.Context, email, name string) (User, error
 	if len(name) > 120 {
 		return User{}, ErrInvalid
 	}
-	_, e = s.db.ExecContext(ctx, `INSERT INTO users VALUES(?,?,?) ON CONFLICT(email) DO NOTHING`, id(), email, name)
-	if e != nil {
-		return User{}, e
-	}
-	var u User
-	e = s.db.QueryRowContext(ctx, `SELECT id,email,name FROM users WHERE email=?`, email).Scan(&u.ID, &u.Email, &u.Name)
-	return u, e
+	return change(ctx, s, func(tx dbtx) (User, error) {
+		var u User
+		if _, e := tx.Exec(`INSERT INTO users VALUES(?,?,?) ON CONFLICT(email) DO NOTHING`, id(), email, name); e != nil {
+			return u, e
+		}
+		e := tx.QueryRow(`SELECT id,email,name FROM users WHERE email=?`, email).Scan(&u.ID, &u.Email, &u.Name)
+		return u, e
+	})
 }
 
 // RequestKeyTTL is how long an Idempotency-Key and its stored response are kept. A retry inside
@@ -188,7 +280,7 @@ func (s *Store) EnsureUser(ctx context.Context, email, name string) (User, error
 // the same key is treated as a new request.
 const RequestKeyTTL = 30 * 24 * time.Hour
 
-func write[T any](ctx context.Context, s *Store, actor, key, operation string, input any, fn func(*sql.Tx) (T, error)) (T, error) {
+func write[T any](ctx context.Context, s *Store, actor, key, operation string, input any, fn func(dbtx) (T, error)) (T, error) {
 	var zero T
 	if len(key) < 1 || len(key) > 128 {
 		return zero, invalid("", "Send an Idempotency-Key header of 1 to 128 characters.")
@@ -199,17 +291,18 @@ func write[T any](ctx context.Context, s *Store, actor, key, operation string, i
 	}
 	hash := sha256.Sum256(append([]byte(operation+":"), raw...))
 	fingerprint := hex.EncodeToString(hash[:])
-	tx, e := s.db.BeginTx(ctx, nil)
+	sqlTx, e := s.writer.BeginTx(ctx, nil)
 	if e != nil {
 		return zero, e
 	}
-	defer tx.Rollback()
+	defer sqlTx.Rollback()
+	tx := dbtx{ctx, sqlTx}
 	now := s.now().Unix()
-	if _, e = tx.ExecContext(ctx, `DELETE FROM request_keys WHERE created_at<?`, now-int64(RequestKeyTTL/time.Second)); e != nil {
+	if _, e = tx.Exec(`DELETE FROM request_keys WHERE created_at<?`, now-int64(RequestKeyTTL/time.Second)); e != nil {
 		return zero, e
 	}
 	var prior, body string
-	e = tx.QueryRowContext(ctx, `SELECT fingerprint,response FROM request_keys WHERE actor_id=? AND key=?`, actor, key).Scan(&prior, &body)
+	e = tx.QueryRow(`SELECT fingerprint,response FROM request_keys WHERE actor_id=? AND key=?`, actor, key).Scan(&prior, &body)
 	if e == nil {
 		if prior != fingerprint {
 			return zero, ErrIdempotencyKeyReused
@@ -222,7 +315,7 @@ func write[T any](ctx context.Context, s *Store, actor, key, operation string, i
 		return zero, e
 	}
 	var exists int
-	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE id=?`, actor).Scan(&exists); e != nil {
+	if e = tx.QueryRow(`SELECT count(*) FROM users WHERE id=?`, actor).Scan(&exists); e != nil {
 		return zero, e
 	}
 	if exists == 0 {
@@ -236,15 +329,15 @@ func write[T any](ctx context.Context, s *Store, actor, key, operation string, i
 	if e != nil {
 		return zero, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO request_keys(actor_id,key,fingerprint,response,created_at) VALUES(?,?,?,?,?)`, actor, key, fingerprint, string(data), now); e != nil {
+	if _, e = tx.Exec(`INSERT INTO request_keys(actor_id,key,fingerprint,response,created_at) VALUES(?,?,?,?,?)`, actor, key, fingerprint, string(data), now); e != nil {
 		return zero, e
 	}
-	if e = tx.Commit(); e != nil {
+	if e = sqlTx.Commit(); e != nil {
 		return zero, e
 	}
 	return out, nil
 }
-func (s *Store) audit(tx *sql.Tx, actor, entity, action string, before, after any) error {
+func (s *Store) audit(tx dbtx, actor, entity, action string, before, after any) error {
 	a, e := json.Marshal(before)
 	if e != nil {
 		return e
@@ -257,7 +350,7 @@ func (s *Store) audit(tx *sql.Tx, actor, entity, action string, before, after an
 	return e
 }
 func (s *Store) CreateWallet(ctx context.Context, actor, key string, in WalletInput) (Wallet, error) {
-	return write(ctx, s, actor, key, "wallet.create", in, func(tx *sql.Tx) (Wallet, error) {
+	return write(ctx, s, actor, key, "wallet.create", in, func(tx dbtx) (Wallet, error) {
 		var zero Wallet
 		if e := validWalletText(in.Name, in.Details); e != nil {
 			return zero, e
@@ -346,10 +439,10 @@ func (s *Store) CreateWallet(ctx context.Context, actor, key string, in WalletIn
 			return zero, e
 		}
 		payload, _ := json.Marshal(map[string]any{"kind": "opening", "wallet_id": wid, "amount": FormatMoney(opening), "date": s.today()})
-		if _, e = tx.Exec(`INSERT INTO transaction_revisions VALUES(?,1,?,?,?)`, tid, string(payload), actor, s.instant()); e != nil {
+		if e = writeRevision(tx, tid, 1, false, payload, actor, s.instant()); e != nil {
 			return zero, e
 		}
-		if _, e = tx.Exec(`INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta) VALUES(?,1,?,?)`, tid, wid, signed); e != nil {
+		if e = post(tx, tid, 1, wid, signed, 0); e != nil {
 			return zero, e
 		}
 		w, e := wallet(tx, wid)
@@ -374,16 +467,19 @@ type querier interface {
 	QueryRow(query string, args ...any) *sql.Row
 }
 
-func wallet(q querier, wid string) (Wallet, error) {
+const walletColumns = `id,name,type,card_type,currency,details,credit_limit,archived,version,balance_version,COALESCE(bank_wallet_id,''),balance_minor`
+
+type scanner interface{ Scan(dest ...any) error }
+
+// scanWallet reads one row of walletColumns. The balance is the cached sum of the wallet's own
+// entries (ADR 0012), so a linked debit card, which posts to its bank wallet, reports zero.
+func scanWallet(row scanner) (Wallet, error) {
 	var w Wallet
 	var limit, balance int64
-	e := q.QueryRow(`SELECT w.id,w.name,w.type,w.card_type,w.currency,w.details,w.credit_limit,w.archived,w.version,w.balance_version,COALESCE(w.bank_wallet_id,''),COALESCE((SELECT SUM(delta) FROM wallet_entries WHERE wallet_id=w.id),0) FROM wallets w WHERE w.id=?`, wid).Scan(&w.ID, &w.Name, &w.Type, &w.CardType, &w.Currency, &w.Details, &limit, &w.Archived, &w.Version, &w.BalanceVersion, &w.BankWalletID, &balance)
-	if errors.Is(e, sql.ErrNoRows) {
-		return w, ErrNotFound
-	}
-	if e != nil {
+	if e := row.Scan(&w.ID, &w.Name, &w.Type, &w.CardType, &w.Currency, &w.Details, &limit, &w.Archived, &w.Version, &w.BalanceVersion, &w.BankWalletID, &balance); e != nil {
 		return w, e
 	}
+	w.balance = balance
 	w.CreditLimit = FormatMoney(limit)
 	w.Balance = FormatMoney(balance)
 	if w.CardType == "credit" {
@@ -392,6 +488,14 @@ func wallet(q querier, wid string) (Wallet, error) {
 		w.Balance = "0.00"
 	}
 	return w, nil
+}
+
+func wallet(q querier, wid string) (Wallet, error) {
+	w, e := scanWallet(q.QueryRow(`SELECT `+walletColumns+` FROM wallets WHERE id=?`, wid))
+	if errors.Is(e, sql.ErrNoRows) {
+		return w, ErrNotFound
+	}
+	return w, e
 }
 
 // ledgerID is the wallet whose entries carry this wallet's balance effects: a linked debit card
@@ -409,40 +513,25 @@ func (w Wallet) legacyDebit() bool { return w.CardType == "debit" && w.BankWalle
 
 const errLegacyDebit = "This debit card is not linked to a bank wallet, so it takes no new activity. Record it on the bank wallet, or add the card again linked to its bank wallet."
 
-func (s *Store) Wallet(ctx context.Context, wid string) (Wallet, error) { return wallet(s.db, wid) }
-func (s *Store) Wallets(ctx context.Context) ([]Wallet, error) {
-	tx, e := s.db.BeginTx(ctx, nil)
+func (s *Store) Wallet(ctx context.Context, wid string) (Wallet, error) {
+	return read(ctx, s, func(tx dbtx) (Wallet, error) { return wallet(tx, wid) })
+}
+func (s *Store) Wallets(ctx context.Context) ([]Wallet, error) { return read(ctx, s, wallets) }
+func wallets(tx dbtx) ([]Wallet, error) {
+	rows, e := tx.Query(`SELECT ` + walletColumns + ` FROM wallets ORDER BY name,id`)
 	if e != nil {
 		return nil, e
 	}
-	defer tx.Rollback()
-	rows, e := tx.QueryContext(ctx, `SELECT id FROM wallets ORDER BY name,id`)
-	if e != nil {
-		return nil, e
-	}
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			rows.Close()
-			return nil, e
-		}
-		ids = append(ids, id)
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return nil, e
-	}
+	defer rows.Close()
 	out := []Wallet{}
-	for _, id := range ids {
-		w, e := wallet(tx, id)
+	for rows.Next() {
+		w, e := scanWallet(rows)
 		if e != nil {
 			return nil, e
 		}
 		out = append(out, w)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 var dhaka = func() *time.Location {
