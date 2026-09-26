@@ -83,6 +83,50 @@ func TestScheduleOnArchivedWalletCanBeDeactivatedButNotRetargeted(t *testing.T) 
 	}
 }
 
+// Regression: reactivating a long-paused schedule used to create every missed occurrence since it
+// was paused, in one GET /bills/due on the single writer. Catch-up is bounded like a new schedule.
+func TestReactivationCatchesUpAtMostTheBackfillWindow(t *testing.T) {
+	today := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	s, e := openPrepared(t, filepath.Join(t.TempDir(), "reactivate.sqlite"), func() time.Time { return today })
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	u := user(t, s)
+	cash := createWallet(t, s, u, "cash", "BDT", "", "5000")
+	gym, e := s.CreateSchedule(ctx, u.ID, "gym", ledger.ScheduleInput{Name: "Gym", WalletID: cash.ID, Amount: "100", StartDate: "2026-09-07", Frequency: "weekly"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	gym.Active = false
+	if gym, e = s.UpdateSchedule(ctx, u.ID, "pause", gym); e != nil {
+		t.Fatal(e)
+	}
+	today = time.Date(2029, 9, 14, 12, 0, 0, 0, time.UTC)
+	gym.Active = true
+	if _, e = s.UpdateSchedule(ctx, u.ID, "resume", gym); e != nil {
+		t.Fatal(e)
+	}
+	due, e := s.Due(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	earliest := "2028-09-13"
+	missed := 0
+	for _, b := range due {
+		if b.ScheduleID != gym.ID || b.DueDate <= "2026-09-14" {
+			continue
+		}
+		missed++
+		if b.DueDate < earliest {
+			t.Fatalf("bill from before the window: %s", b.DueDate)
+		}
+	}
+	if missed < 52 || missed > 53 {
+		t.Fatalf("want about a year of weekly bills after reactivation, got %d", missed)
+	}
+}
+
 func TestRecurringBillOnlyChangesBalanceOnManualConfirmation(t *testing.T) {
 	s := openStore(t)
 	u := user(t, s)

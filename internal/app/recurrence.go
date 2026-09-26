@@ -66,6 +66,11 @@ func (s *Service) UpdateSchedule(ctx context.Context, actor, key string, in ledg
 		if e = tx.UpdateSchedule(in); e != nil {
 			return in, e
 		}
+		if !old.Active && in.Active {
+			if e = s.boundCatchUp(tx, in); e != nil {
+				return in, e
+			}
+		}
 		return in, tx.Audit(actor, in.ID, "update", old, in, s.instant())
 	})
 }
@@ -87,6 +92,26 @@ func (s *Service) Schedules(ctx context.Context) ([]ledger.Schedule, error) {
 // Schedule reads one recurring schedule.
 func (s *Service) Schedule(ctx context.Context, sid string) (ledger.Schedule, error) {
 	return read(ctx, s, func(tx Tx) (ledger.Schedule, error) { return tx.Schedule(sid) })
+}
+
+// boundCatchUp moves a reactivated schedule's next occurrence into the backfill window, so
+// reactivation still catches up recent unpaid dates but never years of them in one read.
+func (s *Service) boundCatchUp(tx Tx, in ledger.Schedule) error {
+	all, e := tx.Schedules()
+	if e != nil {
+		return e
+	}
+	for _, a := range all {
+		if a.ID != in.ID {
+			continue
+		}
+		next := ledger.CatchUpFrom(a.Schedule, a.NextIndex, s.addDays(-ledger.MaxScheduleBackfillDays))
+		if next == a.NextIndex {
+			return nil
+		}
+		return tx.SetNextIndex(a.ID, next)
+	}
+	return nil
 }
 
 // materialize stores the occurrences of active schedules that have come due by today.
