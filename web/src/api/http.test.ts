@@ -47,6 +47,23 @@ test("reads send no idempotency key and encode path and query values", async () 
   expect(headers["Idempotency-Key"]).toBeUndefined();
 });
 
+test("the F3 read endpoints use the documented paths", async () => {
+  const { seen, fetch } = recordingFetch(() => new Response("{}"));
+  const api = createHttpClient({ fetch });
+  await api.summary();
+  await api.wallet("w/1");
+  await api.schedule("s1");
+  await api.bills("paid", { limit: 20, offset: 40 });
+  await api.upcomingBills(30);
+  expect(seen.map((s) => s.url)).toEqual([
+    "/api/v1/summary",
+    "/api/v1/wallets/w%2F1",
+    "/api/v1/schedules/s1",
+    "/api/v1/bills?limit=20&offset=40&status=paid",
+    "/api/v1/bills/upcoming?days=30",
+  ]);
+});
+
 test("a failed response becomes an ApiError with the server's message", async () => {
   const { fetch } = recordingFetch(
     () =>

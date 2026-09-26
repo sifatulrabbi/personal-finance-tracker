@@ -122,6 +122,56 @@ describe("writes update the cache from the server's record", () => {
     expect(invalidated(client, keys.monthly("2026-09"))).toBe(false);
   });
 
+  // Regression: a month without its own target carries the latest earlier one over
+  // (ADR 0010), so saving August must refresh a loaded September that inherits it.
+  test("a target save refreshes other loaded months and the Home summary", async () => {
+    const client = seeded();
+    const later: MonthlySpending = {
+      month: "2026-10",
+      spent: "0.00",
+      target: { amount: "3000.00", version: 1, inherited_from: "2026-09" },
+      categories: [],
+    };
+    client.setQueryData(keys.monthly("2026-10"), later);
+    client.setQueryData(keys.summary, { today: "2026-10-02" });
+    const fake = createFakeClient({ setMonthlyTarget: async () => ({ amount: "4000.00", version: 2 }) });
+    await createWrites(fake.client, client).setMonthlyTarget("2026-09", { amount: "4000", version: 1 }, { key: "k7" });
+    expect(invalidated(client, keys.monthly("2026-09"))).toBe(false);
+    expect(invalidated(client, keys.monthly("2026-10"))).toBe(true);
+    expect(invalidated(client, keys.summary)).toBe(true);
+  });
+
+  test("records, payments, and skips refresh the Home summary and bill history", async () => {
+    const client = seeded();
+    client.setQueryData(keys.summary, { today: "2026-09-26" });
+    client.setQueryData(keys.billHistory("paid"), { pages: [[]], pageParams: [0] });
+    client.setQueryData(keys.billHistory("skipped"), { pages: [[]], pageParams: [0] });
+    const payment = record({ date: "2026-09-26" });
+    const fake = createFakeClient({
+      confirmBill: async () => payment,
+      skipBill: async () => ({ id: "b1" }) as Bill,
+    });
+    const writes = createWrites(fake.client, client);
+    await writes.confirmBill("b1", { amount: "", wallet_id: "w1", date: "2026-09-26", rate: "", note: "" }, { key: "k8" });
+    expect(invalidated(client, keys.summary)).toBe(true);
+    expect(invalidated(client, keys.billHistory("paid"))).toBe(true);
+    expect(invalidated(client, keys.billHistory("skipped"))).toBe(false);
+    await writes.skipBill("b1", { reason: "Away" }, { key: "k9" });
+    expect(invalidated(client, keys.billHistory("skipped"))).toBe(true);
+  });
+
+  test("a wallet edit also updates that wallet's own detail read", async () => {
+    const client = seeded();
+    client.setQueryData(keys.wallet("w1"), wallet);
+    const archived = { ...wallet, archived: true, version: 2 };
+    const fake = createFakeClient({ updateWallet: async () => archived });
+    await createWrites(fake.client, client).updateWallet(
+      { id: "w1", name: "Cash", type: "physical", card_type: "", currency: "BDT", details: "", credit_limit: "0.00", archived: true, version: 1 },
+      { key: "k10" },
+    );
+    expect(client.getQueryData<Wallet>(keys.wallet("w1"))).toEqual(archived);
+  });
+
   test("a new category is appended without touching wallets or records", async () => {
     const client = seeded();
     const fake = createFakeClient({ createCategory: async () => ({ id: "c9", name: "Pets", type: "income" }) });
