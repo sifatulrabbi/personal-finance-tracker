@@ -6,8 +6,6 @@ import (
 	"errors"
 )
 
-var ErrUnauthorized = errors.New("authentication required")
-
 func (s *Store) SaveSession(ctx context.Context, tokenHash, userID, credentialHash string, expires int64) error {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
