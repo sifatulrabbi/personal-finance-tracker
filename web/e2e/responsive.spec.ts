@@ -88,6 +88,8 @@ async function closeModal(page: Page) {
 test("every page and financial modal stays inside compact mobile viewports", async ({
   page,
 }, testInfo) => {
+  // Opens and closes about twenty sheets at two viewport sizes, each with its animation.
+  test.setTimeout(90_000);
   const suffix = `responsive-${testInfo.project.name}`;
   await page.goto("/");
   await page.getByLabel("Email", { exact: true }).fill("test@example.test");

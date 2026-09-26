@@ -227,7 +227,10 @@ test("sheets skip their motion when the device asks for reduced motion", async (
   expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.001);
 });
 
-test("keyboard focus is visible on navigation and buttons", async ({ page }) => {
+test("keyboard focus is visible on navigation and buttons", async ({ page, browserName }) => {
+  // WebKit, like Safari's default setting, never gives links and buttons keyboard focus,
+  // so :focus-visible cannot be reached there.
+  test.skip(browserName === "webkit", "WebKit does not keyboard-focus links and buttons");
   await signedIn(page);
   // A key press first, so the browser treats the next focus as keyboard focus.
   await page.keyboard.press("Shift");
