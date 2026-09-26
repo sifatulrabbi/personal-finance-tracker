@@ -267,7 +267,7 @@ export type AmountInput =
   | { kind: "invalid"; message: string };
 
 // Text that is meant as a calculation rather than a mistyped number.
-function looksLikeFormula(text: string) {
+export function looksLikeFormula(text: string) {
   const t = text.replace(/ /g, " ").trim();
   return t.startsWith("=") || /[+*/()×÷xX^%]/.test(t) || /.[-−]/.test(t);
 }

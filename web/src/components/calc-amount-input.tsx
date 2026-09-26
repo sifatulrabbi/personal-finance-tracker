@@ -5,7 +5,7 @@ import type { Currency } from "@/api/types";
 import { Input } from "@/components/ui/input";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { currencySymbol, formatMoney } from "@/money/format";
-import { evaluateAmountInput } from "@/money/formula";
+import { evaluateAmountInput, looksLikeFormula } from "@/money/formula";
 
 // Phones and tablets: their decimal keypad has no + × ÷ or brackets, so the field offers them.
 export const coarsePointerQuery = "(pointer: coarse)";
@@ -104,6 +104,7 @@ export function CalcAmountInput({
   }, [controlled]);
 
   const result = evaluateAmountInput(text, { allowNegative });
+  const calculating = looksLikeFormula(text);
   const preview =
     result.kind === "valid" && result.formula ? formatMoney(result.value, currency ?? "BDT") : "";
 
@@ -165,7 +166,10 @@ export function CalcAmountInput({
           }}
           className={cn(
             "tabular-nums",
-            large && "h-16 text-[2rem] leading-none font-semibold",
+            // A calculation is longer than an amount, so it steps down a size to stay in view;
+            // the result line below carries the large figure instead.
+            large && "h-16 leading-none font-semibold",
+            large && (calculating ? "text-2xl" : "text-[2rem]"),
             currency && (large ? "pl-11" : "pl-8"),
             className,
           )}
@@ -188,7 +192,7 @@ export function CalcAmountInput({
         id={previewID}
         aria-live="polite"
         data-slot="calc-preview"
-        className={cn("tabular-nums text-muted-foreground empty:hidden", large ? "text-base" : "text-sm")}
+        className={cn("tabular-nums text-muted-foreground empty:hidden", large ? "text-title" : "text-sm")}
       >
         {preview ? (
           <>
