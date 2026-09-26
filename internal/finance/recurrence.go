@@ -78,6 +78,9 @@ func validateSchedule(tx *sql.Tx, in ScheduleInput, active bool, previous *Sched
 	if w.Archived && !kept {
 		return archived("wallet_id", "This wallet is archived. Choose an active wallet for this bill.")
 	}
+	if w.legacyDebit() && (previous == nil || previous.WalletID != in.WalletID) {
+		return invalid("wallet_id", errLegacyDebit)
+	}
 	return nil
 }
 func (s *Store) CreateSchedule(ctx context.Context, actor, key string, in ScheduleInput) (Schedule, error) {

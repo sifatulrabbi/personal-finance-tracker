@@ -8,6 +8,8 @@ A shared household record of money held, money owed, income, expenses, and unpai
 
 **Cash balance**: Money held in a non-credit wallet. A debit card accessing an existing bank account is not a second copy of that account's money.
 
+**Debit card**: A card wallet linked to the bank wallet it draws from. It has no balance of its own; records made with it name the card and move the bank wallet's balance. A legacy debit card created before linking keeps its own recorded balance until drained.
+
 **Card debt**: Money owed on a credit card. Purchases increase debt; repayments and refunds reduce it. Available credit is the credit limit minus the debt, not household cash.
 
 **Transaction**: A recorded income, expense, transfer, opening balance, or balance adjustment that affects one or more wallets.

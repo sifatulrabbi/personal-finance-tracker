@@ -31,9 +31,13 @@ type Transaction struct {
 	ActorEmail string `json:"actor_email"`
 	CreatedAt  string `json:"created_at"`
 }
+
+// effect is one balance change. walletID is the ledger wallet (a linked debit card's bank);
+// field names the input that selected it, for error reporting.
 type effect struct {
 	walletID string
 	delta    int64
+	field    string
 }
 
 func validPage(limit, offset int) error {
@@ -55,6 +59,9 @@ func (s *Store) CreateTransaction(ctx context.Context, actor, key string, in Tra
 func (s *Store) createTransaction(tx *sql.Tx, actor string, in TransactionInput) (Transaction, error) {
 	r, effects, e := s.prepare(tx, in)
 	if e != nil {
+		return Transaction{}, e
+	}
+	if e = checkNamedWallets(tx, in, nil); e != nil {
 		return Transaction{}, e
 	}
 	if e = keepArchivedBalances(tx, in, nil, effects, "This wallet is archived. Choose an active wallet."); e != nil {
@@ -102,6 +109,9 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 		}
 		if to, e = wallet(tx, in.ToWalletID); e != nil {
 			return r, nil, walletNotFound("to_wallet_id", e)
+		}
+		if to.ledgerID() == w.ledgerID() {
+			return r, nil, invalid("to_wallet_id", "A debit card and its bank wallet hold the same money. Choose a different wallet to transfer to.")
 		}
 	} else if in.ToWalletID != "" {
 		return r, nil, invalid("to_wallet_id", "Only transfers have a destination wallet.")
@@ -155,13 +165,41 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 			return r, nil, invalid("received_amount", "A transfer between wallets of the same currency must receive the amount sent.")
 		}
 		r.ReceivedAmount = FormatMoney(received)
-		return r, []effect{{w.ID, -amount}, {to.ID, received}}, nil
+		return r, []effect{{w.ledgerID(), -amount, "wallet_id"}, {to.ledgerID(), received, "to_wallet_id"}}, nil
 	}
 	delta := amount
 	if in.Kind == "expense" {
 		delta = -amount
 	}
-	return r, []effect{{w.ID, delta}}, nil
+	return r, []effect{{w.ledgerID(), delta, "wallet_id"}}, nil
+}
+
+// checkNamedWallets applies the rules about which wallets a record may newly name, for a new
+// record (old nil) or a correction. A wallet already named in the same slot stays allowed, so
+// repairs of existing records keep working. An archived wallet cannot be newly named. A legacy
+// unlinked debit card cannot newly take income, expenses, or incoming transfers; transfers out of
+// it stay allowed so its balance can be drained.
+func checkNamedWallets(tx *sql.Tx, in TransactionInput, old *Transaction) error {
+	slots := []struct{ field, id, before string }{{"wallet_id", in.WalletID, ""}, {"to_wallet_id", in.ToWalletID, ""}}
+	if old != nil {
+		slots[0].before, slots[1].before = old.WalletID, old.ToWalletID
+	}
+	for _, slot := range slots {
+		if slot.id == "" || (old != nil && slot.id == slot.before) {
+			continue
+		}
+		w, e := wallet(tx, slot.id)
+		if e != nil {
+			return walletNotFound(slot.field, e)
+		}
+		if w.Archived {
+			return archived(slot.field, "This wallet is archived. Choose an active wallet.")
+		}
+		if w.legacyDebit() && (slot.field == "to_wallet_id" || in.Kind != "transfer") {
+			return invalid(slot.field, errLegacyDebit)
+		}
+	}
+	return nil
 }
 
 // keepArchivedBalances rejects a change that would move the balance of an archived wallet the
@@ -171,8 +209,12 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 // the record away from the closed account, and the corrected record no longer names that wallet.
 func keepArchivedBalances(tx *sql.Tx, in TransactionInput, before, after []effect, message string) error {
 	net := map[string]int64{}
+	fields := map[string]string{}
 	for _, ef := range after {
 		net[ef.walletID] += ef.delta
+		if fields[ef.walletID] == "" {
+			fields[ef.walletID] = ef.field
+		}
 	}
 	for _, ef := range before {
 		if _, named := net[ef.walletID]; named {
@@ -192,9 +234,9 @@ func keepArchivedBalances(tx *sql.Tx, in TransactionInput, before, after []effec
 			return e
 		}
 		if w.Archived {
-			field := "wallet_id"
-			if wid == in.ToWalletID && wid != in.WalletID {
-				field = "to_wallet_id"
+			field := fields[wid]
+			if field == "" {
+				field = "wallet_id"
 			}
 			return archived(field, message)
 		}
@@ -281,6 +323,9 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 			r, effects, e = s.prepare(tx, in)
 			if e != nil {
 				return r, e
+			}
+			if e = checkNamedWallets(tx, in, &old); e != nil {
+				return old, e
 			}
 			before := make([]effect, len(previous))
 			for i, entry := range previous {
