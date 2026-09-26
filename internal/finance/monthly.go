@@ -83,10 +83,16 @@ func (s *Store) SetMonthlyTarget(ctx context.Context, actor, key, month, amount 
 		return out, s.audit(tx, actor, month, "monthly.target", old, out)
 	})
 }
+// decimalHundredths formats a count of hundredths, such as minor units, as a decimal string. The
+// sign is formatted separately because the summary's cash and debt totals can be negative.
 func decimalHundredths(n *big.Int) string {
+	sign := ""
+	if n.Sign() < 0 {
+		sign = "-"
+	}
 	whole, fraction := new(big.Int), new(big.Int)
-	whole.QuoRem(n, big.NewInt(100), fraction)
-	return whole.String() + "." + leftPad(fraction.String(), 2)
+	whole.QuoRem(new(big.Int).Abs(n), big.NewInt(100), fraction)
+	return sign + whole.String() + "." + leftPad(fraction.String(), 2)
 }
 func (s *Store) Monthly(ctx context.Context, month string) (MonthlySpending, error) {
 	if month == "" {
