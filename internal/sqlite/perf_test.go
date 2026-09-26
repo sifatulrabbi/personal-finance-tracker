@@ -2,12 +2,13 @@
 
 // The performance probe is slow to set up, so it runs only with the perf build tag:
 //
-//	go test -tags perf -run TestPerformanceAtScale -v ./internal/finance/
-package app_test
+//	go test -tags perf -run TestPerformanceAtScale -v ./internal/sqlite/
+package sqlite_test
 
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"simply-finance/internal/app"
 	"simply-finance/internal/apptest"
 	"simply-finance/internal/ledger"
@@ -169,9 +170,16 @@ func perfExtra(t *testing.T, s *apptest.Household, check func(string, time.Durat
 // A write costs about the same with 30,000 records as with none: nothing on the write path sums a
 // wallet's history.
 func TestPerformanceCreateDoesNotGrowWithHistory(t *testing.T) {
-	empty := openStore(t)
+	empty, e := openPrepared(t, filepath.Join(t.TempDir(), "empty.sqlite"), time.Now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer empty.Close()
 	u := user(t, empty)
-	cash := createWallet(t, empty, u, "cash", "BDT", "", "0")
+	cash, e := empty.CreateWallet(ctx, u.ID, "wallet-cash", ledger.WalletInput{Name: "cash", Type: "bank", Currency: "BDT", OpeningBalance: "0"})
+	if e != nil {
+		t.Fatal(e)
+	}
 	create := func(s *apptest.Household, u ledger.User, wid string) time.Duration {
 		return timeIt(t, 101, func(i int) {
 			if _, e := s.CreateTransaction(ctx, u.ID, fmt.Sprint("growth-", i), ledger.TransactionInput{Kind: "expense", WalletID: wid, Amount: "1", Date: "2026-03-14"}); e != nil {
