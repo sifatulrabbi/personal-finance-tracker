@@ -135,6 +135,10 @@ func (s *Server) handler() http.Handler {
 		return s.store.SetMonthlyTarget(r.Context(), actor(r).ID, key(r), r.PathValue("month"), in.Amount, in.Version)
 	}))
 	private.HandleFunc("GET /api/v1/wallets", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Wallets(r.Context()); respond(w, v, e) })
+	private.HandleFunc("GET /api/v1/wallets/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.store.Wallet(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
+	})
 	private.HandleFunc("POST /api/v1/wallets", input(func(r *http.Request, in finance.WalletInput) (any, error) {
 		return s.store.CreateWallet(r.Context(), actor(r).ID, key(r), in)
 	}))
@@ -145,11 +149,11 @@ func (s *Server) handler() http.Handler {
 		return s.store.UpdateWallet(r.Context(), actor(r).ID, key(r), in)
 	}))
 	private.HandleFunc("POST /api/v1/wallets/{id}/adjust", input(func(r *http.Request, in struct {
-		Version int    `json:"version"`
-		Balance string `json:"balance"`
-		Reason  string `json:"reason"`
+		BalanceVersion int    `json:"balance_version"`
+		Balance        string `json:"balance"`
+		Reason         string `json:"reason"`
 	}) (any, error) {
-		return s.store.AdjustWallet(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Version, in.Balance, in.Reason)
+		return s.store.AdjustWallet(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.BalanceVersion, in.Balance, in.Reason)
 	}))
 	private.HandleFunc("GET /api/v1/transactions", func(w http.ResponseWriter, r *http.Request) {
 		l, o, e := page(r)

@@ -2,7 +2,7 @@
 
 All application endpoints use `/api/v1`. Amounts and rates are decimal strings, dates are `YYYY-MM-DD` in Asia/Dhaka, and audit timestamps are UTC instants. Authentication uses the `sf_session` HTTP-only cookie. Send `Content-Type: application/json` and `X-CSRF-Protection: 1` on every write, including login. Browser requests must use the configured `APP_ORIGIN`; no cross-origin client access is enabled.
 
-Every financial or settings mutation requires an `Idempotency-Key` header of 1–128 characters. Reuse the key only when retrying the exact same request. Corrections and metadata edits include the previously read `version`. List endpoints for transactions and audit accept `limit` (1–200) and `offset`.
+Every financial or settings mutation requires an `Idempotency-Key` header of 1–128 characters. Reuse the key only when retrying the exact same request. Corrections and metadata edits include the previously read `version`. A wallet has two versions: `version` changes only with its metadata (name, details, credit limit, archive status), so recording activity never makes a rename stale; `balance_version` changes with every balance effect and guards adjustments. A wallet edit's key covers only its editable fields, `id`, and `version`, so a retry that echoes refreshed read-only fields such as `balance` still replays. List endpoints for transactions and audit accept `limit` (1–200) and `offset`.
 
 ## Errors
 
@@ -36,8 +36,9 @@ Unauthenticated requests to any `/api/v1` path, including unknown ones, get 401 
 | POST | `/logout` | Revoke this session. |
 | GET | `/me` | Current user profile. |
 | GET, POST | `/wallets` | List wallets or create one with an opening balance. |
-| PUT | `/wallets/{id}` | Update name, details, credit limit, or archive status. Type and currency are immutable. |
-| POST | `/wallets/{id}/adjust` | Set a target `balance` with `version` and `reason`. For credit cards, the target means debt owed. |
+| GET | `/wallets/{id}` | Read one wallet. |
+| PUT | `/wallets/{id}` | Update name, details, credit limit, or archive status with the wallet's `version`. Type and currency are immutable. |
+| POST | `/wallets/{id}/adjust` | Set a target `balance` with `balance_version` and `reason`. For credit cards, the target means debt owed. |
 | GET, POST | `/transactions` | List records or create income, expense, or transfer. |
 | PUT | `/transactions/{id}` | Correct a record with its current `version` and an optional `reason`. |
 | POST | `/transactions/{id}/void` | Reverse a record with `version` and `reason`. |

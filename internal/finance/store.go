@@ -52,7 +52,10 @@ type Wallet struct {
 	Debt            string `json:"debt,omitempty"`
 	AvailableCredit string `json:"available_credit,omitempty"`
 	Archived        bool   `json:"archived"`
-	Version         int    `json:"version"`
+	// Version guards metadata edits (name, details, credit limit, archive). BalanceVersion changes
+	// with every balance effect and guards adjustments.
+	Version        int `json:"version"`
+	BalanceVersion int `json:"balance_version"`
 }
 
 func Open(path string, now func() time.Time) (*Store, error) {
@@ -323,7 +326,7 @@ type querier interface {
 func wallet(q querier, wid string) (Wallet, error) {
 	var w Wallet
 	var limit, balance int64
-	e := q.QueryRow(`SELECT w.id,w.name,w.type,w.card_type,w.currency,w.details,w.credit_limit,w.archived,w.version,COALESCE((SELECT SUM(delta) FROM wallet_entries WHERE wallet_id=w.id),0) FROM wallets w WHERE w.id=?`, wid).Scan(&w.ID, &w.Name, &w.Type, &w.CardType, &w.Currency, &w.Details, &limit, &w.Archived, &w.Version, &balance)
+	e := q.QueryRow(`SELECT w.id,w.name,w.type,w.card_type,w.currency,w.details,w.credit_limit,w.archived,w.version,w.balance_version,COALESCE((SELECT SUM(delta) FROM wallet_entries WHERE wallet_id=w.id),0) FROM wallets w WHERE w.id=?`, wid).Scan(&w.ID, &w.Name, &w.Type, &w.CardType, &w.Currency, &w.Details, &limit, &w.Archived, &w.Version, &w.BalanceVersion, &balance)
 	if errors.Is(e, sql.ErrNoRows) {
 		return w, ErrNotFound
 	}
@@ -339,6 +342,7 @@ func wallet(q querier, wid string) (Wallet, error) {
 	}
 	return w, nil
 }
+func (s *Store) Wallet(ctx context.Context, wid string) (Wallet, error) { return wallet(s.db, wid) }
 func (s *Store) Wallets(ctx context.Context) ([]Wallet, error) {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {

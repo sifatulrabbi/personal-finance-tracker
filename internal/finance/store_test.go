@@ -204,7 +204,7 @@ func TestOpeningAndAdjustmentRecordsAreNotCorrectable(t *testing.T) {
 	s := openStore(t)
 	u := user(t, s)
 	w := createWallet(t, s, u, "cash", "BDT", "", "100")
-	adjustment, e := s.AdjustWallet(ctx, u.ID, "adjust", w.ID, w.Version, "80", "Counted cash")
+	adjustment, e := s.AdjustWallet(ctx, u.ID, "adjust", w.ID, w.BalanceVersion, "80", "Counted cash")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -309,11 +309,11 @@ func TestAdjustmentsAndArchivingUseCurrentWalletVersion(t *testing.T) {
 	s := openStore(t)
 	u := user(t, s)
 	w := createWallet(t, s, u, "cash", "BDT", "", "100")
-	adjusted, e := s.AdjustWallet(ctx, u.ID, "adjust", w.ID, w.Version, "80.00", "Counted cash")
+	adjusted, e := s.AdjustWallet(ctx, u.ID, "adjust", w.ID, w.BalanceVersion, "80.00", "Counted cash")
 	if e != nil || adjusted.Amount != "-20.00" {
 		t.Fatalf("adjustment: %+v %v", adjusted, e)
 	}
-	if _, e = s.AdjustWallet(ctx, u.ID, "stale-adjust", w.ID, w.Version, "90", "Stale count"); !errors.Is(e, finance.ErrStaleVersion) {
+	if _, e = s.AdjustWallet(ctx, u.ID, "stale-adjust", w.ID, w.BalanceVersion, "90", "Stale count"); !errors.Is(e, finance.ErrStaleVersion) {
 		t.Fatalf("stale: %v", e)
 	}
 	ws, _ := s.Wallets(ctx)

@@ -70,7 +70,7 @@ func TestFailedTransferRollsBackBothSidesAndCanRetry(t *testing.T) {
 			t.Fatal("source deduction was not rolled back")
 		}
 	}
-	if _, err = s.AdjustWallet(ctx, u.ID, "room", destination.ID, destination.Version, "0", "Correct opening balance"); err != nil {
+	if _, err = s.AdjustWallet(ctx, u.ID, "room", destination.ID, destination.BalanceVersion, "0", "Correct opening balance"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.CreateTransaction(ctx, u.ID, "transfer", in); err != nil {

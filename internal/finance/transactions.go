@@ -224,7 +224,7 @@ func (s *Store) saveRevision(tx *sql.Tx, actor string, r Transaction, effects []
 		if balance > MaxMoney || balance < -MaxMoney {
 			return r, errBalanceLimit
 		}
-		if _, e = tx.Exec(`UPDATE wallets SET version=version+1 WHERE id=?`, ef.walletID); e != nil {
+		if _, e = tx.Exec(`UPDATE wallets SET balance_version=balance_version+1 WHERE id=?`, ef.walletID); e != nil {
 			return r, e
 		}
 	}
@@ -306,7 +306,7 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 			if _, e = tx.Exec(`INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta,reversal_of) VALUES(?,?,?,?,?)`, tid, r.Version, entry.walletID, -entry.delta, entry.id); e != nil {
 				return r, e
 			}
-			if _, e = tx.Exec(`UPDATE wallets SET version=version+1 WHERE id=?`, entry.walletID); e != nil {
+			if _, e = tx.Exec(`UPDATE wallets SET balance_version=balance_version+1 WHERE id=?`, entry.walletID); e != nil {
 				return r, e
 			}
 		}
@@ -314,7 +314,7 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 			if _, e = tx.Exec(`INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta) VALUES(?,?,?,?)`, tid, r.Version, ef.walletID, ef.delta); e != nil {
 				return r, e
 			}
-			if _, e = tx.Exec(`UPDATE wallets SET version=version+1 WHERE id=?`, ef.walletID); e != nil {
+			if _, e = tx.Exec(`UPDATE wallets SET balance_version=balance_version+1 WHERE id=?`, ef.walletID); e != nil {
 				return r, e
 			}
 		}

@@ -7,18 +7,20 @@ import (
 	"strings"
 )
 
-func (s *Store) AdjustWallet(ctx context.Context, actor, key, wid string, version int, target, reason string) (Transaction, error) {
+// AdjustWallet records the difference to a target balance. balanceVersion is the wallet's
+// BalanceVersion as read, so the target is refused if any balance effect happened since.
+func (s *Store) AdjustWallet(ctx context.Context, actor, key, wid string, balanceVersion int, target, reason string) (Transaction, error) {
 	return write(ctx, s, actor, key, "wallet.adjust", struct {
 		ID             string
 		Version        int
 		Target, Reason string
-	}{wid, version, target, reason}, func(tx *sql.Tx) (Transaction, error) {
+	}{wid, balanceVersion, target, reason}, func(tx *sql.Tx) (Transaction, error) {
 		var r Transaction
 		w, e := wallet(tx, wid)
 		if e != nil {
 			return r, e
 		}
-		if w.Version != version {
+		if w.BalanceVersion != balanceVersion {
 			return r, ErrStaleVersion
 		}
 		if w.Archived {
@@ -53,8 +55,17 @@ func (s *Store) AdjustWallet(ctx context.Context, actor, key, wid string, versio
 	})
 }
 func mustMoney(s string) int64 { n, _ := ParseMoney(s); return n }
+
+// UpdateWallet edits a wallet's metadata. Only the editable fields and the identity form the
+// request fingerprint, so a retry that echoes refreshed read-only fields (balance, versions) still
+// replays instead of reporting a reused key.
 func (s *Store) UpdateWallet(ctx context.Context, actor, key string, in Wallet) (Wallet, error) {
-	return write(ctx, s, actor, key, "wallet.update", in, func(tx *sql.Tx) (Wallet, error) {
+	request := struct {
+		ID, Name, Type, CardType, Currency, Details, CreditLimit string
+		Archived                                                 bool
+		Version                                                  int
+	}{in.ID, in.Name, in.Type, in.CardType, in.Currency, in.Details, in.CreditLimit, in.Archived, in.Version}
+	return write(ctx, s, actor, key, "wallet.update", request, func(tx *sql.Tx) (Wallet, error) {
 		old, e := wallet(tx, in.ID)
 		if e != nil {
 			return old, e
