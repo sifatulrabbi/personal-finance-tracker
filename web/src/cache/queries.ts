@@ -8,9 +8,8 @@ import {
 } from "@tanstack/react-query";
 import { useApi } from "@/api/context";
 import { isApiError } from "@/api/errors";
-import type { Transaction, Wallet } from "@/api/types";
+import type { Transaction, TransactionFilters, TransactionPage, Wallet } from "@/api/types";
 import { keys, pageSize } from "./keys";
-import { nextOffset } from "./effects";
 
 export function createQueryClient() {
   return new QueryClient({
@@ -113,26 +112,30 @@ export function useHistory(id: string) {
   return useQuery({ queryKey: keys.history(id), queryFn: () => api.history(id) });
 }
 
-// "Load older records" appends pages; a refetch refreshes every loaded page instead of
-// collapsing the list back to the first 50.
-export function useTransactions() {
+// One record list per filter combination, paged by cursor. "Load more" appends pages; a
+// refetch refreshes every loaded page instead of collapsing the list to the first one.
+// While other filters load, the previous list stays on screen (isPlaceholderData).
+export function useTransactionList(filters: TransactionFilters) {
   const api = useApi();
   const query = useInfiniteQuery({
-    queryKey: keys.transactions,
-    queryFn: ({ pageParam }) => api.transactions({ limit: pageSize, offset: pageParam }),
-    initialPageParam: 0,
-    getNextPageParam: (_last, pages) => nextOffset(pages),
+    queryKey: keys.transactionList(filters),
+    queryFn: ({ pageParam }) =>
+      api.transactionPage({ ...filters, limit: pageSize, cursor: pageParam ?? undefined }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    placeholderData: keepPreviousData,
   });
   const records = useMemo(() => uniqueRecords(query.data?.pages ?? []), [query.data]);
   return { ...query, records };
 }
 
-// Offset pages can overlap when records are added between page loads. Show each record once.
-export function uniqueRecords(pages: Transaction[][]) {
+// Pages never overlap on the server, but a record placed from a write can meet its own
+// copy on a page loaded later. Show each record once, at its first position.
+export function uniqueRecords(pages: TransactionPage[]) {
   const seen = new Set<string>();
   const out: Transaction[] = [];
   for (const page of pages)
-    for (const record of page)
+    for (const record of page.items)
       if (!seen.has(record.id)) {
         seen.add(record.id);
         out.push(record);

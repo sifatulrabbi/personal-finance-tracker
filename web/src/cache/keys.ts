@@ -1,3 +1,5 @@
+import type { TransactionFilters } from "@/api/types";
+
 // Query keys, one per server resource. Keep them flat so invalidating one resource never
 // touches another by prefix (history is not under "transactions" on purpose).
 export const keys = {
@@ -7,6 +9,10 @@ export const keys = {
   wallet: (id: string) => ["wallet", id] as const,
   walletAll: ["wallet"] as const,
   transactions: ["transactions"] as const,
+  // Every cursor-paged record list, one per filter combination (see transactionList).
+  transactionLists: ["transactions", "list"] as const,
+  transactionList: (filters: TransactionFilters) =>
+    ["transactions", "list", listKeyFilters(filters)] as const,
   history: (id: string) => ["history", id] as const,
   historyAll: ["history"] as const,
   categories: ["categories"] as const,
@@ -23,3 +29,10 @@ export const keys = {
 };
 
 export const pageSize = 50;
+
+// Equal filters must give an equal key, so empty and false values are dropped.
+function listKeyFilters(filters: TransactionFilters): TransactionFilters {
+  const out: Record<string, string | boolean> = {};
+  for (const [name, value] of Object.entries(filters)) if (value) out[name] = value;
+  return out as TransactionFilters;
+}

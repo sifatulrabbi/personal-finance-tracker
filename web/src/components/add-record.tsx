@@ -1,31 +1,38 @@
-import { createContext, useContext, type ReactNode, type SyntheticEvent } from "react";
+import { createContext, useContext, useMemo, type ReactNode, type SyntheticEvent } from "react";
 import { Link } from "react-router-dom";
 import { Wallet as WalletIcon } from "lucide-react";
 import { useCategories, useSettings, useWallets } from "@/cache/queries";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadError, Modal, useEditor } from "@/components/layout";
-import { TransactionForm } from "@/components/transaction-form";
+import { RecordForm } from "@/components/record-form";
+import type { RecordKind } from "@/activity/draft";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type AddRecord = { open(event?: SyntheticEvent<HTMLElement>): void };
+type AddRecord = {
+  open(event?: SyntheticEvent<HTMLElement>, options?: { kind?: RecordKind }): void;
+};
 
 const AddRecordContext = createContext<AddRecord | null>(null);
 
 // One Add record sheet for the whole app, opened from the tab bar or the sidebar on any
 // page. Its data loads only once it has been opened.
 export function AddRecordProvider({ children }: { children: ReactNode }) {
-  const editor = useEditor<true>();
+  const editor = useEditor<{ kind?: RecordKind }>();
+  const value = useMemo<AddRecord>(
+    () => ({ open: (event, options) => editor.open({ kind: options?.kind }, event) }),
+    [editor.open],
+  );
   return (
-    <AddRecordContext.Provider value={{ open: (event) => editor.open(true, event) }}>
+    <AddRecordContext.Provider value={value}>
       {children}
       <Modal
         open={editor.isOpen}
         onClose={editor.close}
         returnFocus={editor.trigger}
         title="Add record"
-        description="Record what actually moved. Transfers are not income or spending."
+        description="Moving money between wallets is a transfer, not spending."
       >
-        {editor.value ? <AddRecordContent onDone={editor.close} /> : null}
+        {editor.value ? <AddRecordContent kind={editor.value.kind} onDone={editor.close} /> : null}
       </Modal>
     </AddRecordContext.Provider>
   );
@@ -37,7 +44,7 @@ export function useAddRecord() {
   return value;
 }
 
-function AddRecordContent({ onDone }: { onDone: () => void }) {
+function AddRecordContent({ kind, onDone }: { kind?: RecordKind; onDone: () => void }) {
   const wallets = useWallets();
   const categories = useCategories();
   const settings = useSettings();
@@ -78,10 +85,11 @@ function AddRecordContent({ onDone }: { onDone: () => void }) {
       />
     );
   return (
-    <TransactionForm
+    <RecordForm
       wallets={wallets.data}
       categories={categories.data}
       settings={settings.data}
+      initialKind={kind}
       onSaved={onDone}
     />
   );

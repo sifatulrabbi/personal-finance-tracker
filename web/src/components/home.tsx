@@ -279,6 +279,7 @@ function RecentRecords({ summary }: { summary: Summary }) {
               wallets={wallets.data}
               categories={categories.data ?? []}
               link="/activity"
+              showDate
             />
           ))}
         </List>

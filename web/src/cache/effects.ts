@@ -7,54 +7,81 @@ import type {
   Schedule,
   Settings,
   Transaction,
+  TransactionFilters,
+  TransactionPage,
   Wallet,
 } from "@/api/types";
-import { keys, pageSize } from "./keys";
+import { keys } from "./keys";
 
 // What each write changes in the client cache. This is caching knowledge only, not a
 // financial rule: the server's returned record goes straight into the cache so it shows
 // without a round trip, and every server-computed value (balances, debt, monthly totals,
 // due bills) is refetched rather than recalculated here. Only affected queries are touched.
 
-export type TransactionPages = InfiniteData<Transaction[], number>;
+// One cached record list: cursor pages of one filter combination.
+export type TransactionPages = InfiniteData<TransactionPage, string | null>;
 
-// The server lists records by date DESC, created_at DESC, id ASC.
-function sortsBefore(a: Transaction, b: Transaction) {
-  if (a.date !== b.date) return a.date > b.date;
-  if (a.created_at !== b.created_at) return a.created_at > b.created_at;
-  return a.id < b.id;
+// Stored instants may carry 0 to 9 fraction digits. Padding makes them compare as strings.
+function instantKey(value: string) {
+  return value.replace(/(:\d{2})(?:\.(\d+))?Z$/, (_, seconds: string, fraction = "") =>
+    `${seconds}.${fraction.padEnd(9, "0")}Z`,
+  );
 }
 
-// Places a record at its sorted position among the loaded pages, replacing any older copy.
-// A record that sorts after everything loaded is left out while more pages exist, because
-// it belongs to a page the user has not loaded yet. Page sizes may drift from 50; the next
-// offset is always the loaded count, which stays equal to the server's prefix.
+// The server lists records by date, then by the time of their current revision, newest
+// first. A record placed from a write response is the newest write, so on a tie it goes first.
+function sortsBefore(record: Transaction, row: Transaction) {
+  if (record.date !== row.date) return record.date > row.date;
+  const a = instantKey(record.created_at);
+  const b = instantKey(row.created_at);
+  return a === b || a > b;
+}
+
+// Whether a record belongs in a list with these filters, judged from the record's own
+// fields. A wallet filter also matches records of a bank's linked debit cards; that is the
+// server's rule, so such lists are refetched instead of decided here (see recordTransaction).
+export function matchesFilters(record: Transaction, filters: TransactionFilters = {}) {
+  if (record.voided && !filters.include_voided) return false;
+  if (filters.kind && record.kind !== filters.kind) return false;
+  if (filters.category_id && record.category_id !== filters.category_id) return false;
+  if (filters.from && record.date < filters.from) return false;
+  if (filters.to && record.date > filters.to) return false;
+  if (
+    filters.wallet_id &&
+    record.wallet_id !== filters.wallet_id &&
+    record.to_wallet_id !== filters.wallet_id
+  )
+    return false;
+  return true;
+}
+
+// Places a record at its sorted position among the loaded pages of one list, replacing any
+// older copy, or removes it when it no longer matches the list's filters. A record that sorts
+// after everything loaded is left out while more pages exist: it belongs to a page the user
+// has not loaded, and the cursor of that page still points after the last loaded row, so it
+// arrives there without a repeat or a gap.
 export function placeTransaction(
   data: TransactionPages | undefined,
   record: Transaction,
+  filters: TransactionFilters = {},
 ): TransactionPages | undefined {
   if (!data) return data;
-  const lastPage = data.pages[data.pages.length - 1] ?? [];
-  const hasMore = lastPage.length >= pageSize;
-  const pages = data.pages.map((page) => page.filter((row) => row.id !== record.id));
-  for (let p = 0; p < pages.length; p++) {
-    const index = pages[p].findIndex((row) => sortsBefore(record, row));
+  const pages = data.pages.map((page) => ({
+    ...page,
+    items: page.items.filter((row) => row.id !== record.id),
+  }));
+  if (!matchesFilters(record, filters)) return { ...data, pages };
+  for (const page of pages) {
+    const index = page.items.findIndex((row) => sortsBefore(record, row));
     if (index >= 0) {
-      pages[p] = [...pages[p].slice(0, index), record, ...pages[p].slice(index)];
+      page.items = [...page.items.slice(0, index), record, ...page.items.slice(index)];
       return { ...data, pages };
     }
   }
-  if (!hasMore) {
-    if (pages.length === 0) return { pages: [[record]], pageParams: [0] };
-    pages[pages.length - 1] = [...pages[pages.length - 1], record];
-  }
-  return { ...data, pages };
-}
-
-export function nextOffset(pages: Transaction[][]) {
   const last = pages[pages.length - 1];
-  if (!last || last.length < pageSize) return undefined;
-  return pages.reduce((count, page) => count + page.length, 0);
+  if (!last) return { pages: [{ items: [record], next_cursor: null }], pageParams: [null] };
+  if (last.next_cursor === null) last.items = [...last.items, record];
+  return { ...data, pages };
 }
 
 function upsert<T extends { id: string }>(list: T[] | undefined, item: T) {
@@ -75,12 +102,18 @@ function markStale(client: QueryClient, ...queryKeys: (readonly unknown[])[]) {
 }
 
 function recordTransaction(client: QueryClient, record: Transaction) {
-  client.setQueryData<TransactionPages>(keys.transactions, (data) =>
-    placeTransaction(data, record),
-  );
-  // The record is already in place; the list is marked stale so a later visit reconciles
+  for (const [queryKey, data] of client.getQueriesData<TransactionPages>({
+    queryKey: keys.transactionLists,
+  })) {
+    const filters = (queryKey[2] ?? {}) as TransactionFilters;
+    client.setQueryData<TransactionPages>(queryKey, placeTransaction(data, record, filters));
+    // A wallet's list also holds its linked debit cards' records, which only the server
+    // knows how to match. Refetching refreshes each loaded page in place, never fewer.
+    if (filters.wallet_id) void client.invalidateQueries({ queryKey, exact: true });
+  }
+  // The record is already in place; the lists are marked stale so a later visit reconciles
   // with changes from the other household member without replacing loaded pages now.
-  markStale(client, keys.transactions);
+  markStale(client, keys.transactionLists);
 }
 
 export const effects = {
@@ -117,6 +150,11 @@ export const effects = {
       keys.dueBills,
       keys.billHistoryAll,
     );
+  },
+  // Someone else changed the record: show their version and its history.
+  transactionRefreshed(client: QueryClient, record: Transaction) {
+    recordTransaction(client, record);
+    refetch(client, keys.history(record.id));
   },
   categoryCreated(client: QueryClient, category: Category) {
     client.setQueryData<Category[]>(keys.categories, (list) => upsert(list, category));
