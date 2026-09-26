@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"simply-finance/internal/app"
 	"simply-finance/internal/ledger"
 	"simply-finance/internal/money"
@@ -175,4 +177,34 @@ func (tx records) verifyDerived() error {
 // wallet balances) still equals the value derived from its source records.
 func (s *Store) VerifyDerivedState(ctx context.Context) error {
 	return run(ctx, s.reader, &sql.TxOptions{ReadOnly: true}, func(tx records) error { return tx.verifyDerived() })
+}
+
+// derivedStateMigration is the first migration after which every derived value exists.
+const derivedStateMigration = "012_wallet_balance_cache.sql"
+
+// VerifySnapshot opens a backup read-only, without switching its journal mode, and checks its
+// derived state, so a restore drill proves the balance cache and typed columns, not only pages.
+// A snapshot taken before those columns existed has nothing derived to check and passes.
+func VerifySnapshot(ctx context.Context, path string) error {
+	abs, e := filepath.Abs(path)
+	if e != nil {
+		return e
+	}
+	u := url.URL{Scheme: "file", Path: abs}
+	q := u.Query()
+	q.Set("mode", "ro")
+	u.RawQuery = q.Encode()
+	db, e := sql.Open("sqlite", u.String())
+	if e != nil {
+		return e
+	}
+	defer db.Close()
+	var applied int
+	if e = db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations WHERE name=?`, derivedStateMigration).Scan(&applied); e != nil {
+		return fmt.Errorf("read applied migrations: %w", e)
+	}
+	if applied == 0 {
+		return nil
+	}
+	return run(ctx, db, &sql.TxOptions{ReadOnly: true}, func(tx records) error { return tx.verifyDerived() })
 }
