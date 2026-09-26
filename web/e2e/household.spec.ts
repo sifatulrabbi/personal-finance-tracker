@@ -294,3 +294,47 @@ test("blank payment uses the scheduled amount and long names fit a small phone",
       .getByText("৳1,000.00", { exact: true }),
   ).toBeVisible();
 });
+
+// ADR 0011: a debit card links to a bank wallet and spends from its balance.
+test("a debit card links to its bank and spends from the bank's balance", async ({
+  page,
+}, testInfo) => {
+  const suffix = testInfo.project.name;
+  await page.goto("/");
+  await page.getByLabel("Email", { exact: true }).fill("test@example.test");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("test-household-password");
+  await submitLogin(page);
+  await navigate(page, "Wallets");
+  await page.getByRole("button", { name: "Add wallet", exact: true }).click();
+  await page.getByLabel("Wallet name").fill(`Bank ${suffix}`);
+  await page.getByLabel("Wallet type").selectOption("bank");
+  await page.getByLabel("Opening balance").fill("5000");
+  await page.getByRole("button", { name: "Create wallet", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Add wallet", exact: true }).click();
+  await page.getByLabel("Wallet name").fill(`Debit ${suffix}`);
+  await page.getByLabel("Wallet type").selectOption("card");
+  await expect(page.getByLabel("Opening balance")).toHaveCount(0);
+  await page
+    .getByLabel("Bank account")
+    .selectOption({ label: `Bank ${suffix} · BDT` });
+  await page.getByRole("button", { name: "Create wallet", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText(`Spends from Bank ${suffix}`)).toBeVisible();
+
+  const wallets = await (await page.request.get("/api/v1/wallets")).json();
+  const card = wallets.find((w: { name: string }) => w.name === `Debit ${suffix}`);
+  const response = await page.request.post("/api/v1/transactions", {
+    headers: { "X-CSRF-Protection": "1", "Idempotency-Key": crypto.randomUUID() },
+    data: { kind: "expense", wallet_id: card.id, amount: "200", date: "2026-09-14" },
+  });
+  expect(response.ok()).toBe(true);
+  await page.reload();
+  const bank = page
+    .locator('[data-slot="card"]')
+    .filter({ has: page.getByText(`Bank ${suffix}`, { exact: true }) });
+  await expect(bank.getByTestId("wallet-balance")).toContainText("4,800.00");
+});

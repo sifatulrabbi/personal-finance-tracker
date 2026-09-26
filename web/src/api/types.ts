@@ -34,8 +34,12 @@ export type Wallet = {
   // Present only for credit cards. A negative debt means the card is overpaid.
   debt?: string;
   available_credit?: string;
+  // A linked debit card has no balance of its own; its records move this bank wallet.
+  bank_wallet_id?: string;
   archived: boolean;
+  // version guards metadata edits; balance_version guards adjustments.
   version: number;
+  balance_version: number;
 };
 
 export type WalletInput = {
@@ -46,6 +50,7 @@ export type WalletInput = {
   details: string;
   opening_balance: string;
   credit_limit: string;
+  bank_wallet_id?: string;
 };
 
 // The PUT body is decoded strictly into the Go Wallet struct, so send only input fields and
@@ -59,11 +64,12 @@ export type WalletUpdate = {
   currency: Currency;
   details: string;
   credit_limit: string;
+  bank_wallet_id?: string;
   archived: boolean;
   version: number;
 };
 
-export type WalletAdjustment = { version: number; balance: string; reason: string };
+export type WalletAdjustment = { balance_version: number; balance: string; reason: string };
 
 export type Transaction = {
   id: string;

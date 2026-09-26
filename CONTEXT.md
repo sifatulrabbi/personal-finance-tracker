@@ -8,6 +8,8 @@ A shared household record of money held, money owed, income, expenses, and unpai
 
 **Cash balance**: Money held in a non-credit wallet. A debit card accessing an existing bank account is not a second copy of that account's money.
 
+**Debit card**: A card wallet linked to the bank wallet it draws from. It has no balance of its own; records made with it name the card and move the bank wallet's balance. A legacy debit card created before linking keeps its own recorded balance until drained.
+
 **Card debt**: Money owed on a credit card. Purchases increase debt; repayments and refunds reduce it. Available credit is the credit limit minus the debt, not household cash.
 
 **Transaction**: A recorded income, expense, transfer, opening balance, or balance adjustment that affects one or more wallets.
@@ -28,6 +30,6 @@ A shared household record of money held, money owed, income, expenses, and unpai
 
 **Monthly spending**: Actual, non-voided expenses dated within an Asia/Dhaka calendar month, expressed in BDT using each expense's saved conversion. Unpaid bills and transfers are not spending.
 
-**Monthly target**: One household spending target in BDT for a calendar month, independent of other months. It is not a limit on recording expenses.
+**Monthly target**: One household spending target in BDT for a calendar month. A month without its own saved target carries over the latest earlier month's saved target. It is not a limit on recording expenses.
 
 **Category share**: A category's spending divided by the month's total actual spending, expressed as a percentage. The monthly target is not the denominator.

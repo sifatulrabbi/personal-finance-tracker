@@ -94,12 +94,21 @@ export function Wallets() {
             </CardHeader>
             <CardContent className="@container flex flex-col gap-2">
               {/* Never break inside a number: the size shrinks with the card instead. */}
-              <p
-                data-testid="wallet-balance"
-                className="text-[min(1.875rem,9cqi)] font-semibold tracking-tight whitespace-nowrap tabular-nums"
-              >
-                {moneyLabel(wallet.debt ?? wallet.balance, wallet.currency)}
-              </p>
+              {wallet.bank_wallet_id ? (
+                // A linked debit card has no balance of its own (ADR 0011).
+                <p className="text-sm text-muted-foreground">
+                  Spends from{" "}
+                  {wallets.find((bank) => bank.id === wallet.bank_wallet_id)?.name ??
+                    "its bank wallet"}
+                </p>
+              ) : (
+                <p
+                  data-testid="wallet-balance"
+                  className="text-[min(1.875rem,9cqi)] font-semibold tracking-tight whitespace-nowrap tabular-nums"
+                >
+                  {moneyLabel(wallet.debt ?? wallet.balance, wallet.currency)}
+                </p>
+              )}
               {wallet.card_type === "credit" ? (
                 <p className="text-sm text-muted-foreground">
                   Available{" "}
@@ -122,7 +131,7 @@ export function Wallets() {
                 <Pencil data-icon="inline-start" />
                 Edit wallet
               </Button>
-              {!wallet.archived ? (
+              {!wallet.archived && !wallet.bank_wallet_id ? (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -190,7 +199,7 @@ function AdjustWallet(props: { wallet: Wallet; onSaved: () => void }) {
       onSaved={onSaved}
       label="Record adjustment"
       body={(form) => ({
-        version: wallet.version,
+        balance_version: wallet.balance_version,
         balance: form.decimal("balance"),
         reason: form.text("reason"),
       })}
@@ -209,9 +218,14 @@ function AdjustWallet(props: { wallet: Wallet; onSaved: () => void }) {
 
 function CreateWallet({ onSaved }: { onSaved: () => void }) {
   const writes = useWrites();
+  const banks = (useWallets().data ?? []).filter(
+    (wallet) => wallet.type === "bank" && !wallet.archived,
+  );
   const [type, setType] = useState<WalletType>("physical");
   const [cardType, setCardType] = useState<"debit" | "credit">("debit");
   const credit = type === "card" && cardType === "credit";
+  // A debit card draws from a bank wallet and takes its currency; it has no opening balance.
+  const debit = type === "card" && cardType === "debit";
   return (
     <SaveForm
       onSaved={onSaved}
@@ -220,10 +234,14 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
         name: form.text("name"),
         type,
         card_type: (type === "card" ? cardType : "") as CardType,
-        currency: form.text("currency") as Currency,
-        opening_balance: form.decimal("opening_balance"),
+        currency: debit
+          ? (banks.find((bank) => bank.id === form.text("bank_wallet_id"))?.currency ??
+            "BDT")
+          : (form.text("currency") as Currency),
+        opening_balance: debit ? "" : form.decimal("opening_balance"),
         credit_limit: credit ? form.decimal("credit_limit") : "",
         details: form.text("details"),
+        ...(debit ? { bank_wallet_id: form.text("bank_wallet_id") } : {}),
       })}
       send={(body, key) => writes.createWallet(body, { key })}
     >
@@ -253,28 +271,47 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
           ]}
         />
       ) : null}
-      <Choice
-        label="Currency"
-        name="currency"
-        defaultValue="BDT"
-        options={[
-          { value: "BDT", label: "BDT · Bangladeshi taka" },
-          { value: "USD", label: "USD · US dollar" },
-        ]}
-      />
-      <MoneyField
-        label={credit ? "Opening debt" : "Opening balance"}
-        name="opening_balance"
-        allowNegative
-        defaultValue="0"
-      />
+      {debit ? (
+        banks.length ? (
+          <Choice
+            label="Bank account"
+            name="bank_wallet_id"
+            options={banks.map((bank) => ({
+              value: bank.id,
+              label: `${bank.name} · ${bank.currency}`,
+            }))}
+          />
+        ) : (
+          <p className="text-sm text-destructive">
+            Add the bank account this card spends from first.
+          </p>
+        )
+      ) : (
+        <>
+          <Choice
+            label="Currency"
+            name="currency"
+            defaultValue="BDT"
+            options={[
+              { value: "BDT", label: "BDT · Bangladeshi taka" },
+              { value: "USD", label: "USD · US dollar" },
+            ]}
+          />
+          <MoneyField
+            label={credit ? "Opening debt" : "Opening balance"}
+            name="opening_balance"
+            allowNegative
+            defaultValue="0"
+          />
+        </>
+      )}
       {credit ? (
         <MoneyField label="Credit limit" name="credit_limit" defaultValue="0" />
       ) : null}
-      {type === "card" && cardType === "debit" ? (
+      {debit ? (
         <p className="text-sm text-muted-foreground">
-          If this card uses a bank account already listed here, use that bank
-          wallet instead. Do not count the same money twice.
+          The card has no balance of its own. Spending with it comes out of the
+          bank account.
         </p>
       ) : null}
       <Notes name="details" label="Account details (optional)" />
@@ -302,6 +339,7 @@ function EditWallet(props: { wallet: Wallet; onSaved: () => void }) {
         details: form.text("details"),
         credit_limit:
           wallet.card_type === "credit" ? form.decimal("credit_limit") : "0.00",
+        ...(wallet.bank_wallet_id ? { bank_wallet_id: wallet.bank_wallet_id } : {}),
         archived: form.text("status") === "archived",
         version: wallet.version,
       })}

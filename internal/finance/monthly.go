@@ -4,14 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
-	"time"
 )
 
+// MonthlyTarget is a month's own saved target or, when it has none, the latest earlier saved one.
+// InheritedFrom names the month the amount came from when it is not the month's own. A month
+// without its own target reports version 1; its first explicit target is saved as version 2.
 type MonthlyTarget struct {
-	Amount  string `json:"amount"`
-	Version int    `json:"version"`
+	Amount        string `json:"amount"`
+	Version       int    `json:"version"`
+	InheritedFrom string `json:"inherited_from,omitempty"`
 }
 type CategorySpending struct {
 	CategoryID string `json:"category_id"`
@@ -30,19 +34,28 @@ func validMonth(month string) bool { return len(month) == 7 && validDate(month+"
 
 var errMonth = invalid("month", "Enter a month as YYYY-MM.")
 
-func monthlyTarget(tx *sql.Tx, month string) (MonthlyTarget, error) {
-	var out MonthlyTarget
-	date, _ := time.Parse("2006-01", month)
-	previous := date.AddDate(0, -1, 0).Format("2006-01")
-	if _, e := tx.Exec(`INSERT INTO monthly_targets(month,amount) VALUES(?,(SELECT amount FROM monthly_targets WHERE month=?)) ON CONFLICT(month) DO NOTHING`, month, previous); e != nil {
+// monthlyTarget reads without writing: the month's own row, else the latest earlier saved row.
+func monthlyTarget(q querier, month string) (MonthlyTarget, error) {
+	out := MonthlyTarget{Version: 1}
+	var saved string
+	var n sql.NullInt64
+	var version int
+	e := q.QueryRow(`SELECT month,amount,version FROM monthly_targets WHERE month<=? ORDER BY month DESC LIMIT 1`, month).Scan(&saved, &n, &version)
+	if errors.Is(e, sql.ErrNoRows) {
+		return out, nil
+	}
+	if e != nil {
 		return out, e
 	}
-	var n sql.NullInt64
-	e := tx.QueryRow(`SELECT amount,version FROM monthly_targets WHERE month=?`, month).Scan(&n, &out.Version)
 	if n.Valid {
 		out.Amount = FormatMoney(n.Int64)
 	}
-	return out, e
+	if saved == month {
+		out.Version = version
+	} else {
+		out.InheritedFrom = saved
+	}
+	return out, nil
 }
 func (s *Store) SetMonthlyTarget(ctx context.Context, actor, key, month, amount string, version int) (MonthlyTarget, error) {
 	return write(ctx, s, actor, key, "monthly.target", struct {
@@ -63,7 +76,7 @@ func (s *Store) SetMonthlyTarget(ctx context.Context, actor, key, month, amount 
 		if old.Version != version {
 			return old, ErrStaleVersion
 		}
-		if _, e = tx.Exec(`UPDATE monthly_targets SET amount=?,version=version+1 WHERE month=?`, n, month); e != nil {
+		if _, e = tx.Exec(`INSERT INTO monthly_targets(month,amount,version) VALUES(?,?,?) ON CONFLICT(month) DO UPDATE SET amount=excluded.amount,version=excluded.version`, month, n, old.Version+1); e != nil {
 			return old, e
 		}
 		out := MonthlyTarget{Amount: FormatMoney(n), Version: old.Version + 1}
@@ -159,5 +172,5 @@ func (s *Store) Monthly(ctx context.Context, month string) (MonthlySpending, err
 		}
 		c.Percentage = decimalHundredths(percent)
 	}
-	return out, tx.Commit()
+	return out, nil
 }

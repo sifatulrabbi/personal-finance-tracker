@@ -1,0 +1,9 @@
+# Throttle failed logins per client address and per account
+
+Login throttling used to count every attempt per connecting address in a table of 1,024 entries. Behind the recommended HTTPS reverse proxy every client shares the proxy's address, so ten wrong attempts from anyone locked the whole household out, and a full table refused every new address.
+
+Failed attempts are now counted separately for the client address and for the submitted account email. The client address is the connecting address, unless that address is in `TRUSTED_PROXY_CIDRS`; then it is the right-most `X-Forwarded-For` entry that is not itself a trusted proxy, because each trusted proxy appends the peer it saw and anything further left can be forged by the client. IPv6 clients are grouped by /64. A forwarded header from an untrusted peer is ignored.
+
+An address gets 20 free failures and an account 5. After that, each attempt waits 30 seconds after the latest failure, doubling with every further failure up to 15 minutes, and the response is 429 `rate_limited` with `Retry-After`. Failures are forgotten after an hour without one. A failure is recorded before the password check so parallel guesses cannot all pass it; a successful login removes that pending failure and clears the account's count, so successes never lock anyone out. Configured accounts are tracked outside the bounded tables; unknown emails (1,024) and addresses (4,096) are tracked in tables that forget their oldest entry when full, so a spray of addresses or emails can never refuse everyone. Unknown emails are throttled like real ones so a lock does not reveal which emails are configured. The clock is injected.
+
+The accepted cost: someone who knows a household email can keep that account waiting by failing on purpose every few minutes. The wait is bounded at 15 minutes per attempt and never permanent, and the other members are unaffected. The limiter state is in memory and resets on restart.

@@ -9,14 +9,14 @@ import (
 	"errors"
 	"golang.org/x/crypto/bcrypt"
 	"io"
+	"log/slog"
 	"mime"
-	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"simply-finance/internal/finance"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -30,19 +30,20 @@ type Config struct {
 	Origin          string
 	InsecureCookies bool
 	Now             func() time.Time
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For header names the client for
+	// login throttling. Empty means the connecting address is the client.
+	TrustedProxies []netip.Prefix
+	// Logger receives the access log; nil uses slog.Default().
+	Logger *slog.Logger
 }
 type Server struct {
-	store    *finance.Store
-	config   Config
-	users    map[string]Credential
-	dummy    []byte
-	compare  func(hash, password []byte) error
-	mu       sync.Mutex
-	attempts map[string]attempt
-}
-type attempt struct {
-	count int
-	until time.Time
+	store   *finance.Store
+	config  Config
+	users   map[string]Credential
+	dummy   []byte
+	compare func(hash, password []byte) error
+	limiter *loginLimiter
+	logger  *slog.Logger
 }
 type actorKey struct{}
 
@@ -57,6 +58,9 @@ func newServer(store *finance.Store, config Config) (*Server, error) {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
+	if config.Logger == nil {
+		config.Logger = slog.Default()
+	}
 	origin, e := url.Parse(config.Origin)
 	if e != nil || origin.Host == "" || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || origin.User != nil {
 		return nil, finance.ErrInvalid
@@ -64,7 +68,7 @@ func newServer(store *finance.Store, config Config) (*Server, error) {
 	if config.InsecureCookies != (origin.Scheme == "http") {
 		return nil, finance.ErrInvalid
 	}
-	s := &Server{store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword, attempts: map[string]attempt{}}
+	s := &Server{store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword, logger: config.Logger}
 	if len(config.Users) == 0 || len(config.Users) > 100 {
 		return nil, finance.ErrInvalid
 	}
@@ -86,9 +90,12 @@ func newServer(store *finance.Store, config Config) (*Server, error) {
 		s.users[email] = u
 	}
 	allowed := map[string]string{}
+	emails := []string{}
 	for email, u := range s.users {
 		allowed[email] = digest(u.PasswordHash)
+		emails = append(emails, email)
 	}
+	s.limiter = newLoginLimiter(config.Now, config.TrustedProxies, emails)
 	if e = store.ReconcileSessions(context.Background(), allowed); e != nil {
 		return nil, e
 	}
@@ -117,6 +124,10 @@ func (s *Server) handler() http.Handler {
 	private := http.NewServeMux()
 	private.HandleFunc("GET /api/v1/me", func(w http.ResponseWriter, r *http.Request) { respond(w, actor(r), nil) })
 	private.HandleFunc("POST /api/v1/logout", s.logout)
+	private.HandleFunc("GET /api/v1/summary", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.store.Summary(r.Context())
+		respond(w, v, e)
+	})
 	private.HandleFunc("GET /api/v1/categories", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.store.Categories(r.Context())
 		respond(w, v, e)
@@ -135,6 +146,10 @@ func (s *Server) handler() http.Handler {
 		return s.store.SetMonthlyTarget(r.Context(), actor(r).ID, key(r), r.PathValue("month"), in.Amount, in.Version)
 	}))
 	private.HandleFunc("GET /api/v1/wallets", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Wallets(r.Context()); respond(w, v, e) })
+	private.HandleFunc("GET /api/v1/wallets/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.store.Wallet(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
+	})
 	private.HandleFunc("POST /api/v1/wallets", input(func(r *http.Request, in finance.WalletInput) (any, error) {
 		return s.store.CreateWallet(r.Context(), actor(r).ID, key(r), in)
 	}))
@@ -145,11 +160,11 @@ func (s *Server) handler() http.Handler {
 		return s.store.UpdateWallet(r.Context(), actor(r).ID, key(r), in)
 	}))
 	private.HandleFunc("POST /api/v1/wallets/{id}/adjust", input(func(r *http.Request, in struct {
-		Version int    `json:"version"`
-		Balance string `json:"balance"`
-		Reason  string `json:"reason"`
+		BalanceVersion int    `json:"balance_version"`
+		Balance        string `json:"balance"`
+		Reason         string `json:"reason"`
 	}) (any, error) {
-		return s.store.AdjustWallet(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Version, in.Balance, in.Reason)
+		return s.store.AdjustWallet(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.BalanceVersion, in.Balance, in.Reason)
 	}))
 	private.HandleFunc("GET /api/v1/transactions", func(w http.ResponseWriter, r *http.Request) {
 		l, o, e := page(r)
@@ -175,6 +190,10 @@ func (s *Server) handler() http.Handler {
 	}) (any, error) {
 		return s.store.ReviseTransaction(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Version, finance.TransactionInput{Reason: in.Reason}, true)
 	}))
+	private.HandleFunc("GET /api/v1/transactions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.store.Transaction(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
+	})
 	private.HandleFunc("GET /api/v1/transactions/{id}/history", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.store.History(r.Context(), r.PathValue("id"))
 		respond(w, v, e)
@@ -187,6 +206,10 @@ func (s *Server) handler() http.Handler {
 		return s.store.SetRate(r.Context(), actor(r).ID, key(r), in.Rate, in.Version)
 	}))
 	private.HandleFunc("GET /api/v1/schedules", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Schedules(r.Context()); respond(w, v, e) })
+	private.HandleFunc("GET /api/v1/schedules/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, e := s.store.Schedule(r.Context(), r.PathValue("id"))
+		respond(w, v, e)
+	})
 	private.HandleFunc("POST /api/v1/schedules", input(func(r *http.Request, in finance.ScheduleInput) (any, error) {
 		return s.store.CreateSchedule(r.Context(), actor(r).ID, key(r), in)
 	}))
@@ -196,6 +219,28 @@ func (s *Server) handler() http.Handler {
 		}
 		return s.store.UpdateSchedule(r.Context(), actor(r).ID, key(r), in)
 	}))
+	private.HandleFunc("GET /api/v1/bills", func(w http.ResponseWriter, r *http.Request) {
+		l, o, e := page(r)
+		if e != nil {
+			respond(w, nil, e)
+			return
+		}
+		v, e := s.store.Bills(r.Context(), r.URL.Query().Get("status"), l, o)
+		respond(w, v, e)
+	})
+	private.HandleFunc("GET /api/v1/bills/upcoming", func(w http.ResponseWriter, r *http.Request) {
+		days := 30
+		if raw := r.URL.Query().Get("days"); raw != "" {
+			n, e := strconv.Atoi(raw)
+			if e != nil {
+				respond(w, nil, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use a whole number of days.", Field: "days"})
+				return
+			}
+			days = n
+		}
+		v, e := s.store.Upcoming(r.Context(), days)
+		respond(w, v, e)
+	})
 	private.HandleFunc("GET /api/v1/bills/due", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Due(r.Context()); respond(w, v, e) })
 	private.HandleFunc("POST /api/v1/bills/{id}/confirm", input(func(r *http.Request, in finance.PaymentInput) (any, error) {
 		return s.store.ConfirmBill(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in)
@@ -215,7 +260,7 @@ func (s *Server) handler() http.Handler {
 		respond(w, v, e)
 	})
 	mux.Handle("/api/", s.authenticate(jsonErrors(private)))
-	return s.security(jsonErrors(mux))
+	return s.accessLog(s.security(jsonErrors(mux)))
 }
 func actor(r *http.Request) finance.User { return r.Context().Value(actorKey{}).(finance.User) }
 func key(r *http.Request) string         { return r.Header.Get("Idempotency-Key") }
@@ -292,24 +337,25 @@ func (s *Server) cookie(w http.ResponseWriter, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{Name: "sf_session", Value: value, Path: "/", HttpOnly: true, Secure: !s.config.InsecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: maxAge})
 }
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	host, _, e := net.SplitHostPort(r.RemoteAddr)
-	if e != nil {
-		host = r.RemoteAddr
-	}
-	if !s.allowLogin(host) {
-		w.Header().Set("Retry-After", "60")
-		writeError(w, errRateLimited)
-		return
-	}
 	var in struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	if e = decode(w, r, &in); e != nil {
+	if e := decode(w, r, &in); e != nil {
 		respond(w, nil, e)
 		return
 	}
-	email, _ := finance.NormalizeEmail(in.Email)
+	email, e := finance.NormalizeEmail(in.Email)
+	account := email
+	if e != nil {
+		account = "invalid email"
+	}
+	address := s.limiter.clientKey(r)
+	if wait := s.limiter.begin(address, account); wait > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
+		writeError(w, errRateLimited)
+		return
+	}
 	credential, exists := s.users[email]
 	hash := s.dummy
 	if exists {
@@ -327,10 +373,14 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, errLoginFailed)
 		return
 	}
+	s.limiter.succeeded(address, account)
 	user, e := s.store.EnsureUser(r.Context(), email, credential.Name)
 	if e != nil {
 		respond(w, nil, e)
 		return
+	}
+	if a := entry(r); a != nil {
+		a.actorID = user.ID
 	}
 	var raw [32]byte
 	if _, e = rand.Read(raw[:]); e != nil {
@@ -350,26 +400,6 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cookie(w, token, 7*24*3600)
 	respond(w, user, nil)
-}
-func (s *Server) allowLogin(host string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := s.config.Now()
-	for k, v := range s.attempts {
-		if !v.until.After(now) {
-			delete(s.attempts, k)
-		}
-	}
-	a, ok := s.attempts[host]
-	if !ok {
-		if len(s.attempts) >= 1024 {
-			return false
-		}
-		a.until = now.Add(time.Minute)
-	}
-	a.count++
-	s.attempts[host] = a
-	return a.count <= 10
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	c, e := r.Cookie("sf_session")
@@ -395,6 +425,9 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		if !ok || digest(credential.PasswordHash) != hash {
 			respond(w, nil, finance.ErrUnauthorized)
 			return
+		}
+		if a := entry(r); a != nil {
+			a.actorID = u.ID
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey{}, u)))
 	})

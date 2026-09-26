@@ -6,6 +6,10 @@ services:
     env_file:
       - path: .env.runtime
         format: raw
+    environment:
+      # Comma-separated proxy addresses or CIDR ranges whose X-Forwarded-For is trusted for login
+      # throttling. Empty trusts none. Set it in .env when a reverse proxy fronts the service.
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
     volumes:
       - finance-data:/data
     restart: unless-stopped
