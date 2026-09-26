@@ -8,10 +8,11 @@
     "dev": "bun --bun vite --host 127.0.0.1 --port 47832 --strictPort",
     "build": "bun run typecheck && bun --bun vite build",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/lib src/routes.test.ts",
+    "test": "bun test ./src",
     "test:e2e": "bun --bun playwright test"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.104.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.3.0",
