@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"simply-finance/internal/ledger"
 	"strings"
 )
 
@@ -46,7 +47,7 @@ type transactionCursor struct {
 	Seq       int64  `json:"s"`
 }
 
-var errCursor = invalid("cursor", "This cursor is not valid. Start again from the first page.")
+var errCursor = ledger.Invalid("cursor", "This cursor is not valid. Start again from the first page.")
 
 // encodeCursor makes an opaque, URL-safe cursor from a sort key.
 func encodeCursor(key any) *string {
@@ -69,7 +70,7 @@ func decodeCursor(cursor string, key any) error {
 
 func validLimit(limit int) error {
 	if limit < 1 || limit > 200 {
-		return invalid("limit", "Use a limit from 1 to 200.")
+		return ledger.Invalid("limit", "Use a limit from 1 to 200.")
 	}
 	return nil
 }
@@ -88,7 +89,7 @@ func (s *Store) TransactionsPage(ctx context.Context, f TransactionFilter, curso
 	where, args := []string{}, []any{}
 	if f.Kind != "" {
 		if !transactionKinds[f.Kind] {
-			return out, invalid("kind", "Choose income, expense, transfer, opening, or adjustment.")
+			return out, ledger.Invalid("kind", "Choose income, expense, transfer, opening, or adjustment.")
 		}
 		where, args = append(where, `t.kind=?`), append(args, f.Kind)
 	}
@@ -96,14 +97,14 @@ func (s *Store) TransactionsPage(ctx context.Context, f TransactionFilter, curso
 		where, args = append(where, `t.category_id=?`), append(args, f.CategoryID)
 	}
 	if f.From != "" {
-		if !validDate(f.From) {
-			return out, invalid("from", "Enter a date as YYYY-MM-DD.")
+		if !ledger.ValidDate(f.From) {
+			return out, ledger.Invalid("from", "Enter a date as YYYY-MM-DD.")
 		}
 		where, args = append(where, `t.date>=?`), append(args, f.From)
 	}
 	if f.To != "" {
-		if !validDate(f.To) || (f.From != "" && f.To < f.From) {
-			return out, invalid("to", "Enter a date as YYYY-MM-DD, on or after from.")
+		if !ledger.ValidDate(f.To) || (f.From != "" && f.To < f.From) {
+			return out, ledger.Invalid("to", "Enter a date as YYYY-MM-DD, on or after from.")
 		}
 		where, args = append(where, `t.date<=?`), append(args, f.To)
 	}
@@ -112,7 +113,7 @@ func (s *Store) TransactionsPage(ctx context.Context, f TransactionFilter, curso
 	}
 	if cursor != "" {
 		var key transactionCursor
-		if decodeCursor(cursor, &key) != nil || !validDate(key.Date) || key.CreatedAt == "" || key.Seq <= 0 {
+		if decodeCursor(cursor, &key) != nil || !ledger.ValidDate(key.Date) || key.CreatedAt == "" || key.Seq <= 0 {
 			return out, errCursor
 		}
 		where, args = append(where, `(t.date,t.created_at,t.seq)<(?,?,?)`), append(args, key.Date, key.CreatedAt, key.Seq)
@@ -197,7 +198,7 @@ func listTransactions(tx dbtx, query string, args ...any) ([]Transaction, []tran
 		if e = json.Unmarshal([]byte(body), &r); e != nil {
 			return nil, nil, e
 		}
-		defaultCategory(&r)
+		ledger.DefaultCategory(&r)
 		// The row, not the payload, is authoritative: opening payloads were stored without these.
 		r.ID, r.Version, r.Voided, r.ActorEmail, r.CreatedAt = id, version, voided, email, created
 		out, keys = append(out, r), append(keys, key)

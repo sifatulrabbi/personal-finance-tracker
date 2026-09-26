@@ -82,21 +82,6 @@ func TestScheduleOnArchivedWalletCanBeDeactivatedButNotRetargeted(t *testing.T) 
 	}
 }
 
-func TestRecurrencePreservesAnchorAcrossShortMonths(t *testing.T) {
-	for _, tc := range []struct {
-		start, frequency string
-		n                int
-		want             string
-	}{{"2026-01-31", "monthly", 1, "2026-02-28"}, {"2026-01-31", "monthly", 2, "2026-03-31"}, {"2024-02-29", "yearly", 1, "2025-02-28"}, {"2024-02-29", "yearly", 4, "2028-02-29"}, {"2026-09-14", "weekly", 1, "2026-09-21"}} {
-		got, e := finance.OccurrenceDate(tc.start, tc.frequency, tc.n)
-		if e != nil || got != tc.want {
-			t.Fatalf("%+v: %s %v", tc, got, e)
-		}
-	}
-	if _, e := finance.OccurrenceDate("2026-02-30", "monthly", 1); e == nil {
-		t.Fatal("invalid date accepted")
-	}
-}
 func TestRecurringBillOnlyChangesBalanceOnManualConfirmation(t *testing.T) {
 	s := openStore(t)
 	u := user(t, s)

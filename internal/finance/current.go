@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"simply-finance/internal/ledger"
 	"simply-finance/internal/money"
 )
 
@@ -27,7 +28,7 @@ func columnsOf(payload string) (currentColumns, error) {
 	if e := json.Unmarshal([]byte(payload), &r); e != nil {
 		return currentColumns{}, e
 	}
-	defaultCategory(&r)
+	ledger.DefaultCategory(&r)
 	c := currentColumns{Kind: r.Kind, Date: r.Date, WalletID: r.WalletID}
 	c.ToWalletID = sql.NullString{String: r.ToWalletID, Valid: r.ToWalletID != ""}
 	c.CategoryID = sql.NullString{String: r.CategoryID, Valid: r.CategoryID != ""}
@@ -75,16 +76,13 @@ func post(tx dbtx, tid string, version int, walletID string, delta, reversalOf i
 	return e
 }
 
-// balanceWithinLimit reads a wallet's cached balance after its entries were posted.
+// balanceWithinLimit checks a wallet's cached balance after its entries were posted.
 func balanceWithinLimit(tx dbtx, walletID string) error {
 	var balance int64
 	if e := tx.QueryRow(`SELECT balance_minor FROM wallets WHERE id=?`, walletID).Scan(&balance); e != nil {
 		return e
 	}
-	if balance > money.MaxMoney || balance < -money.MaxMoney {
-		return errBalanceLimit
-	}
-	return nil
+	return ledger.CheckBalance(balance)
 }
 
 // verifyDerived checks every derived value against its source: each transaction's typed columns

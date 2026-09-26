@@ -5,67 +5,32 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"simply-finance/internal/money"
-	"sort"
-	"strings"
-	"time"
+
+	"simply-finance/internal/ledger"
 )
-
-type TransactionInput struct {
-	CategoryID     string `json:"category_id,omitempty"`
-	Kind           string `json:"kind"`
-	WalletID       string `json:"wallet_id"`
-	ToWalletID     string `json:"to_wallet_id,omitempty"`
-	Amount         string `json:"amount"`
-	ReceivedAmount string `json:"received_amount,omitempty"`
-	Rate           string `json:"rate,omitempty"`
-	Date           string `json:"date"`
-	Note           string `json:"note"`
-	Reason         string `json:"reason"`
-}
-type Transaction struct {
-	TransactionInput
-	ID         string `json:"id"`
-	Version    int    `json:"version"`
-	Voided     bool   `json:"voided"`
-	BDTAmount  string `json:"bdt_amount"`
-	ActorEmail string `json:"actor_email"`
-	CreatedAt  string `json:"created_at"`
-}
-
-// effect is one balance change. walletID is the ledger wallet (a linked debit card's bank);
-// field names the input that selected it, for error reporting.
-type effect struct {
-	walletID string
-	delta    int64
-	field    string
-}
 
 func validPage(limit, offset int) error {
 	if limit < 1 || limit > 200 {
-		return invalid("limit", "Use a limit from 1 to 200.")
+		return ledger.Invalid("limit", "Use a limit from 1 to 200.")
 	}
 	if offset < 0 {
-		return invalid("offset", "Use an offset of zero or more.")
+		return ledger.Invalid("offset", "Use an offset of zero or more.")
 	}
 	return nil
 }
-func validDate(date string) bool {
-	d, e := time.Parse("2006-01-02", date)
-	return e == nil && d.Year() >= 1900 && d.Year() <= 9999
-}
+
 func (s *Store) CreateTransaction(ctx context.Context, actor, key string, in TransactionInput) (Transaction, error) {
 	return write(ctx, s, actor, key, "transaction.create", in, func(tx dbtx) (Transaction, error) { return s.createTransaction(tx, actor, in) })
 }
 func (s *Store) createTransaction(tx dbtx, actor string, in TransactionInput) (Transaction, error) {
-	r, effects, e := s.prepare(tx, in)
+	r, effects, facts, e := prepare(tx, in)
 	if e != nil {
 		return Transaction{}, e
 	}
-	if e = checkNamedWallets(tx, in, nil); e != nil {
+	if e = ledger.CheckNamedWallets(in, nil, facts.From, facts.To); e != nil {
 		return Transaction{}, e
 	}
-	if e = keepArchivedBalances(tx, in, nil, effects, "This wallet is archived. Choose an active wallet."); e != nil {
+	if e = keepArchivedBalances(tx, nil, effects, ledger.ArchivedNewRecord); e != nil {
 		return Transaction{}, e
 	}
 	r.ID = id()
@@ -73,190 +38,57 @@ func (s *Store) createTransaction(tx dbtx, actor string, in TransactionInput) (T
 	if _, e = tx.Exec(`INSERT INTO transactions(id,version) VALUES(?,1)`, r.ID); e != nil {
 		return Transaction{}, e
 	}
-	return s.saveRevision(tx, actor, r, effects)
-}
-func (s *Store) prepare(tx dbtx, in TransactionInput) (Transaction, []effect, error) {
-	r := Transaction{TransactionInput: in}
-	if in.Kind != "income" && in.Kind != "expense" && in.Kind != "transfer" {
-		return r, nil, invalid("kind", "Choose income, expense, or transfer.")
-	}
-	cid, err := categoryID(tx, in.Kind, in.CategoryID)
-	if err != nil {
-		return r, nil, err
-	}
-	r.CategoryID = cid
-	if !validDate(in.Date) {
-		return r, nil, invalid("date", "Enter a date as YYYY-MM-DD.")
-	}
-	if len(in.Note) > 2000 {
-		return r, nil, invalid("note", "Keep the note to at most 2,000 bytes.")
-	}
-	if len(in.Reason) > 500 {
-		return r, nil, invalid("reason", "Keep the reason to at most 500 bytes.")
-	}
-	w, e := wallet(tx, in.WalletID)
-	if e != nil {
-		return r, nil, walletNotFound("wallet_id", e)
-	}
-	amount, e := money.ParseMoney(in.Amount)
-	if e != nil || amount <= 0 {
-		return r, nil, invalid("amount", "Enter a positive amount with at most two decimal places.")
-	}
-	r.Amount = money.FormatMoney(amount)
-	var to Wallet
-	if in.Kind == "transfer" {
-		if in.ToWalletID == w.ID {
-			return r, nil, invalid("to_wallet_id", "Choose a different wallet to transfer to.")
-		}
-		if to, e = wallet(tx, in.ToWalletID); e != nil {
-			return r, nil, walletNotFound("to_wallet_id", e)
-		}
-		if to.ledgerID() == w.ledgerID() {
-			return r, nil, invalid("to_wallet_id", "A debit card and its bank wallet hold the same money. Choose a different wallet to transfer to.")
-		}
-	} else if in.ToWalletID != "" {
-		return r, nil, invalid("to_wallet_id", "Only transfers have a destination wallet.")
-	} else if in.ReceivedAmount != "" {
-		return r, nil, invalid("received_amount", "Only transfers have a received amount.")
-	}
-	// A rate is required only when a value must be converted: a USD income or expense needs its BDT
-	// value, and a cross-currency transfer without a received amount derives it from the rate. Any
-	// other USD record snapshots the default rate when one is set, as a reference.
-	rate := int64(0)
-	usesUSD := w.Currency == "USD" || to.Currency == "USD"
-	needsRate := (in.Kind != "transfer" && w.Currency == "USD") || (in.Kind == "transfer" && to.Currency != w.Currency && in.ReceivedAmount == "")
-	if in.Rate != "" {
-		rate, e = money.ParseRate(in.Rate)
-		if e != nil {
-			return r, nil, invalid("rate", "Enter a positive rate with at most six decimal places.")
-		}
-	} else if usesUSD {
-		set, e := settings(tx)
-		if e != nil {
-			return r, nil, e
-		}
-		if set.Rate != "" {
-			if rate, e = money.ParseRate(set.Rate); e != nil {
-				return r, nil, e
-			}
-		} else if needsRate {
-			return r, nil, ErrRateRequired
-		}
-	}
-	if rate > 0 {
-		r.Rate = money.FormatRate(rate)
-	}
-	bdt := amount
-	if w.Currency == "USD" && rate > 0 {
-		bdt, e = money.Convert(amount, rate, "USD")
-		if e != nil {
-			return r, nil, invalid("amount", "This amount is larger than the supported limit at this rate.")
-		}
-	}
-	r.BDTAmount = money.FormatMoney(bdt)
-	if in.Kind == "transfer" {
-		received := amount
-		if in.ReceivedAmount != "" {
-			received, e = money.ParseMoney(in.ReceivedAmount)
-			if e != nil || received <= 0 {
-				return r, nil, invalid("received_amount", "Enter a positive received amount with at most two decimal places.")
-			}
-		} else if to.Currency != w.Currency {
-			received, e = money.Convert(amount, rate, w.Currency)
-			if e != nil || received <= 0 {
-				return r, nil, invalid("received_amount", "Enter the received amount; it cannot be derived from this amount and rate.")
-			}
-		}
-		if to.Currency == w.Currency && received != amount {
-			return r, nil, invalid("received_amount", "A transfer between wallets of the same currency must receive the amount sent.")
-		}
-		r.ReceivedAmount = money.FormatMoney(received)
-		// Without a rate, a USD transfer's BDT value is known only when BDT is received.
-		if w.Currency == "USD" && rate == 0 {
-			r.BDTAmount = ""
-			if to.Currency == "BDT" {
-				r.BDTAmount = r.ReceivedAmount
-			}
-		}
-		return r, []effect{{w.ledgerID(), -amount, "wallet_id"}, {to.ledgerID(), received, "to_wallet_id"}}, nil
-	}
-	delta := amount
-	if in.Kind == "expense" {
-		delta = -amount
-	}
-	return r, []effect{{w.ledgerID(), delta, "wallet_id"}}, nil
+	return s.saveRevision(tx, actor, r, nil, effects)
 }
 
-// checkNamedWallets applies the rules about which wallets a record may newly name, for a new
-// record (old nil) or a correction. A wallet already named in the same slot stays allowed, so
-// repairs of existing records keep working. An archived wallet cannot be newly named. A legacy
-// unlinked debit card cannot newly take income, expenses, or incoming transfers; transfers out of
-// it stay allowed so its balance can be drained.
-func checkNamedWallets(tx dbtx, in TransactionInput, old *Transaction) error {
-	slots := []struct{ field, id, before string }{{"wallet_id", in.WalletID, ""}, {"to_wallet_id", in.ToWalletID, ""}}
-	if old != nil {
-		slots[0].before, slots[1].before = old.WalletID, old.ToWalletID
-	}
-	for _, slot := range slots {
-		if slot.id == "" || (old != nil && slot.id == slot.before) {
-			continue
-		}
-		w, e := wallet(tx, slot.id)
-		if e != nil {
-			return walletNotFound(slot.field, e)
-		}
-		if w.Archived {
-			return archived(slot.field, "This wallet is archived. Choose an active wallet.")
-		}
-		if w.legacyDebit() && (slot.field == "to_wallet_id" || in.Kind != "transfer") {
-			return invalid(slot.field, errLegacyDebit)
+// prepare loads the records an income, expense, or transfer names and applies the ledger rules.
+func prepare(tx dbtx, in TransactionInput) (Transaction, []ledger.Effect, ledger.RecordFacts, error) {
+	var f ledger.RecordFacts
+	var e error
+	if cid, err := ledger.ResolveCategory(in.Kind, in.CategoryID); err == nil && cid != "" {
+		if f.CategoryFound, e = categoryExists(tx, cid, in.Kind); e != nil {
+			return Transaction{}, nil, f, e
 		}
 	}
-	return nil
+	if f.From, e = findWallet(tx, in.WalletID); e != nil {
+		return Transaction{}, nil, f, e
+	}
+	if in.Kind == "transfer" {
+		if f.To, e = findWallet(tx, in.ToWalletID); e != nil {
+			return Transaction{}, nil, f, e
+		}
+	}
+	set, e := settings(tx)
+	if e != nil {
+		return Transaction{}, nil, f, e
+	}
+	f.DefaultRate = set.Rate
+	r, effects, e := ledger.PrepareRecord(in, f)
+	return r, effects, f, e
 }
 
 // keepArchivedBalances rejects a change that would move the balance of an archived wallet the
-// record names. A new record may not use an archived wallet at all; a correction may keep one when
-// its balance stays the same (note, date, category, or a USD rate that only changes the BDT value).
-// Moving a record off an archived wallet is allowed: like void, it is an explicit repair that takes
-// the record away from the closed account, and the corrected record no longer names that wallet.
-func keepArchivedBalances(tx dbtx, in TransactionInput, before, after []effect, message string) error {
-	net := map[string]int64{}
-	fields := map[string]string{}
-	for _, ef := range after {
-		net[ef.walletID] += ef.delta
-		if fields[ef.walletID] == "" {
-			fields[ef.walletID] = ef.field
-		}
-	}
-	for _, ef := range before {
-		if _, named := net[ef.walletID]; named {
-			net[ef.walletID] -= ef.delta
-		}
-	}
-	changed := []string{}
-	for wid, delta := range net {
-		if delta != 0 {
-			changed = append(changed, wid)
-		}
-	}
-	sort.Strings(changed)
-	for _, wid := range changed {
-		w, e := wallet(tx, wid)
+// record names (see ledger.BalanceChanges). A new record may not use an archived wallet at all; a
+// correction may keep one when its balance stays the same (note, date, category, or a USD rate
+// that only changes the BDT value).
+func keepArchivedBalances(tx dbtx, before, after []ledger.Effect, message string) error {
+	for _, c := range ledger.BalanceChanges(before, after) {
+		w, e := wallet(tx, c.WalletID)
 		if e != nil {
 			return e
 		}
 		if w.Archived {
-			field := fields[wid]
-			if field == "" {
-				field = "wallet_id"
-			}
-			return archived(field, message)
+			return ledger.Archived(c.Field, message)
 		}
 	}
 	return nil
 }
-func (s *Store) saveRevision(tx dbtx, actor string, r Transaction, effects []effect) (Transaction, error) {
+
+// saveRevision stores r as its transaction's current revision and applies its balance effects in
+// the same transaction: it reverses the entries the previous revision posted (none for a new
+// record), posts the new effects, and then checks every wallet it touched stays within the
+// balance limit.
+func (s *Store) saveRevision(tx dbtx, actor string, r Transaction, previous []entry, effects []ledger.Effect) (Transaction, error) {
 	r.CreatedAt = s.instant()
 	if e := tx.QueryRow(`SELECT email FROM users WHERE id=?`, actor).Scan(&r.ActorEmail); e != nil {
 		return r, e
@@ -268,19 +100,37 @@ func (s *Store) saveRevision(tx dbtx, actor string, r Transaction, effects []eff
 	if e = writeRevision(tx, r.ID, r.Version, r.Voided, payload, actor, r.CreatedAt); e != nil {
 		return r, e
 	}
-	for _, ef := range effects {
-		if e = post(tx, r.ID, r.Version, ef.walletID, ef.delta, 0); e != nil {
+	touched := []string{}
+	seen := map[string]bool{}
+	touch := func(wid string) {
+		if !seen[wid] {
+			seen[wid] = true
+			touched = append(touched, wid)
+		}
+	}
+	for _, en := range previous {
+		if e = post(tx, r.ID, r.Version, en.WalletID, -en.Delta, en.ID); e != nil {
 			return r, e
 		}
-		if e = balanceWithinLimit(tx, ef.walletID); e != nil {
+		touch(en.WalletID)
+	}
+	for _, ef := range effects {
+		if e = post(tx, r.ID, r.Version, ef.WalletID, ef.Delta, 0); e != nil {
+			return r, e
+		}
+		touch(ef.WalletID)
+	}
+	for _, wid := range touched {
+		if e = balanceWithinLimit(tx, wid); e != nil {
 			return r, e
 		}
 	}
 	return r, nil
 }
 
-var errBalanceLimit = invalid("amount", "This would take a wallet balance beyond the supported limit.")
-
+// ReviseTransaction corrects (void false) or voids a record at its current version. A correction
+// reverses the prior revision's entries and posts the corrected effects; a void only reverses them
+// and reopens a bill the record paid.
 func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, version int, in TransactionInput, void bool) (Transaction, error) {
 	request := struct {
 		ID      string
@@ -293,106 +143,68 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		if e != nil {
 			return old, e
 		}
-		// Reconciliation records are final at every version, so this comes before the stale check.
-		if old.Kind == "opening" || old.Kind == "adjustment" {
-			return old, ErrNotCorrectable
-		}
-		if old.Version != version {
-			return old, ErrStaleVersion
-		}
-		if old.Voided {
-			return old, errVoided
-		}
-		if void && strings.TrimSpace(in.Reason) == "" {
-			return old, invalid("reason", "Enter a reason for voiding this record.")
-		}
-		if len(in.Reason) > 500 {
-			return old, invalid("reason", "Keep the reason to at most 500 bytes.")
+		if e = ledger.CheckRevisable(old, version, void, in.Reason); e != nil {
+			return old, e
 		}
 		previous, e := currentEntries(tx, tid, version)
 		if e != nil {
 			return old, e
 		}
-		r := old
-		var effects []effect
-		if !void {
-			// Omitted correction fields keep the prior value where empty is not itself a valid choice.
-			if in.Rate == "" {
-				in.Rate = old.Rate
-			}
-			if in.CategoryID == "" {
-				in.CategoryID = old.CategoryID
-			}
-			if in.Kind != old.Kind {
-				return old, invalid("kind", "A record's kind cannot change. Void it and record a new one.")
-			}
-			r, effects, e = s.prepare(tx, in)
-			if e != nil {
-				return r, e
-			}
-			if e = checkNamedWallets(tx, in, &old); e != nil {
-				return old, e
-			}
-			before := make([]effect, len(previous))
-			for i, entry := range previous {
-				before[i] = entry.effect
-			}
-			if e = keepArchivedBalances(tx, in, before, effects, "This correction would change an archived wallet's balance. Void the record or unarchive the wallet first."); e != nil {
-				return old, e
-			}
-		} else {
-			r.Reason = in.Reason
-			r.Voided = true
-		}
-		r.ID = tid
-		r.Version = version + 1
-		r, e = s.saveRevision(tx, actor, r, nil)
-		if e != nil {
-			return r, e
-		}
-		for _, entry := range previous {
-			if e = post(tx, tid, r.Version, entry.walletID, -entry.delta, entry.id); e != nil {
-				return r, e
-			}
-		}
-		for _, ef := range effects {
-			if e = post(tx, tid, r.Version, ef.walletID, ef.delta, 0); e != nil {
-				return r, e
-			}
-		}
-		touched := map[string]bool{}
-		for _, entry := range previous {
-			touched[entry.walletID] = true
-		}
-		for _, ef := range effects {
-			touched[ef.walletID] = true
-		}
-		for wid := range touched {
-			if e = balanceWithinLimit(tx, wid); e != nil {
-				return r, e
-			}
-		}
 		if void {
-			var bid string
-			e = tx.QueryRow(`SELECT id FROM bill_occurrences WHERE transaction_id=?`, tid).Scan(&bid)
-			if e == nil {
-				if _, e = tx.Exec(`UPDATE bill_occurrences SET status='due',transaction_id=NULL WHERE id=?`, bid); e != nil {
-					return r, e
-				}
-				if e = s.audit(tx, actor, bid, "reopen", map[string]string{"transaction_id": tid}, map[string]string{"status": "due"}); e != nil {
-					return r, e
-				}
-			} else if !errors.Is(e, sql.ErrNoRows) {
-				return r, e
-			}
+			return s.voidTransaction(tx, actor, old, in.Reason, previous)
 		}
-		return r, nil
+		return s.correctTransaction(tx, actor, old, in, previous)
 	})
 }
 
+func (s *Store) correctTransaction(tx dbtx, actor string, old Transaction, in TransactionInput, previous []entry) (Transaction, error) {
+	in, e := ledger.CorrectionInput(old, in)
+	if e != nil {
+		return old, e
+	}
+	r, effects, facts, e := prepare(tx, in)
+	if e != nil {
+		return r, e
+	}
+	if e = ledger.CheckNamedWallets(in, &old, facts.From, facts.To); e != nil {
+		return old, e
+	}
+	before := make([]ledger.Effect, len(previous))
+	for i, en := range previous {
+		before[i] = en.Effect
+	}
+	if e = keepArchivedBalances(tx, before, effects, ledger.ArchivedCorrection); e != nil {
+		return old, e
+	}
+	r.ID, r.Version = old.ID, old.Version+1
+	return s.saveRevision(tx, actor, r, previous, effects)
+}
+
+func (s *Store) voidTransaction(tx dbtx, actor string, old Transaction, reason string, previous []entry) (Transaction, error) {
+	r := ledger.Void(old, reason)
+	r.Version = old.Version + 1
+	r, e := s.saveRevision(tx, actor, r, previous, nil)
+	if e != nil {
+		return r, e
+	}
+	var bid string
+	e = tx.QueryRow(`SELECT id FROM bill_occurrences WHERE transaction_id=?`, old.ID).Scan(&bid)
+	if errors.Is(e, sql.ErrNoRows) {
+		return r, nil
+	}
+	if e != nil {
+		return r, e
+	}
+	if _, e = tx.Exec(`UPDATE bill_occurrences SET status='due',transaction_id=NULL WHERE id=?`, bid); e != nil {
+		return r, e
+	}
+	return r, s.audit(tx, actor, bid, "reopen", map[string]string{"transaction_id": old.ID}, map[string]string{"status": "due"})
+}
+
+// entry is a posted wallet entry that a correction or void reverses.
 type entry struct {
-	id int64
-	effect
+	ID int64
+	ledger.Effect
 }
 
 // currentEntries returns the wallet entries a revision applied, which a correction or void reverses.
@@ -407,7 +219,7 @@ func currentEntries(tx dbtx, tid string, version int) ([]entry, error) {
 	out := []entry{}
 	for rows.Next() {
 		var en entry
-		if e = rows.Scan(&en.id, &en.walletID, &en.delta); e != nil {
+		if e = rows.Scan(&en.ID, &en.WalletID, &en.Delta); e != nil {
 			return nil, e
 		}
 		out = append(out, en)
@@ -427,7 +239,7 @@ func transaction(q querier, tid string) (Transaction, error) {
 		return r, e
 	}
 	e = json.Unmarshal([]byte(body), &r)
-	defaultCategory(&r)
+	ledger.DefaultCategory(&r)
 	// The row, not the payload, is authoritative: opening payloads were stored without a version.
 	r.ID, r.Version, r.Voided = tid, version, voided
 	return r, e
@@ -451,7 +263,7 @@ func (s *Store) History(ctx context.Context, tid string) ([]Transaction, error) 
 				return nil, e
 			}
 			r.ID = tid
-			defaultCategory(&r)
+			ledger.DefaultCategory(&r)
 			r.Version = version
 			r.ActorEmail = email
 			r.CreatedAt = created

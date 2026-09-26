@@ -1,7 +1,8 @@
-package finance
+package ledger
 
 import (
 	"errors"
+
 	"simply-finance/internal/money"
 )
 
@@ -46,7 +47,8 @@ func (e *Error) Is(target error) bool {
 }
 
 // ErrInvalid and ErrConflict are classes. Returned bare, they map to validation_failed and
-// stale_version with generic messages; prefer a specific *Error.
+// stale_version with generic messages; prefer a specific *Error. ErrInvalid is money.ErrInvalid, so
+// an amount or rate that fails to parse is an invalid input without being wrapped.
 var ErrInvalid = money.ErrInvalid
 var ErrConflict = errors.New("conflicting change")
 
@@ -60,21 +62,26 @@ var (
 	ErrAlreadySettled       = &Error{Code: CodeAlreadySettled, Message: "This bill was already paid or skipped."}
 	ErrNotCorrectable       = &Error{Code: CodeNotCorrectable, Message: "Opening balances and adjustments cannot be corrected or voided. Record a new balance adjustment instead."}
 	ErrDuplicateName        = &Error{Code: CodeDuplicateName, Message: "A category with this name and type already exists.", Field: "name"}
+	// ErrVoided refuses any change to a voided record. It shares already_settled with settled bills.
+	ErrVoided = &Error{Code: CodeAlreadySettled, Message: "This record was voided and can no longer change."}
+	// ErrBalanceLimit refuses a write that would take a wallet balance beyond MaxMoney.
+	ErrBalanceLimit = Invalid("amount", "This would take a wallet balance beyond the supported limit.")
 )
 
-var errVoided = &Error{Code: CodeAlreadySettled, Message: "This record was voided and can no longer change."}
-
-func invalid(field, message string) error {
+// Invalid is a validation_failed error naming the input field at fault ("" for none).
+func Invalid(field, message string) error {
 	return &Error{Code: CodeValidationFailed, Message: message, Field: field}
 }
-func archived(field, message string) error {
+
+// Archived is an archived_wallet error naming the input field that chose the wallet.
+func Archived(field, message string) error {
 	return &Error{Code: CodeArchivedWallet, Message: message, Field: field}
 }
 
-// walletNotFound names the input field that referenced a missing wallet; other errors pass through.
-func walletNotFound(field string, e error) error {
-	if errors.Is(e, ErrNotFound) {
+// WalletNotFound names the input field that referenced a missing wallet; other errors pass through.
+func WalletNotFound(field string, err error) error {
+	if errors.Is(err, ErrNotFound) {
 		return &Error{Code: CodeNotFound, Message: "Wallet not found.", Field: field}
 	}
-	return e
+	return err
 }

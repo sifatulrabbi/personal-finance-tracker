@@ -4,82 +4,46 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
-	"math/big"
-	"simply-finance/internal/money"
+
+	"simply-finance/internal/ledger"
 )
-
-// MonthlyTarget is a month's own saved target or, when it has none, the latest earlier saved one.
-// InheritedFrom names the month the amount came from when it is not the month's own. A month
-// without its own target reports version 1; its first explicit target is saved as version 2.
-type MonthlyTarget struct {
-	Amount        string `json:"amount"`
-	Version       int    `json:"version"`
-	InheritedFrom string `json:"inherited_from,omitempty"`
-}
-type CategorySpending struct {
-	CategoryID string `json:"category_id"`
-	Name       string `json:"name"`
-	Spent      string `json:"spent"`
-	Percentage string `json:"percentage"`
-}
-type MonthlySpending struct {
-	Month      string             `json:"month"`
-	Spent      string             `json:"spent"`
-	Target     MonthlyTarget      `json:"target"`
-	Categories []CategorySpending `json:"categories"`
-}
-
-func validMonth(month string) bool { return len(month) == 7 && validDate(month+"-01") }
-
-var errMonth = invalid("month", "Enter a month as YYYY-MM.")
 
 // monthlyTarget reads without writing: the month's own row, else the latest earlier saved row.
 func monthlyTarget(q querier, month string) (MonthlyTarget, error) {
-	out := MonthlyTarget{Version: 1}
-	var saved string
+	var saved ledger.SavedTarget
 	var n sql.NullInt64
-	var version int
-	e := q.QueryRow(`SELECT month,amount,version FROM monthly_targets WHERE month<=? ORDER BY month DESC LIMIT 1`, month).Scan(&saved, &n, &version)
+	e := q.QueryRow(`SELECT month,amount,version FROM monthly_targets WHERE month<=? ORDER BY month DESC LIMIT 1`, month).Scan(&saved.Month, &n, &saved.Version)
 	if errors.Is(e, sql.ErrNoRows) {
-		return out, nil
+		return ledger.TargetFor(month, nil), nil
 	}
 	if e != nil {
-		return out, e
+		return MonthlyTarget{Version: 1}, e
 	}
 	if n.Valid {
-		out.Amount = money.FormatMoney(n.Int64)
+		saved.Amount = &n.Int64
 	}
-	if saved == month {
-		out.Version = version
-	} else {
-		out.InheritedFrom = saved
-	}
-	return out, nil
+	return ledger.TargetFor(month, &saved), nil
 }
 func (s *Store) SetMonthlyTarget(ctx context.Context, actor, key, month, amount string, version int) (MonthlyTarget, error) {
 	return write(ctx, s, actor, key, "monthly.target", struct {
 		Month, Amount string
 		Version       int
 	}{month, amount, version}, func(tx dbtx) (MonthlyTarget, error) {
-		if !validMonth(month) {
-			return MonthlyTarget{}, errMonth
-		}
-		n, e := money.ParseMoney(amount)
-		if e != nil || n < 0 {
-			return MonthlyTarget{}, invalid("amount", "Enter a target of zero or more, with at most two decimal places.")
+		n, e := ledger.ParseTarget(month, amount)
+		if e != nil {
+			return MonthlyTarget{}, e
 		}
 		old, e := monthlyTarget(tx, month)
 		if e != nil {
 			return old, e
 		}
-		if old.Version != version {
-			return old, ErrStaleVersion
-		}
-		if _, e = tx.Exec(`INSERT INTO monthly_targets(month,amount,version) VALUES(?,?,?) ON CONFLICT(month) DO UPDATE SET amount=excluded.amount,version=excluded.version`, month, n, old.Version+1); e != nil {
+		out, e := ledger.SetTarget(old, version, n)
+		if e != nil {
 			return old, e
 		}
-		out := MonthlyTarget{Amount: money.FormatMoney(n), Version: old.Version + 1}
+		if _, e = tx.Exec(`INSERT INTO monthly_targets(month,amount,version) VALUES(?,?,?) ON CONFLICT(month) DO UPDATE SET amount=excluded.amount,version=excluded.version`, month, n, out.Version); e != nil {
+			return old, e
+		}
 		return out, s.audit(tx, actor, month, "monthly.target", old, out)
 	})
 }
@@ -88,14 +52,14 @@ func (s *Store) Monthly(ctx context.Context, month string) (MonthlySpending, err
 	if month == "" {
 		month = s.today()[:7]
 	}
-	if !validMonth(month) {
-		return MonthlySpending{Month: month, Categories: []CategorySpending{}}, errMonth
+	if !ledger.ValidMonth(month) {
+		return MonthlySpending{Month: month, Categories: []CategorySpending{}}, ledger.ErrMonth
 	}
 	return read(ctx, s, func(tx dbtx) (MonthlySpending, error) { return monthly(tx, month) })
 }
 
 // monthly sums the month's current, non-voided expenses at their saved BDT values from the typed
-// columns (ADR 0012), in arbitrary precision (ADR 0005).
+// columns (ADR 0012).
 func monthly(tx dbtx, month string) (MonthlySpending, error) {
 	out := MonthlySpending{Month: month, Categories: []CategorySpending{}}
 	var e error
@@ -103,63 +67,55 @@ func monthly(tx dbtx, month string) (MonthlySpending, error) {
 	if e != nil {
 		return out, e
 	}
-	rows, e := tx.Query(`SELECT id,name FROM categories WHERE type='expense' ORDER BY name,id`)
+	categories, e := expenseCategories(tx)
 	if e != nil {
 		return out, e
 	}
-	amounts := map[string]*big.Int{}
+	expenses, e := monthExpenses(tx, month)
+	if e != nil {
+		return out, e
+	}
+	out.Spent, out.Categories, e = ledger.SumMonth(month, categories, expenses)
+	if e != nil {
+		out.Spent, out.Categories = "", []CategorySpending{}
+	}
+	return out, e
+}
+
+// expenseCategories lists every expense category in display order, with no spending yet.
+func expenseCategories(tx dbtx) ([]CategorySpending, error) {
+	rows, e := tx.Query(`SELECT id,name FROM categories WHERE type='expense' ORDER BY name,id`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []CategorySpending{}
 	for rows.Next() {
 		var c CategorySpending
 		if e = rows.Scan(&c.CategoryID, &c.Name); e != nil {
-			rows.Close()
-			return out, e
+			return nil, e
 		}
-		out.Categories = append(out.Categories, c)
-		amounts[c.CategoryID] = new(big.Int)
+		out = append(out, c)
 	}
-	e = rows.Err()
-	rows.Close()
+	return out, rows.Err()
+}
+
+// monthExpenses reads the month's current, non-voided expenses. Dates are validated YYYY-MM-DD
+// strings, so the month is one lexical range.
+func monthExpenses(tx dbtx, month string) ([]ledger.Expense, error) {
+	rows, e := tx.Query(`SELECT category_id,bdt_minor FROM transactions WHERE kind='expense' AND voided=0 AND date>=? AND date<=?`, month+"-01", month+"-31")
 	if e != nil {
-		return out, e
-	}
-	// Dates are validated YYYY-MM-DD strings, so the month is one lexical range.
-	rows, e = tx.Query(`SELECT category_id,bdt_minor FROM transactions WHERE kind='expense' AND voided=0 AND date>=? AND date<=?`, month+"-01", month+"-31")
-	if e != nil {
-		return out, e
+		return nil, e
 	}
 	defer rows.Close()
-	total := new(big.Int)
+	out := []ledger.Expense{}
 	for rows.Next() {
 		var category sql.NullString
 		var n sql.NullInt64
 		if e = rows.Scan(&category, &n); e != nil {
-			return out, e
+			return nil, e
 		}
-		if !n.Valid {
-			return out, fmt.Errorf("monthly: an expense in %s has no BDT value", month)
-		}
-		a, ok := amounts[category.String]
-		if !ok {
-			return out, fmt.Errorf("monthly: an expense in %s has unknown category %q", month, category.String)
-		}
-		a.Add(a, big.NewInt(n.Int64))
-		total.Add(total, big.NewInt(n.Int64))
+		out = append(out, ledger.Expense{CategoryID: category.String, BDTMinor: n.Int64, HasBDT: n.Valid})
 	}
-	if e = rows.Err(); e != nil {
-		return out, e
-	}
-	out.Spent = money.FormatHundredths(total)
-	for i := range out.Categories {
-		c := &out.Categories[i]
-		n := amounts[c.CategoryID]
-		c.Spent = money.FormatHundredths(n)
-		percent := new(big.Int)
-		if total.Sign() > 0 {
-			percent.Mul(n, big.NewInt(10000))
-			percent.Add(percent, new(big.Int).Quo(total, big.NewInt(2)))
-			percent.Quo(percent, total)
-		}
-		c.Percentage = money.FormatHundredths(percent)
-	}
-	return out, nil
+	return out, rows.Err()
 }

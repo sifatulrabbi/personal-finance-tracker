@@ -5,9 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"math/big"
-	"simply-finance/internal/money"
-	"sort"
+	"simply-finance/internal/ledger"
 )
 
 // Transaction reads one record's current revision with its author and revision time.
@@ -59,7 +57,7 @@ func (s *Store) Bills(ctx context.Context, status string, limit, offset int) ([]
 		order = "due_date,id"
 	case "paid", "skipped":
 	default:
-		return nil, invalid("status", "Choose due, paid, or skipped.")
+		return nil, ledger.Invalid("status", "Choose due, paid, or skipped.")
 	}
 	if e := validPage(limit, offset); e != nil {
 		return nil, e
@@ -97,65 +95,26 @@ func bills(tx dbtx, status, order string, limit, offset int) ([]Bill, error) {
 	return out, e
 }
 
-// UpcomingBill is a future occurrence computed from an active schedule. It is not stored and has
-// no id until it comes due.
-type UpcomingBill struct {
-	ScheduleID string `json:"schedule_id"`
-	DueDate    string `json:"due_date"`
-	WalletID   string `json:"wallet_id"`
-	Amount     string `json:"amount"`
-	Name       string `json:"name"`
-	Note       string `json:"note"`
-	CategoryID string `json:"category_id"`
-}
-
 const (
 	MaxUpcomingDays  = 366
 	MaxUpcomingBills = 200
 )
 
 // pending computes the occurrences of active schedules that are not stored yet, dated on or
-// before through. Stored occurrences end at each schedule's next_index, so nothing is repeated.
+// before through.
 func pending(tx dbtx, through string) ([]UpcomingBill, error) {
-	all, e := schedules(tx)
+	all, e := scheduleStates(tx)
 	if e != nil {
 		return nil, e
 	}
-	out := []UpcomingBill{}
-	for _, a := range all {
-		if !a.Active {
-			continue
-		}
-		var index int
-		if e = tx.QueryRow(`SELECT next_index FROM recurring_schedules WHERE id=?`, a.ID).Scan(&index); e != nil {
-			return nil, e
-		}
-		for ; index <= 10000; index++ {
-			date, e := OccurrenceDate(a.StartDate, a.Frequency, index)
-			if e != nil || date > through || (a.EndDate != "" && date > a.EndDate) {
-				break
-			}
-			out = append(out, UpcomingBill{ScheduleID: a.ID, DueDate: date, WalletID: a.WalletID, Amount: a.Amount, Name: a.Name, Note: a.Note, CategoryID: a.CategoryID})
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].DueDate != out[j].DueDate {
-			return out[i].DueDate < out[j].DueDate
-		}
-		return out[i].ScheduleID < out[j].ScheduleID
-	})
-	return out, nil
-}
-
-func (s *Store) addDays(days int) string {
-	return s.now().In(dhaka).AddDate(0, 0, days).Format("2006-01-02")
+	return ledger.Pending(all, through), nil
 }
 
 // Upcoming lists occurrences dated after today (Asia/Dhaka) through today plus days, at most
 // MaxUpcomingBills, earliest first. It reads only.
 func (s *Store) Upcoming(ctx context.Context, days int) ([]UpcomingBill, error) {
 	if days < 1 || days > MaxUpcomingDays {
-		return nil, invalid("days", "Use a number of days from 1 to 366.")
+		return nil, ledger.Invalid("days", "Use a number of days from 1 to 366.")
 	}
 	through, today := s.addDays(days), s.today()
 	return read(ctx, s, func(tx dbtx) ([]UpcomingBill, error) {
@@ -163,41 +122,8 @@ func (s *Store) Upcoming(ctx context.Context, days int) ([]UpcomingBill, error) 
 		if e != nil {
 			return nil, e
 		}
-		out := []UpcomingBill{}
-		for _, b := range all {
-			if b.DueDate > today && len(out) < MaxUpcomingBills {
-				out = append(out, b)
-			}
-		}
-		return out, nil
+		return ledger.Upcoming(all, today, MaxUpcomingBills), nil
 	})
-}
-
-type CurrencyTotal struct {
-	Currency        string `json:"currency"`
-	Cash            string `json:"cash"`
-	CardDebt        string `json:"card_debt"`
-	AvailableCredit string `json:"available_credit"`
-}
-type MonthSummary struct {
-	Month  string        `json:"month"`
-	Spent  string        `json:"spent"`
-	Target MonthlyTarget `json:"target"`
-}
-type BillSummary struct {
-	DueCount      int    `json:"due_count"`
-	OldestDueDate string `json:"oldest_due_date,omitempty"`
-	NextDueDate   string `json:"next_due_date,omitempty"`
-}
-
-// Summary is the home screen in one read. See docs/api.md for each figure's definition.
-type Summary struct {
-	Today            string          `json:"today"`
-	Totals           []CurrencyTotal `json:"totals"`
-	Month            MonthSummary    `json:"month"`
-	Bills            BillSummary     `json:"bills"`
-	Recent           []Transaction   `json:"recent"`
-	LegacyDebitCards int             `json:"legacy_debit_cards"`
 }
 
 const summaryUpcomingDays = 90
@@ -218,34 +144,12 @@ func summary(tx dbtx, today, upcomingThrough string) (Summary, error) {
 	if e != nil {
 		return out, e
 	}
-	type sums struct{ cash, debt, available *big.Int }
-	byCurrency := map[string]*sums{}
-	for _, currency := range []string{"BDT", "USD"} {
-		byCurrency[currency] = &sums{new(big.Int), new(big.Int), new(big.Int)}
-	}
-	for _, w := range all {
-		t := byCurrency[w.Currency]
-		switch {
-		case w.CardType == "credit":
-			t.debt.Add(t.debt, big.NewInt(money.MustMoney(w.Debt)))
-			t.available.Add(t.available, big.NewInt(money.MustMoney(w.AvailableCredit)))
-		case w.CardType == "debit" && !w.legacyDebit():
-		default:
-			if w.legacyDebit() {
-				out.LegacyDebitCards++
-			}
-			t.cash.Add(t.cash, big.NewInt(money.MustMoney(w.Balance)))
-		}
-	}
-	for _, currency := range []string{"BDT", "USD"} {
-		t := byCurrency[currency]
-		out.Totals = append(out.Totals, CurrencyTotal{currency, money.FormatHundredths(t.cash), money.FormatHundredths(t.debt), money.FormatHundredths(t.available)})
-	}
+	out.Totals, out.LegacyDebitCards = ledger.Totals(all)
 	month, e := monthly(tx, today[:7])
 	if e != nil {
 		return out, e
 	}
-	out.Month = MonthSummary{month.Month, month.Spent, month.Target}
+	out.Month = MonthSummary{Month: month.Month, Spent: month.Spent, Target: month.Target}
 	if out.Bills, e = billSummary(tx, today, upcomingThrough); e != nil {
 		return out, e
 	}
@@ -259,20 +163,9 @@ func billSummary(tx dbtx, today, upcomingThrough string) (BillSummary, error) {
 	if e := tx.QueryRow(`SELECT count(*),min(due_date) FROM bill_occurrences WHERE status='due'`).Scan(&out.DueCount, &oldest); e != nil {
 		return out, e
 	}
-	out.OldestDueDate = oldest.String
 	all, e := pending(tx, upcomingThrough)
 	if e != nil {
 		return out, e
 	}
-	for _, b := range all {
-		if b.DueDate <= today {
-			out.DueCount++
-			if out.OldestDueDate == "" || b.DueDate < out.OldestDueDate {
-				out.OldestDueDate = b.DueDate
-			}
-		} else if out.NextDueDate == "" {
-			out.NextDueDate = b.DueDate
-		}
-	}
-	return out, nil
+	return ledger.SummarizeBills(out.DueCount, oldest.String, all, today), nil
 }

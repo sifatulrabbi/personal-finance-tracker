@@ -5,100 +5,33 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"simply-finance/internal/money"
-	"strings"
+
+	"simply-finance/internal/ledger"
 )
 
-type ScheduleInput struct {
-	CategoryID string `json:"category_id,omitempty"`
-	Name       string `json:"name"`
-	WalletID   string `json:"wallet_id"`
-	Amount     string `json:"amount"`
-	StartDate  string `json:"start_date"`
-	EndDate    string `json:"end_date,omitempty"`
-	Frequency  string `json:"frequency"`
-	Note       string `json:"note"`
-}
-type Schedule struct {
-	ScheduleInput
-	ID      string `json:"id"`
-	Version int    `json:"version"`
-	Active  bool   `json:"active"`
-}
-type Bill struct {
-	CategoryID    string `json:"category_id"`
-	ID            string `json:"id"`
-	ScheduleID    string `json:"schedule_id"`
-	DueDate       string `json:"due_date"`
-	WalletID      string `json:"wallet_id"`
-	Amount        string `json:"amount"`
-	Name          string `json:"name"`
-	Note          string `json:"note"`
-	Status        string `json:"status"`
-	TransactionID string `json:"transaction_id,omitempty"`
-}
-type PaymentInput struct {
-	Amount   string `json:"amount"`
-	WalletID string `json:"wallet_id"`
-	Date     string `json:"date"`
-	Note     string `json:"note"`
-	Rate     string `json:"rate"`
+// scheduleFacts loads the records a schedule names.
+func scheduleFacts(tx dbtx, in ScheduleInput) (ledger.ScheduleFacts, error) {
+	var f ledger.ScheduleFacts
+	cid, _ := ledger.ResolveCategory("expense", in.CategoryID)
+	var e error
+	if f.CategoryFound, e = categoryExists(tx, cid, "expense"); e != nil {
+		return f, e
+	}
+	f.Wallet, e = findWallet(tx, in.WalletID)
+	return f, e
 }
 
-// validateSchedule checks a new schedule (previous == nil) or an update to previous. An archived
-// wallet is accepted only when an update keeps the wallet and does not turn the schedule back on,
-// so a schedule on a closed account can still be edited or paused but never newly bills it.
-// MaxScheduleBackfillDays bounds how far in the past a new schedule may start, which bounds the
-// due bills its first read can create (53 for a weekly schedule).
-const MaxScheduleBackfillDays = 366
-
-func validateSchedule(tx dbtx, in ScheduleInput, active bool, previous *Schedule, earliest string) error {
-	if _, e := categoryID(tx, "expense", in.CategoryID); e != nil {
-		return e
-	}
-	if strings.TrimSpace(in.Name) == "" || len(in.Name) > 120 {
-		return invalid("name", "Enter a name of at most 120 bytes.")
-	}
-	if len(in.Note) > 2000 {
-		return invalid("note", "Keep the note to at most 2,000 bytes.")
-	}
-	if in.Frequency != "weekly" && in.Frequency != "monthly" && in.Frequency != "yearly" {
-		return invalid("frequency", "Choose weekly, monthly, or yearly.")
-	}
-	if _, e := OccurrenceDate(in.StartDate, in.Frequency, 0); e != nil {
-		return invalid("start_date", "Enter a start date as YYYY-MM-DD.")
-	}
-	if previous == nil && in.StartDate < earliest {
-		return invalid("start_date", "Start the schedule no more than 366 days ago. Record older payments as expenses.")
-	}
-	if in.EndDate != "" && (!validDate(in.EndDate) || in.EndDate < in.StartDate) {
-		return invalid("end_date", "Enter an end date as YYYY-MM-DD, on or after the start date.")
-	}
-	n, e := money.ParseMoney(in.Amount)
-	if e != nil || n <= 0 {
-		return invalid("amount", "Enter a positive amount with at most two decimal places.")
-	}
-	w, e := wallet(tx, in.WalletID)
-	if e != nil {
-		return walletNotFound("wallet_id", e)
-	}
-	kept := previous != nil && previous.WalletID == in.WalletID && (previous.Active || !active)
-	if w.Archived && !kept {
-		return archived("wallet_id", "This wallet is archived. Choose an active wallet for this bill.")
-	}
-	if w.legacyDebit() && (previous == nil || previous.WalletID != in.WalletID) {
-		return invalid("wallet_id", errLegacyDebit)
-	}
-	return nil
-}
 func (s *Store) CreateSchedule(ctx context.Context, actor, key string, in ScheduleInput) (Schedule, error) {
 	return write(ctx, s, actor, key, "schedule.create", in, func(tx dbtx) (Schedule, error) {
 		out := Schedule{ScheduleInput: in, ID: id(), Version: 1, Active: true}
-		if e := validateSchedule(tx, in, true, nil, s.addDays(-MaxScheduleBackfillDays)); e != nil {
+		f, e := scheduleFacts(tx, in)
+		if e != nil {
 			return out, e
 		}
-		out.Amount = money.FormatMoney(money.MustMoney(in.Amount))
-		out.CategoryID, _ = categoryID(tx, "expense", in.CategoryID)
+		if e = ledger.ValidateSchedule(in, true, nil, s.addDays(-ledger.MaxScheduleBackfillDays), f); e != nil {
+			return out, e
+		}
+		out.ScheduleInput = ledger.NormalizeSchedule(in)
 		body, e := json.Marshal(out.ScheduleInput)
 		if e != nil {
 			return out, e
@@ -109,17 +42,19 @@ func (s *Store) CreateSchedule(ctx context.Context, actor, key string, in Schedu
 		return out, s.audit(tx, actor, out.ID, "create", nil, out)
 	})
 }
-func schedules(tx dbtx) ([]Schedule, error) {
-	rows, e := tx.Query(`SELECT id,payload,version,active FROM recurring_schedules ORDER BY id`)
+
+// scheduleStates reads every schedule with the index of its next occurrence not stored yet.
+func scheduleStates(tx dbtx) ([]ledger.ScheduleState, error) {
+	rows, e := tx.Query(`SELECT id,payload,version,active,next_index FROM recurring_schedules ORDER BY id`)
 	if e != nil {
 		return nil, e
 	}
 	defer rows.Close()
-	out := []Schedule{}
+	out := []ledger.ScheduleState{}
 	for rows.Next() {
-		var a Schedule
+		var a ledger.ScheduleState
 		var body string
-		if e = rows.Scan(&a.ID, &body, &a.Version, &a.Active); e != nil {
+		if e = rows.Scan(&a.ID, &body, &a.Version, &a.Active, &a.NextIndex); e != nil {
 			return nil, e
 		}
 		if e = json.Unmarshal([]byte(body), &a.ScheduleInput); e != nil {
@@ -132,33 +67,37 @@ func schedules(tx dbtx) ([]Schedule, error) {
 	}
 	return out, rows.Err()
 }
+func schedules(tx dbtx) ([]Schedule, error) {
+	all, e := scheduleStates(tx)
+	if e != nil {
+		return nil, e
+	}
+	out := make([]Schedule, len(all))
+	for i, a := range all {
+		out[i] = a.Schedule
+	}
+	return out, nil
+}
 func (s *Store) Schedules(ctx context.Context) ([]Schedule, error) { return read(ctx, s, schedules) }
+
+// materialize stores the occurrences of active schedules that have come due by today.
 func (s *Store) materialize(tx dbtx) error {
-	all, e := schedules(tx)
+	all, e := scheduleStates(tx)
 	if e != nil {
 		return e
 	}
+	today := s.today()
 	for _, a := range all {
 		if !a.Active {
 			continue
 		}
-		var index int
-		if e = tx.QueryRow(`SELECT next_index FROM recurring_schedules WHERE id=?`, a.ID).Scan(&index); e != nil {
-			return e
-		}
-		for ; index <= 10000; index++ {
-			date, e := OccurrenceDate(a.StartDate, a.Frequency, index)
-			if e != nil {
-				break
-			}
-			if date > s.today() || (a.EndDate != "" && date > a.EndDate) {
-				break
-			}
+		dates, next := ledger.DueDates(a.Schedule, a.NextIndex, today)
+		for _, date := range dates {
 			if _, e = tx.Exec(`INSERT INTO bill_occurrences(id,schedule_id,due_date,wallet_id,amount,name,note,category_id) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(schedule_id,due_date) DO NOTHING`, id(), a.ID, date, a.WalletID, a.Amount, a.Name, a.Note, a.CategoryID); e != nil {
 				return e
 			}
 		}
-		if _, e = tx.Exec(`UPDATE recurring_schedules SET next_index=? WHERE id=?`, index, a.ID); e != nil {
+		if _, e = tx.Exec(`UPDATE recurring_schedules SET next_index=? WHERE id=?`, next, a.ID); e != nil {
 			return e
 		}
 	}
@@ -203,39 +142,24 @@ func (s *Store) ConfirmBill(ctx context.Context, actor, key, bid string, in Paym
 		ID    string
 		Input PaymentInput
 	}{bid, in}, func(tx dbtx) (Transaction, error) {
-		var out Transaction
 		b, e := bill(tx, bid)
 		if e != nil {
-			return out, e
+			return Transaction{}, e
 		}
-		if b.Status != "due" {
-			return out, ErrAlreadySettled
-		}
-		if in.WalletID == "" {
-			in.WalletID = b.WalletID
-		}
-		if in.Amount == "" {
-			expected, err := wallet(tx, b.WalletID)
-			if err != nil {
-				return out, err
+		var f ledger.PaymentFacts
+		if b.Status == "due" && in.NeedsWallets() {
+			if f.BillWallet, e = findWallet(tx, b.WalletID); e != nil {
+				return Transaction{}, e
 			}
-			actual, err := wallet(tx, in.WalletID)
-			if err != nil {
-				return out, walletNotFound("wallet_id", err)
+			if f.PaymentWallet, e = findWallet(tx, in.PaymentWalletID(b)); e != nil {
+				return Transaction{}, e
 			}
-			if expected.Currency != actual.Currency {
-				return out, invalid("amount", "Enter the amount paid; the payment wallet uses a different currency from the bill.")
-			}
-			in.Amount = b.Amount
 		}
-		if in.Note == "" {
-			in.Note = b.Note
+		payment, e := ledger.BillPayment(b, in, f)
+		if e != nil {
+			return Transaction{}, e
 		}
-		if in.Date == "" {
-			in.Date = b.DueDate
-		}
-		in.Note = b.Name + ": " + in.Note
-		out, e = s.createTransaction(tx, actor, TransactionInput{Kind: "expense", WalletID: in.WalletID, Amount: in.Amount, Date: in.Date, Note: in.Note, Rate: in.Rate, CategoryID: b.CategoryID})
+		out, e := s.createTransaction(tx, actor, payment)
 		if e != nil {
 			return out, e
 		}
@@ -250,34 +174,21 @@ func (s *Store) UpdateSchedule(ctx context.Context, actor, key string, in Schedu
 		if e := s.materialize(tx); e != nil {
 			return in, e
 		}
-		all, e := schedules(tx)
+		old, e := schedule(tx, in.ID)
 		if e != nil {
 			return in, e
 		}
-		var old Schedule
-		for _, a := range all {
-			if a.ID == in.ID {
-				old = a
-				break
-			}
-		}
-		if old.ID == "" {
-			return in, ErrNotFound
-		}
-		if old.Version != in.Version {
-			return in, ErrStaleVersion
-		}
-		if in.StartDate != old.StartDate {
-			return in, invalid("start_date", "A schedule's start date cannot change.")
-		}
-		if in.Frequency != old.Frequency {
-			return in, invalid("frequency", "A schedule's frequency cannot change.")
-		}
-		if e = validateSchedule(tx, in.ScheduleInput, in.Active, &old, ""); e != nil {
+		if e = ledger.CheckScheduleUpdate(old, in); e != nil {
 			return in, e
 		}
-		in.Amount = money.FormatMoney(money.MustMoney(in.Amount))
-		in.CategoryID, _ = categoryID(tx, "expense", in.CategoryID)
+		f, e := scheduleFacts(tx, in.ScheduleInput)
+		if e != nil {
+			return in, e
+		}
+		if e = ledger.ValidateSchedule(in.ScheduleInput, in.Active, &old, "", f); e != nil {
+			return in, e
+		}
+		in.ScheduleInput = ledger.NormalizeSchedule(in.ScheduleInput)
 		in.Version++
 		body, e := json.Marshal(in.ScheduleInput)
 		if e != nil {
@@ -295,11 +206,8 @@ func (s *Store) SkipBill(ctx context.Context, actor, key, bid, reason string) (B
 		if e != nil {
 			return b, e
 		}
-		if b.Status != "due" {
-			return b, ErrAlreadySettled
-		}
-		if strings.TrimSpace(reason) == "" || len(reason) > 500 {
-			return b, invalid("reason", "Enter a reason of at most 500 bytes.")
+		if e = ledger.CheckSkip(b, reason); e != nil {
+			return b, e
 		}
 		old := b
 		b.Status = "skipped"

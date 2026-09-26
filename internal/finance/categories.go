@@ -2,17 +2,8 @@ package finance
 
 import (
 	"context"
-	"strings"
+	"simply-finance/internal/ledger"
 )
-
-type CategoryInput struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-type Category struct {
-	CategoryInput
-	ID string `json:"id"`
-}
 
 func (s *Store) Categories(ctx context.Context) ([]Category, error) {
 	return read(ctx, s, func(tx dbtx) ([]Category, error) {
@@ -35,11 +26,8 @@ func (s *Store) Categories(ctx context.Context) ([]Category, error) {
 func (s *Store) CreateCategory(ctx context.Context, actor, key string, in CategoryInput) (Category, error) {
 	return write(ctx, s, actor, key, "category.create", in, func(tx dbtx) (Category, error) {
 		out := Category{CategoryInput: in, ID: id()}
-		if in.Type != "income" && in.Type != "expense" {
-			return out, invalid("type", "Choose income or expense.")
-		}
-		if strings.TrimSpace(in.Name) == "" || len(in.Name) > 120 {
-			return out, invalid("name", "Enter a name of at most 120 bytes.")
+		if e := ledger.ValidateCategory(in); e != nil {
+			return out, e
 		}
 		var count int
 		if e := tx.QueryRow(`SELECT count(*) FROM categories WHERE type=? AND name=?`, in.Type, in.Name).Scan(&count); e != nil {
@@ -53,28 +41,4 @@ func (s *Store) CreateCategory(ctx context.Context, actor, key string, in Catego
 		}
 		return out, s.audit(tx, actor, out.ID, "category.create", nil, out)
 	})
-}
-func categoryID(q querier, kind, cid string) (string, error) {
-	if kind != "income" && kind != "expense" {
-		if cid != "" {
-			return "", invalid("category_id", "Only income and expenses have a category.")
-		}
-		return "", nil
-	}
-	if cid == "" {
-		cid = "others-" + kind
-	}
-	var count int
-	if e := q.QueryRow(`SELECT count(*) FROM categories WHERE id=? AND type=?`, cid, kind).Scan(&count); e != nil {
-		return "", e
-	}
-	if count != 1 {
-		return "", invalid("category_id", "Choose an existing "+kind+" category.")
-	}
-	return cid, nil
-}
-func defaultCategory(r *Transaction) {
-	if r.CategoryID == "" && (r.Kind == "income" || r.Kind == "expense") {
-		r.CategoryID = "others-" + r.Kind
-	}
 }
