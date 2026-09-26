@@ -1,9 +1,86 @@
 package finance_test
 
 import (
+	"errors"
+	"path/filepath"
 	"simply-finance/internal/finance"
 	"testing"
+	"time"
 )
+
+func archiveWallet(t *testing.T, s *finance.Store, u finance.User, wid string) {
+	t.Helper()
+	ws, e := s.Wallets(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, w := range ws {
+		if w.ID == wid {
+			w.Archived = true
+			if _, e = s.UpdateWallet(ctx, u.ID, "archive-"+wid, w); e != nil {
+				t.Fatal(e)
+			}
+			return
+		}
+	}
+	t.Fatalf("wallet %s not found", wid)
+}
+
+// Regression (C1): archiving a wallet must not trap its schedules; only pointing a schedule at an
+// archived wallet, or turning one back on there, is refused.
+func TestScheduleOnArchivedWalletCanBeDeactivatedButNotRetargeted(t *testing.T) {
+	today := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	s, e := openPrepared(t, filepath.Join(t.TempDir(), "archived-schedule.sqlite"), func() time.Time { return today })
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	u := user(t, s)
+	closed := createWallet(t, s, u, "closed", "BDT", "", "5000")
+	open := createWallet(t, s, u, "open", "BDT", "", "5000")
+	rent, e := s.CreateSchedule(ctx, u.ID, "rent", finance.ScheduleInput{Name: "Rent", WalletID: closed.ID, Amount: "1000", StartDate: "2026-09-01", Frequency: "monthly"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	water, e := s.CreateSchedule(ctx, u.ID, "water", finance.ScheduleInput{Name: "Water", WalletID: open.ID, Amount: "300", StartDate: "2026-09-01", Frequency: "monthly"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	archiveWallet(t, s, u, closed.ID)
+	if _, e = s.CreateSchedule(ctx, u.ID, "new-on-closed", finance.ScheduleInput{Name: "Gym", WalletID: closed.ID, Amount: "10", StartDate: "2026-09-01", Frequency: "monthly"}); !errors.Is(e, finance.ErrArchivedWallet) {
+		t.Fatalf("create on archived: %v", e)
+	}
+	water.WalletID = closed.ID
+	if _, e = s.UpdateSchedule(ctx, u.ID, "move-water", water); !errors.Is(e, finance.ErrArchivedWallet) {
+		t.Fatalf("move onto archived: %v", e)
+	}
+	rent.Note = "Old flat"
+	if rent, e = s.UpdateSchedule(ctx, u.ID, "note-rent", rent); e != nil {
+		t.Fatalf("edit with unchanged archived wallet: %v", e)
+	}
+	rent.Active = false
+	if rent, e = s.UpdateSchedule(ctx, u.ID, "pause-rent", rent); e != nil || rent.Active {
+		t.Fatalf("deactivate: %+v %v", rent, e)
+	}
+	rent.Active = true
+	if _, e = s.UpdateSchedule(ctx, u.ID, "resume-rent", rent); !errors.Is(e, finance.ErrArchivedWallet) {
+		t.Fatalf("reactivate on archived: %v", e)
+	}
+	today = time.Date(2026, 12, 14, 12, 0, 0, 0, time.UTC)
+	due, e := s.Due(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	rentBills := 0
+	for _, b := range due {
+		if b.ScheduleID == rent.ID {
+			rentBills++
+		}
+	}
+	if rentBills != 1 || len(due) != 5 {
+		t.Fatalf("deactivated schedule kept generating bills: rent=%d all=%+v", rentBills, due)
+	}
+}
 
 func TestRecurrencePreservesAnchorAcrossShortMonths(t *testing.T) {
 	for _, tc := range []struct {

@@ -65,3 +65,11 @@ func invalid(field, message string) error {
 func archived(field, message string) error {
 	return &Error{Code: CodeArchivedWallet, Message: message, Field: field}
 }
+
+// walletNotFound names the input field that referenced a missing wallet; other errors pass through.
+func walletNotFound(field string, e error) error {
+	if errors.Is(e, ErrNotFound) {
+		return &Error{Code: CodeNotFound, Message: "Wallet not found.", Field: field}
+	}
+	return e
+}
