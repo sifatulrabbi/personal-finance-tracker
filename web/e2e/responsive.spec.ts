@@ -1,6 +1,15 @@
 import { expect, test } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
-import { mainNavigation, navigate, openSheet, submitLogin } from "./login";
+import {
+  editTarget,
+  mainNavigation,
+  navigate,
+  openSheet,
+  openWallet,
+  payBill,
+  skipBill,
+  submitLogin,
+} from "./login";
 
 const viewports = [
   { name: "compact portrait", width: 320, height: 568 },
@@ -158,6 +167,7 @@ test("every page and financial modal stays inside compact mobile viewports", asy
       await page.setViewportSize(viewport);
 
       for (const pageName of [
+        "Home",
         "Activity",
         "Wallets",
         "Bills",
@@ -189,14 +199,16 @@ test("every page and financial modal stays inside compact mobile viewports", asy
       await expectModalContained(page, viewport);
       await closeModal(page);
 
-      const walletCard = page
-        .locator('[data-slot="card"]')
-        .filter({ has: page.getByText(`Compact wallet ${suffix}`, { exact: true }) });
-      await walletCard.getByRole("button", { name: "Edit wallet" }).click();
+      await openWallet(page, `Compact wallet ${suffix}`);
+      await expectPageContained(page);
+      await page.getByRole("button", { name: "Edit wallet" }).click();
       await expectModalContained(page, viewport);
       await closeModal(page);
-      await walletCard.getByRole("button", { name: "Adjust balance" }).click();
+      await page.getByRole("button", { name: "Adjust balance" }).click();
       await expectModalContained(page, viewport);
+      await closeModal(page);
+      await page.getByRole("button", { name: "Archive wallet" }).click();
+      await expectModalContained(page, viewport, { hasForm: false });
       await closeModal(page);
 
       await navigate(page, "Bills");
@@ -208,20 +220,19 @@ test("every page and financial modal stays inside compact mobile viewports", asy
       await expectModalContained(page, viewport);
       await closeModal(page);
 
-      const due = page.getByRole("article", { name: `Due ${billName}` });
-      await due.getByRole("button", { name: "Confirm payment" }).click();
+      await payBill(page, billName);
       await expectModalContained(page, viewport);
       await closeModal(page);
-      await due.getByRole("button", { name: "Skip" }).click();
+      await skipBill(page, billName);
       await expectModalContained(page, viewport);
       await closeModal(page);
 
       await navigate(page, "Monthly spending");
-      if (viewport.width < 640) {
-        await expect(page.getByTestId("monthly-mobile-list")).toBeVisible();
-      } else {
-        await expect(page.getByTestId("monthly-table")).toBeVisible();
-      }
+      await expect(page.getByTestId("monthly-categories")).toBeVisible();
+      await page.getByRole("button", { name: /^Choose month/ }).click();
+      await expectModalContained(page, viewport, { hasForm: false });
+      await closeModal(page);
+      await editTarget(page);
       await expectControlsAtLeast16px(page.locator("main"));
       await expectPageContained(page);
     });
@@ -265,6 +276,12 @@ test("safe areas and a keyboard-sized viewport keep mobile controls reachable", 
   expect(refreshBounds!.x + refreshBounds!.width).toBeLessThanOrEqual(
     viewport.width - safeRight,
   );
+  const moreBounds = await page
+    .getByRole("banner")
+    .getByRole("button", { name: "More", exact: true })
+    .boundingBox();
+  expect(moreBounds!.x + moreBounds!.width).toBeLessThanOrEqual(viewport.width - safeRight);
+  expect(moreBounds!.height).toBeGreaterThanOrEqual(44);
 
   // Every tab bar control sits inside the side insets and above the bottom inset.
   const nav = mainNavigation(page);

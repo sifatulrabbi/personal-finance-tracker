@@ -5,13 +5,7 @@ import type { Category } from "@/api/types";
 import { useWrites } from "@/cache/writes";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
+import { List, Section } from "@/components/layout";
 import {
   Choice,
   TextField,
@@ -136,51 +130,52 @@ export function CategorySettings({ categories }: { categories: Category[] }) {
   return (
     <>
       {(["expense", "income"] as const).map((type) => {
-        const title =
-          type === "expense" ? "Expense categories" : "Income categories";
+        const title = type === "expense" ? "Expense categories" : "Income categories";
+        const members = categories.filter((c) => c.type === type);
         return (
-          <section key={type} aria-label={title}>
-            <Card>
-              <CardHeader>
-                <CardTitle>{title}</CardTitle>
-                <CardDescription>
-                  One category per record. Names appear as you type them.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <ul className="flex flex-wrap gap-2">
-                  {categories
-                    .filter((c) => c.type === type)
-                    .map((c) => (
-                      <li
-                        className="max-w-full rounded-full bg-muted px-3 py-1 text-sm whitespace-pre-wrap break-words"
-                        key={c.id}
-                      >
-                        {c.name}
-                      </li>
-                    ))}
-                </ul>
-                {/* Not keyed by the category count: creating one category must not wipe
-                    a half-typed name in the other form. This form clears only itself. */}
-                <SaveForm
-                  label="Create category"
-                  saved="Category created"
-                  resetOnSuccess
-                  body={(form) => ({
-                    name: form.text(`${type}_category_name`),
-                    type,
-                  })}
-                  send={(body, key) => writes.createCategory(body, { key })}
-                >
-                  <TextField
-                    label="Category name"
-                    name={`${type}_category_name`}
-                    maxLength={120}
-                    required
-                  />
-                </SaveForm>
-              </CardContent>
-            </Card>
+          <section key={type} aria-label={title} className="min-w-0">
+            <Section title={title}>
+              <List>
+                {members.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex min-h-12 min-w-0 items-center justify-between gap-3 px-4 py-2.5"
+                  >
+                    <span className="min-w-0 break-words whitespace-pre-wrap">{c.name}</span>
+                    {c.id === `others-${type}` ? (
+                      <span className="shrink-0 text-caption font-normal text-muted-foreground">
+                        Default
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+                <div className="min-w-0 bg-muted/40 px-4 py-3">
+                  {/* Not keyed by the category count: creating one category must not wipe
+                      a half-typed name in the other form. This form clears only itself. */}
+                  <SaveForm
+                    label="Add category"
+                    saved="Category created"
+                    resetOnSuccess
+                    body={(form) => ({
+                      name: form.text(`${type}_category_name`),
+                      type,
+                    })}
+                    send={(body, key) => writes.createCategory(body, { key })}
+                  >
+                    <TextField
+                      label="Category name"
+                      name={`${type}_category_name`}
+                      maxLength={120}
+                      required
+                      placeholder={type === "expense" ? "Groceries, rent, or school" : "Salary or a side job"}
+                    />
+                  </SaveForm>
+                </div>
+              </List>
+              <p className="text-caption font-normal text-muted-foreground">
+                One category per record. Names appear exactly as you type them.
+              </p>
+            </Section>
           </section>
         );
       })}

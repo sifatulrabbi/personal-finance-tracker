@@ -170,7 +170,8 @@ export type PaymentInput = {
 };
 export type SkipInput = { reason: string };
 
-export type MonthlyTarget = { amount: string; version: number };
+// inherited_from names the earlier month whose saved target carries over (ADR 0010).
+export type MonthlyTarget = { amount: string; version: number; inherited_from?: string };
 export type MonthlySpending = {
   month: string;
   spent: string;
@@ -183,6 +184,36 @@ export type MonthlySpending = {
   }[];
 };
 export type MonthlyTargetUpdate = { amount: string; version: number };
+
+// A future occurrence computed from an active schedule. It is not stored, so it has no id
+// and cannot be paid until it comes due.
+export type UpcomingBill = {
+  schedule_id: string;
+  due_date: string;
+  wallet_id: string;
+  amount: string;
+  name: string;
+  note: string;
+  category_id: string;
+};
+
+export type BillStatus = "due" | "paid" | "skipped";
+
+// GET /summary: the Home screen figures, all computed by the server.
+export type CurrencyTotal = {
+  currency: Currency;
+  cash: string;
+  card_debt: string;
+  available_credit: string;
+};
+export type Summary = {
+  today: string;
+  totals: CurrencyTotal[];
+  month: { month: string; spent: string; target: MonthlyTarget };
+  bills: { due_count: number; oldest_due_date?: string; next_due_date?: string };
+  recent: Transaction[];
+  legacy_debit_cards: number;
+};
 
 export type AuditEvent = {
   id: number;

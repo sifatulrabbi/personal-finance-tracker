@@ -1,5 +1,16 @@
 import { apiWrite, dhakaToday, expect, test } from "./fixtures";
-import { mainNavigation, navigate, openMore, signIn, signOut, toast } from "./login";
+import {
+  chooseMonth,
+  editTarget,
+  mainNavigation,
+  navigate,
+  openMore,
+  openWallet,
+  payBill,
+  signIn,
+  signOut,
+  toast,
+} from "./login";
 import type { Page } from "@playwright/test";
 
 // Regression tests for the measured bugs in the UX audit (.planning/overhaul/ux-audit.md,
@@ -19,7 +30,7 @@ async function cashWallet(page: Page, name = "Cash", opening = "10000") {
 }
 
 test("Activity keeps loaded older records after a save", async ({ page }) => {
-  await signedIn(page);
+  await signedIn(page, "/activity");
   const wallet = await cashWallet(page);
   for (let i = 0; i < 60; i++)
     await apiWrite(page, "/transactions", {
@@ -51,7 +62,7 @@ test("Activity keeps loaded older records after a save", async ({ page }) => {
 test("a new record appears from the save response without reloading every endpoint", async ({
   page,
 }) => {
-  await signedIn(page);
+  await signedIn(page, "/activity");
   await cashWallet(page);
   await page.reload();
   await page.getByRole("button", { name: "Add record", exact: true }).click();
@@ -109,6 +120,7 @@ test("Monthly never goes blank while it refetches", async ({ page }) => {
     await new Promise((resolve) => setTimeout(resolve, 600));
     await route.continue();
   });
+  await editTarget(page);
   await page.getByLabel("Monthly target (BDT)").fill("4000");
   await page.getByRole("button", { name: "Save target", exact: true }).click();
   await expect(toast(page, "Target saved")).toBeVisible();
@@ -116,7 +128,7 @@ test("Monthly never goes blank while it refetches", async ({ page }) => {
   await page.getByRole("button", { name: "Refresh records" }).click();
   await refresh;
   const otherMonth = page.waitForResponse((r) => r.url().includes("month=2025-01"));
-  await page.getByLabel("Month", { exact: true }).fill("2025-01");
+  await chooseMonth(page, "2025-01");
   await expect(page.getByTestId("monthly-total")).toBeVisible();
   await otherMonth;
   await page.waitForTimeout(300);
@@ -129,7 +141,7 @@ test("Monthly never goes blank while it refetches", async ({ page }) => {
 });
 
 test("each page opens scrolled to the top", async ({ page }) => {
-  await signedIn(page);
+  await signedIn(page, "/activity");
   // Both pages must be taller than the screen, or the browser clamps the scroll anyway.
   const wallets = [];
   for (let i = 0; i < 12; i++) wallets.push(await cashWallet(page, `Scroll wallet ${i}`, "0"));
@@ -165,6 +177,7 @@ test("focus returns to the opener after a dialog closes, and opening selects not
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(add).toBeFocused();
 
+  await openWallet(page, "Focus wallet");
   const edit = page.getByRole("button", { name: "Edit wallet" });
   await edit.click();
   const name = page.getByLabel("Wallet name", { exact: true });
@@ -196,7 +209,7 @@ test("creating a category does not wipe the other category form", async ({ page 
   const expense = page.getByRole("region", { name: "Expense categories", exact: true });
   await income.getByLabel("Category name").fill("Half typed income name");
   await expense.getByLabel("Category name").fill("Pets");
-  await expense.getByRole("button", { name: "Create category" }).click();
+  await expense.getByRole("button", { name: "Add category" }).click();
   await expect(expense.getByText("Pets", { exact: true })).toBeVisible();
   await expect(expense.getByLabel("Category name")).toHaveValue("");
   await expect(income.getByLabel("Category name")).toHaveValue("Half typed income name");
@@ -206,13 +219,13 @@ test("a duplicate category shows the server's message", async ({ page }) => {
   await signedIn(page, "/settings");
   const expense = page.getByRole("region", { name: "Expense categories", exact: true });
   await expense.getByLabel("Category name").fill("Pets");
-  await expense.getByRole("button", { name: "Create category" }).click();
+  await expense.getByRole("button", { name: "Add category" }).click();
   await expect(expense.getByText("Pets", { exact: true })).toBeVisible();
   await expense.getByLabel("Category name").fill("Pets");
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/v1/categories") && r.request().method() === "POST",
   );
-  await expense.getByRole("button", { name: "Create category" }).click();
+  await expense.getByRole("button", { name: "Add category" }).click();
   const body = await (await response).json();
   const alert = expense.getByRole("alert");
   await expect(alert).toBeVisible();
@@ -248,7 +261,7 @@ test("signing out works when the session has already expired", async ({ page }) 
   await page.context().clearCookies();
   await signOut(page);
   await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
-  await expect(page).toHaveURL(/\/activity$/);
+  await expect(page).toHaveURL(/\/home$/);
 });
 
 test("an unreachable server shows an error with retry, not the login screen", async ({
@@ -281,10 +294,7 @@ test("an invalid bill amount is an error and is never sent as blank", async ({ p
   page.on("request", (request) => {
     if (request.url().includes("/confirm")) confirms++;
   });
-  await page
-    .getByRole("article", { name: "Due Internet" })
-    .getByRole("button", { name: "Confirm payment" })
-    .click();
+  await payBill(page, "Internet");
   const amount = page.getByLabel("Amount paid");
   await expect(amount).toHaveAttribute("type", "text");
   await expect(amount).toHaveAttribute("inputmode", "decimal");

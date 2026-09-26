@@ -4,10 +4,11 @@ import {
   keepPreviousData,
   useInfiniteQuery,
   useQuery,
+  useQueryClient,
 } from "@tanstack/react-query";
 import { useApi } from "@/api/context";
 import { isApiError } from "@/api/errors";
-import type { Transaction } from "@/api/types";
+import type { Transaction, Wallet } from "@/api/types";
 import { keys, pageSize } from "./keys";
 import { nextOffset } from "./effects";
 
@@ -22,6 +23,25 @@ export function createQueryClient() {
       },
       mutations: { retry: false },
     },
+  });
+}
+
+// The Home screen figures in one read. Every total is the server's.
+export function useSummary() {
+  const api = useApi();
+  return useQuery({ queryKey: keys.summary, queryFn: () => api.summary() });
+}
+
+// One wallet by id. The row already in the wallet list is shown while the read is in
+// flight, so opening a wallet from the list never shows a skeleton.
+export function useWallet(id: string) {
+  const api = useApi();
+  const client = useQueryClient();
+  return useQuery({
+    queryKey: keys.wallet(id),
+    queryFn: () => api.wallet(id),
+    placeholderData: () =>
+      client.getQueryData<Wallet[]>(keys.wallets)?.find((wallet) => wallet.id === id),
   });
 }
 
@@ -48,6 +68,33 @@ export function useSchedules() {
 export function useDueBills() {
   const api = useApi();
   return useQuery({ queryKey: keys.dueBills, queryFn: () => api.dueBills() });
+}
+
+// The Bills screen looks this far ahead for upcoming occurrences.
+export const upcomingDays = 30;
+
+export function useUpcomingBills() {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.upcomingBills,
+    queryFn: () => api.upcomingBills(upcomingDays),
+  });
+}
+
+export const billHistoryPageSize = 20;
+
+// Paid or skipped bills, newest first, a page at a time. Loaded only when shown.
+export function useBillHistory(status: "paid" | "skipped", enabled = true) {
+  const api = useApi();
+  return useInfiniteQuery({
+    queryKey: keys.billHistory(status),
+    enabled,
+    queryFn: ({ pageParam }) =>
+      api.bills(status, { limit: billHistoryPageSize, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) =>
+      last.length < billHistoryPageSize ? undefined : pages.reduce((n, p) => n + p.length, 0),
+  });
 }
 
 // Keeps the previous month on screen while another month loads, so the page never blanks.

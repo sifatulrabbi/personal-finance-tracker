@@ -161,16 +161,20 @@ function shortAuthor(email: string) {
   return email.split("@")[0] || email;
 }
 
-function RecordRow({
+// One record in a list. Opens its details in place, or links elsewhere (Home links each
+// recent record to Activity).
+export function RecordRow({
   record,
   wallets,
   categories,
   onOpen,
+  link,
 }: {
   record: Transaction;
   wallets: Wallet[];
   categories: Category[];
-  onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
+  onOpen?: (event: MouseEvent<HTMLButtonElement>) => void;
+  link?: string;
 }) {
   const wallet = wallets.find((w) => w.id === record.wallet_id);
   const to = record.to_wallet_id ? wallets.find((w) => w.id === record.to_wallet_id) : undefined;
@@ -188,6 +192,7 @@ function RecordRow({
     <ListRow
       data-testid="activity-row"
       onClick={onOpen}
+      to={link}
       leading={<KindIcon kind={record.kind} />}
       title={
         <span className={record.voided ? "text-muted-foreground" : undefined}>

@@ -28,12 +28,13 @@ import { TextField, ErrorMessage } from "@/components/forms";
 import { EmptyState } from "@/components/layout";
 import { AppShell } from "@/components/shell";
 import { ThemeProvider } from "@/theme/provider";
-import { Wallets } from "@/components/wallets";
+import { WalletDetail, Wallets } from "@/components/wallets";
+import { Home } from "@/components/home";
 import { Activity } from "@/components/activity";
 import { Bills } from "@/components/bills";
 import { Settings } from "@/components/settings";
 import { Monthly } from "@/components/monthly";
-import { homePath, pageForPath } from "@/routes";
+import { homePath, routeForPath } from "@/routes";
 
 // The API client and query cache are passed in, so tests and future clients can supply
 // their own.
@@ -113,11 +114,21 @@ function AuthenticatedApp({ user }: { user: User }) {
     window.scrollTo(0, 0);
   }, [location.pathname]);
   if (location.pathname === "/") return <Navigate to={homePath} replace />;
-  const page = pageForPath(location.pathname);
+  const route = routeForPath(location.pathname);
+  const page = route?.page;
+  if (route?.walletID)
+    return (
+      <AppShell page={page} user={user} back={{ to: "/wallets", label: "Back to Wallets" }}>
+        <section aria-label="Wallet details" className="flex min-w-0 flex-col gap-6">
+          <WalletDetail key={route.walletID} id={route.walletID} />
+        </section>
+      </AppShell>
+    );
   return (
     <AppShell page={page} user={user}>
       {page ? (
         <section aria-label={page.name} className="flex min-w-0 flex-col gap-6">
+          {page.path === "/home" && <Home />}
           {page.path === "/activity" && <Activity />}
           {page.path === "/wallets" && <Wallets />}
           {page.path === "/bills" && <Bills />}
@@ -139,7 +150,7 @@ function NotFound() {
       description="This address does not match a Simply Finance page."
       action={
         <Button asChild>
-          <Link to={homePath}>Go to Activity</Link>
+          <Link to={homePath}>Go to Home</Link>
         </Button>
       }
     />

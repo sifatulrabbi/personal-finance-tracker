@@ -1,6 +1,7 @@
 import type {
   AuditEvent,
   Bill,
+  BillStatus,
   Category,
   CategoryInput,
   LoginInput,
@@ -15,10 +16,12 @@ import type {
   Settings,
   SettingsUpdate,
   SkipInput,
+  Summary,
   Transaction,
   TransactionCorrection,
   TransactionInput,
   TransactionVoid,
+  UpcomingBill,
   User,
   Wallet,
   WalletAdjustment,
@@ -37,7 +40,10 @@ export interface ApiClient {
   login(input: LoginInput): Promise<User>;
   logout(): Promise<void>;
 
+  summary(): Promise<Summary>;
+
   wallets(): Promise<Wallet[]>;
+  wallet(id: string): Promise<Wallet>;
   createWallet(input: WalletInput, options: WriteOptions): Promise<Wallet>;
   updateWallet(input: WalletUpdate, options: WriteOptions): Promise<Wallet>;
   adjustWallet(id: string, input: WalletAdjustment, options: WriteOptions): Promise<Transaction>;
@@ -60,7 +66,10 @@ export interface ApiClient {
   schedules(): Promise<Schedule[]>;
   createSchedule(input: ScheduleInput, options: WriteOptions): Promise<Schedule>;
   updateSchedule(input: ScheduleUpdate, options: WriteOptions): Promise<Schedule>;
+  schedule(id: string): Promise<Schedule>;
   dueBills(): Promise<Bill[]>;
+  bills(status: BillStatus, page: Page): Promise<Bill[]>;
+  upcomingBills(days: number): Promise<UpcomingBill[]>;
   confirmBill(id: string, input: PaymentInput, options: WriteOptions): Promise<Transaction>;
   skipBill(id: string, input: SkipInput, options: WriteOptions): Promise<Bill>;
 

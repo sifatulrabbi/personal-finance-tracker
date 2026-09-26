@@ -1,5 +1,15 @@
 import { expect, test } from "./fixtures";
-import { mainNavigation, navigate, openSheet, signOut, submitLogin, toast } from "./login";
+import {
+  mainNavigation,
+  navigate,
+  openSheet,
+  openWallet,
+  payBill,
+  signOut,
+  submitLogin,
+  toast,
+  walletRow,
+} from "./login";
 
 test("mobile household can record money and confirm bills", async ({
   page,
@@ -36,6 +46,7 @@ test("mobile household can record money and confirm bills", async ({
     page.getByText(`Groceries ${suffix}`, { exact: true }),
   ).toBeVisible();
   await navigate(page, "Settings");
+  await page.getByTestId("rate-row").click();
   await page.getByLabel("Default exchange rate (BDT per USD)").fill("125");
   await page
     .getByRole("button", { name: "Save settings", exact: true })
@@ -51,7 +62,7 @@ test("mobile household can record money and confirm bills", async ({
   await page.getByRole("button", { name: "Create bill", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const due = page.getByRole("article", { name: `Due Wi-Fi ${suffix}` });
-  await due.getByRole("button", { name: "Confirm payment" }).click();
+  await payBill(page, `Wi-Fi ${suffix}`);
   await page.getByLabel("Amount paid").fill("1020");
   await page.getByLabel("Note", { exact: true }).fill("Includes charge");
   await page
@@ -61,10 +72,7 @@ test("mobile household can record money and confirm bills", async ({
   await expect(due).toHaveCount(0);
   await navigate(page, "Wallets");
   await expect(
-    page
-      .locator('[data-slot="card"]')
-      .filter({ has: page.getByText(`Cash ${suffix}`, { exact: true }) })
-      .getByText("৳8,854.50", { exact: true }),
+    walletRow(page, `Cash ${suffix}`).getByText("৳8,854.50", { exact: true }),
   ).toBeVisible();
   await expect(
     page.evaluate(
@@ -180,21 +188,20 @@ test("credit debt, transfers, adjustments, and corrections stay consistent", asy
     `Bank ${suffix} · BDT`,
   );
   await navigate(page, "Wallets");
-  const bank = page
-    .locator('[data-slot="card"]')
-    .filter({ has: page.getByText(`Bank ${suffix}`, { exact: true }) });
-  const card = page
-    .locator('[data-slot="card"]')
-    .filter({ has: page.getByText(`Card ${suffix}`, { exact: true }) });
+  const bank = walletRow(page, `Bank ${suffix}`);
+  const card = walletRow(page, `Card ${suffix}`);
   await expect(bank.getByText("৳2,200.00", { exact: true })).toBeVisible();
   await expect(card.getByText("৳50.00", { exact: true })).toBeVisible();
-  await bank.getByRole("button", { name: "Adjust balance" }).click();
+  await openWallet(page, `Bank ${suffix}`);
+  await page.getByRole("button", { name: "Adjust balance" }).click();
   await page.getByLabel("Actual balance").fill("2100");
   await page
     .getByLabel("Reason", { exact: true })
     .fill("Reconciled bank balance");
   await page.getByRole("button", { name: "Record adjustment" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("wallet-balance")).toHaveText("৳2,100.00");
+  await page.getByRole("link", { name: "Back to Wallets" }).click();
   await expect(bank.getByText("৳2,100.00", { exact: true })).toBeVisible();
   await navigate(page, "Activity");
   await page.getByText(`Card purchase ${suffix}`, { exact: true }).click();
@@ -262,10 +269,7 @@ test("blank payment uses the scheduled amount and long names fit a small phone",
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(320);
   await navigate(page, "Bills");
-  await page
-    .getByRole("article", { name: `Due ${billName}` })
-    .getByRole("button", { name: "Confirm payment" })
-    .click();
+  await payBill(page, billName);
   expect(
     await page
       .getByRole("dialog")
@@ -281,10 +285,7 @@ test("blank payment uses the scheduled amount and long names fit a small phone",
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await navigate(page, "Wallets");
   await expect(
-    page
-      .locator('[data-slot="card"]')
-      .filter({ has: page.getByText(name, { exact: true }) })
-      .getByText("৳1,000.00", { exact: true }),
+    walletRow(page, name).getByText("৳1,000.00", { exact: true }),
   ).toBeVisible();
 });
 
@@ -326,8 +327,10 @@ test("a debit card links to its bank and spends from the bank's balance", async 
   });
   expect(response.ok()).toBe(true);
   await page.reload();
-  const bank = page
-    .locator('[data-slot="card"]')
-    .filter({ has: page.getByText(`Bank ${suffix}`, { exact: true }) });
+  const bank = walletRow(page, `Bank ${suffix}`);
   await expect(bank.getByTestId("wallet-balance")).toContainText("4,800.00");
+  // The card's own page names its bank and has no balance or adjustment of its own.
+  await openWallet(page, `Debit ${suffix}`);
+  await expect(page.getByTestId("wallet-detail")).toContainText(`Spends from Bank ${suffix}`);
+  await expect(page.getByRole("button", { name: "Adjust balance" })).toHaveCount(0);
 });

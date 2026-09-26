@@ -71,7 +71,10 @@ export function createHttpClient(options: HttpClientOptions = {}): ApiClient {
       await request("POST", "/logout", {});
     },
 
+    summary: () => get("/summary"),
+
     wallets: () => get("/wallets"),
+    wallet: (id) => get(`/wallets/${enc(id)}`),
     createWallet: (input, o) => request("POST", "/wallets", input, o),
     updateWallet: (input, o) => request("PUT", `/wallets/${enc(input.id)}`, input, o),
     adjustWallet: (id, input, o) => request("POST", `/wallets/${enc(id)}/adjust`, input, o),
@@ -95,7 +98,10 @@ export function createHttpClient(options: HttpClientOptions = {}): ApiClient {
     schedules: () => get("/schedules"),
     createSchedule: (input, o) => request("POST", "/schedules", input, o),
     updateSchedule: (input, o) => request("PUT", `/schedules/${enc(input.id)}`, input, o),
+    schedule: (id) => get(`/schedules/${enc(id)}`),
     dueBills: () => get("/bills/due"),
+    bills: (status, p) => get(`${page("/bills", p)}&status=${enc(status)}`),
+    upcomingBills: (days) => get(`/bills/upcoming?days=${days}`),
     confirmBill: (id, input, o) => request("POST", `/bills/${enc(id)}/confirm`, input, o),
     skipBill: (id, input, o) => request("POST", `/bills/${enc(id)}/skip`, input, o),
 

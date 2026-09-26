@@ -87,26 +87,36 @@ export const effects = {
   walletCreated(client: QueryClient, wallet: Wallet) {
     client.setQueryData<Wallet[]>(keys.wallets, (list) => upsert(list, wallet));
     // A wallet with an opening balance also creates an opening record.
-    refetch(client, keys.wallets, keys.transactions);
+    refetch(client, keys.wallets, keys.transactions, keys.summary);
     markStale(client, keys.audit);
   },
   walletUpdated(client: QueryClient, wallet: Wallet) {
     client.setQueryData<Wallet[]>(keys.wallets, (list) => upsert(list, wallet));
-    markStale(client, keys.audit);
+    client.setQueryData(keys.wallet(wallet.id), wallet);
+    markStale(client, keys.audit, keys.summary);
   },
   walletAdjusted(client: QueryClient, record: Transaction) {
     recordTransaction(client, record);
-    refetch(client, keys.wallets);
+    refetch(client, keys.wallets, keys.walletAll, keys.summary);
     markStale(client, keys.audit);
   },
   transactionCreated(client: QueryClient, record: Transaction) {
     recordTransaction(client, record);
-    refetch(client, keys.wallets, keys.monthlyAll);
+    refetch(client, keys.wallets, keys.walletAll, keys.monthlyAll, keys.summary);
   },
   transactionRevised(client: QueryClient, record: Transaction) {
     recordTransaction(client, record);
     // A voided bill payment makes its occurrence due again.
-    refetch(client, keys.wallets, keys.monthlyAll, keys.history(record.id), keys.dueBills);
+    refetch(
+      client,
+      keys.wallets,
+      keys.walletAll,
+      keys.monthlyAll,
+      keys.summary,
+      keys.history(record.id),
+      keys.dueBills,
+      keys.billHistoryAll,
+    );
   },
   categoryCreated(client: QueryClient, category: Category) {
     client.setQueryData<Category[]>(keys.categories, (list) => upsert(list, category));
@@ -121,10 +131,18 @@ export const effects = {
     client.setQueryData<MonthlySpending>(keys.monthly(month), (data) =>
       data ? { ...data, target } : data,
     );
+    // A later month without its own target carries this one over (ADR 0010), so every
+    // other loaded month is refreshed from the server rather than guessed here.
+    void client.invalidateQueries({
+      queryKey: keys.monthlyAll,
+      predicate: (query) => query.queryKey[1] !== month,
+    });
+    refetch(client, keys.summary);
+    markStale(client, keys.audit);
   },
   scheduleSaved(client: QueryClient, schedule: Schedule) {
     client.setQueryData<Schedule[]>(keys.schedules, (list) => upsert(list, schedule));
-    refetch(client, keys.dueBills);
+    refetch(client, keys.dueBills, keys.upcomingBills, keys.summary);
     markStale(client, keys.audit);
   },
   billConfirmed(client: QueryClient, billID: string, record: Transaction) {
@@ -132,14 +150,22 @@ export const effects = {
       list?.filter((bill) => bill.id !== billID),
     );
     recordTransaction(client, record);
-    refetch(client, keys.wallets, keys.monthlyAll, keys.dueBills);
+    refetch(
+      client,
+      keys.wallets,
+      keys.walletAll,
+      keys.monthlyAll,
+      keys.dueBills,
+      keys.billHistory("paid"),
+      keys.summary,
+    );
     markStale(client, keys.audit);
   },
   billSkipped(client: QueryClient, bill: Bill) {
     client.setQueryData<Bill[]>(keys.dueBills, (list) =>
       list?.filter((due) => due.id !== bill.id),
     );
-    refetch(client, keys.dueBills);
+    refetch(client, keys.dueBills, keys.billHistory("skipped"), keys.summary);
     markStale(client, keys.audit);
   },
 };

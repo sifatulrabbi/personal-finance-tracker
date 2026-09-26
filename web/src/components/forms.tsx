@@ -314,7 +314,10 @@ export function SaveForm<Body, Result>({
   disabled = false,
   resetOnSuccess = false,
   saved,
+  secondary,
 }: {
+  // A second action next to Save on a page form, such as Cancel.
+  secondary?: ReactNode;
   children: ReactNode;
   body: (form: FormReader) => Body;
   // Sends the write with its idempotency key and applies its cache effect.
@@ -366,12 +369,22 @@ export function SaveForm<Body, Result>({
       inFlight.current = false;
     }
   }
+  const submitButton = (
+    <Button type="submit" size={inSheet ? "lg" : "default"} disabled={busy || disabled} className={inSheet ? "w-full" : undefined}>
+      {busy ? "Saving…" : label}
+    </Button>
+  );
   const footer = (
     <>
       <ErrorMessage error={error} />
-      <Button type="submit" size={inSheet ? "lg" : "default"} disabled={busy || disabled} className={inSheet ? "w-full" : "self-start"}>
-        {busy ? "Saving…" : label}
-      </Button>
+      {secondary && !inSheet ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {submitButton}
+          {secondary}
+        </div>
+      ) : (
+        <div className={inSheet ? "contents" : "flex"}>{submitButton}</div>
+      )}
     </>
   );
   if (inSheet)

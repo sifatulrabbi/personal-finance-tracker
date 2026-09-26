@@ -3,6 +3,7 @@ import {
   directionForKind,
   formatMoney,
   isNegative,
+  rateLabel,
   isZero,
   moneyLabel,
   moneyTone,
@@ -92,4 +93,10 @@ describe("directionForKind", () => {
     expect(directionForKind("opening")).toBe("balance");
     expect(directionForKind("adjustment")).toBe("balance");
   });
+});
+
+test("rates drop the stored zero padding but keep every real digit", () => {
+  expect(rateLabel("122.500000")).toBe("122.50");
+  expect(rateLabel("125")).toBe("125.00");
+  expect(rateLabel("123.456789")).toBe("123.456789");
 });

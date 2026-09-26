@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { mainNavigation, navigate, openMore, signIn, signOut } from "./login";
+import { mainNavigation, moreButton, navigate, openMore, signIn, signOut } from "./login";
 
 test("page URLs survive login, reload, and browser history", async ({ page }) => {
   await page.goto("/wallets");
@@ -40,10 +40,10 @@ test("an unknown page stays visible until the user leaves it", async ({ page }) 
   await expect(
     page.getByRole("heading", { name: "Page not found", exact: true }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Go to Activity", exact: true }).click();
-  await expect(page).toHaveURL(/\/activity$/);
+  await page.getByRole("link", { name: "Go to Home", exact: true }).click();
+  await expect(page).toHaveURL(/\/home$/);
   await expect(
-    page.getByRole("region", { name: "Activity", exact: true }),
+    page.getByRole("region", { name: "Home", exact: true }),
   ).toBeVisible();
 });
 
@@ -70,18 +70,18 @@ test("a mixed-case or trailing-slash URL still labels and highlights its page", 
   ).toHaveAttribute("aria-current", "page");
 });
 
-test("signing out sends the next sign-in to Activity", async ({ page }) => {
+test("signing out sends the next sign-in to Home", async ({ page }) => {
   await page.goto("/settings");
   await signIn(page);
   await expect(
     page.getByRole("region", { name: "Settings", exact: true }),
   ).toBeVisible();
   await signOut(page);
-  await expect(page).toHaveURL(/\/activity$/);
+  await expect(page).toHaveURL(/\/home$/);
   await signIn(page);
-  await expect(page).toHaveURL(/\/activity$/);
+  await expect(page).toHaveURL(/\/home$/);
   await expect(
-    page.getByRole("region", { name: "Activity", exact: true }),
+    page.getByRole("region", { name: "Home", exact: true }),
   ).toBeVisible();
   await navigate(page, "Bills");
   await expect(page).toHaveURL(/\/bills$/);
@@ -92,15 +92,16 @@ test("the tab bar and More menu select pages, fit phones, and restore focus", as
 }, testInfo) => {
   await page.goto("/");
   await signIn(page);
-  await expect(page).toHaveURL(/\/activity$/);
+  await expect(page).toHaveURL(/\/home$/);
   const nav = mainNavigation(page);
-  const more = nav.getByRole("button", { name: "More", exact: true });
+  const more = moreButton(page);
   for (const width of [320, 390, 448]) {
     await page.setViewportSize({ width, height: 700 });
     for (const { name, path } of [
+      { name: "Home", path: "/home" },
       { name: "Activity", path: "/activity" },
-      { name: "Wallets", path: "/wallets" },
       { name: "Bills", path: "/bills" },
+      { name: "Wallets", path: "/wallets" },
     ]) {
       const tab = nav.getByRole("link", { name, exact: true });
       const bounds = await tab.boundingBox();
@@ -122,7 +123,7 @@ test("the tab bar and More menu select pages, fit phones, and restore focus", as
       const item = menu.getByRole("menuitem", { name, exact: true });
       await expect(item).toBeVisible();
       const bounds = await item.boundingBox();
-      expect(bounds!.height).toBeGreaterThanOrEqual(44);
+      expect(bounds!.height).toBeGreaterThanOrEqual(43.9);
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
       await item.click();

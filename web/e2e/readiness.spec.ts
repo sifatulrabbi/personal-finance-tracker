@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { navigate, submitLogin, toast } from "./login";
+import { editTarget, navigate, payBill, submitLogin, toast } from "./login";
 
 test("archived wallets are never silently replaced in transfers or bills", async ({
   page,
@@ -60,6 +60,7 @@ test("archived wallets are never silently replaced in transfers or bills", async
     "PUT",
   );
   await page.reload();
+  await navigate(page, "Activity");
   await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
   // Each test starts on a fresh database, so the record is on the first page.
   await page.getByText(note, { exact: true }).click();
@@ -92,10 +93,7 @@ test("archived wallets are never silently replaced in transfers or bills", async
     page.getByRole("button", { name: "Save bill", exact: true }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
-  await page
-    .getByRole("article", { name: `Due ${billName}` })
-    .getByRole("button", { name: "Confirm payment" })
-    .click();
+  await payBill(page, billName);
   await expect(page.getByLabel("Pay from")).toHaveValue(destination.id);
   await expect(
     page.getByRole("button", { name: "Record payment" }),
@@ -113,17 +111,26 @@ test("saved messages disappear when rate or target has unsaved edits", async ({
   await submitLogin(page);
   await navigate(page, "Settings");
   const rate = page.getByLabel("Default exchange rate (BDT per USD)");
+  await page.getByTestId("rate-row").click();
   await rate.fill("125");
   await page
     .getByRole("button", { name: "Save settings", exact: true })
     .click();
   await expect(toast(page, "Settings saved")).toBeVisible();
+  await expect(page.getByTestId("rate-row")).toContainText("125.00");
+  // Reopening keeps the confirmation; editing the value removes it.
+  await page.getByTestId("rate-row").click();
+  await expect(toast(page, "Settings saved")).toBeVisible();
   await rate.fill("126");
   await expect(toast(page, "Settings saved")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await navigate(page, "Monthly spending");
   const target = page.getByLabel("Monthly target (BDT)");
+  await editTarget(page);
   await target.fill("4000");
   await page.getByRole("button", { name: "Save target", exact: true }).click();
+  await expect(toast(page, "Target saved")).toBeVisible();
+  await editTarget(page);
   await expect(toast(page, "Target saved")).toBeVisible();
   await target.fill("5000");
   await expect(toast(page, "Target saved")).toHaveCount(0);

@@ -1,27 +1,46 @@
-import { useState } from "react";
-import { Plus, CalendarCheck, Repeat } from "lucide-react";
-import type { Bill, Category, Frequency, Schedule, Settings, Wallet } from "@/api/types";
+import { useState, type SyntheticEvent } from "react";
+import { cn } from "cn";
 import {
+  CalendarCheck,
+  CalendarClock,
+  CalendarX,
+  CircleCheck,
+  Ellipsis,
+  Plus,
+  Repeat,
+  SkipForward,
+} from "lucide-react";
+import type {
+  Bill,
+  Category,
+  Frequency,
+  Schedule,
+  Settings,
+  UpcomingBill,
+  Wallet,
+} from "@/api/types";
+import {
+  upcomingDays,
+  useBillHistory,
   useCategories,
   useDueBills,
   useSchedules,
   useSettings,
+  useUpcomingBills,
   useWallets,
 } from "@/cache/queries";
 import { useWrites } from "@/cache/writes";
-import { dhakaDate } from "@/lib/dates";
+import { daysBetween, dhakaDate, dueLabel, fullDate, shortDate } from "@/lib/dates";
 import { moneyLabel } from "@/money/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Choice,
   MoneyField,
@@ -52,8 +71,13 @@ type Editor =
   | { type: "edit"; schedule: Schedule }
   | { type: "pay" | "skip"; bill: Bill };
 
+// Upcoming bills this close to today are listed under "Due soon"; later ones under
+// "Upcoming".
+const soonDays = 7;
+
 export function Bills() {
   const due = useDueBills();
+  const upcoming = useUpcomingBills();
   const schedulesQuery = useSchedules();
   const walletsQuery = useWallets();
   const categoriesQuery = useCategories();
@@ -65,6 +89,19 @@ export function Bills() {
   const writes = useWrites();
   const ready = Boolean(walletsQuery.data && categoriesQuery.data && settingsQuery.data);
   const value = editor.value;
+  // Due dates are Asia/Dhaka calendar dates from the server; today is the Dhaka date too.
+  const today = dhakaDate();
+  const overdue = bills.filter((bill) => bill.due_date < today);
+  const dueToday = bills.filter((bill) => bill.due_date >= today);
+  const future = upcoming.data ?? [];
+  const soon = future.filter((bill) => daysBetween(today, bill.due_date) <= soonDays);
+  const later = future.filter((bill) => daysBetween(today, bill.due_date) > soonDays);
+  const walletFor = (id: string) => wallets.find((w) => w.id === id);
+  const openPay = (bill: Bill, event: SyntheticEvent<HTMLElement>) =>
+    editor.open({ type: "pay", bill }, event);
+  const openSkip = (bill: Bill, event?: SyntheticEvent<HTMLElement>) =>
+    editor.open({ type: "skip", bill }, event);
+  const nothingAhead = due.data && upcoming.data && !bills.length && !future.length;
   return (
     <>
       <PageIntro
@@ -81,129 +118,158 @@ export function Bills() {
           </Button>
         }
       />
-      <Section
-        title={
-          <>
-            Due now <Badge variant={bills.length ? "warning" : "secondary"}>{bills.length}</Badge>
-          </>
-        }
-      >
       <LoadError
         error={due.error}
         hasData={Boolean(due.data)}
         onRetry={() => void due.refetch()}
         what="due bills"
       />
-      {due.isPending ? <Skeleton className="h-36 w-full rounded-xl" /> : null}
-      {due.data && !bills.length ? (
+      <LoadError
+        error={upcoming.error}
+        hasData={Boolean(upcoming.data)}
+        onRetry={() => void upcoming.refetch()}
+        what="upcoming bills"
+      />
+      {due.isPending ? <ListSkeleton rows={3} /> : null}
+      {nothingAhead ? (
         <EmptyState
           icon={<CalendarCheck />}
           title="Nothing due"
-          description="Your unpaid bills appear here when their due date arrives."
+          description={`No unpaid bills, and none due in the next ${upcomingDays} days.`}
         />
       ) : null}
-      {bills.map((bill) => {
-        const wallet = wallets.find((w) => w.id === bill.wallet_id);
-        return (
-          <Card key={bill.id} role="article" aria-label={`Due ${bill.name}`}>
-            <CardHeader>
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <CardTitle className="break-words">{bill.name}</CardTitle>
-                  <CardDescription>
-                    Due {bill.due_date} · {wallet?.name}
-                  </CardDescription>
-                </div>
-                <Money
-                  className="text-heading"
-                  amount={bill.amount}
-                  currency={wallet?.currency ?? "BDT"}
+      {overdue.length ? (
+        <section aria-label="Overdue" className="min-w-0">
+          <Section
+            title={
+              <>
+                Overdue <Badge variant="warning">{overdue.length}</Badge>
+              </>
+            }
+          >
+            <List>
+              {overdue.map((bill) => (
+                <DueRow
+                  key={bill.id}
+                  bill={bill}
+                  today={today}
+                  wallet={walletFor(bill.wallet_id)}
+                  ready={ready}
+                  onPay={openPay}
+                  onSkip={openSkip}
                 />
-              </div>
-            </CardHeader>
-            {bill.note ? (
-              <CardContent>
-                <p className="break-words text-sm text-muted-foreground">{bill.note}</p>
-              </CardContent>
-            ) : null}
-            <CardFooter className="flex gap-2">
-              <Button
-                className="flex-1 sm:flex-none"
-                variant="outline"
-                size="sm"
-                disabled={!ready}
-                onClick={(e) => editor.open({ type: "pay", bill }, e)}
-              >
-                Confirm payment
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground"
-                onClick={(e) => editor.open({ type: "skip", bill }, e)}
-              >
-                Skip
-              </Button>
-            </CardFooter>
-          </Card>
-        );
-      })}
-      </Section>
-      <Section title="Your schedules">
-      <LoadError
-        error={schedulesQuery.error}
-        hasData={Boolean(schedulesQuery.data)}
-        onRetry={() => void schedulesQuery.refetch()}
-        what="schedules"
-      />
-      {schedulesQuery.isPending ? <ListSkeleton rows={2} /> : null}
-      {schedulesQuery.data && !schedules.length ? (
-        <p className="text-sm text-muted-foreground">
-          Add rent, Wi-Fi, or another regular bill.
-        </p>
+              ))}
+            </List>
+          </Section>
+        </section>
       ) : null}
-      {schedules.length ? (
-        <List>
-          {schedules.map((schedule) => (
-            <ListRow
-              key={schedule.id}
-              leading={
-                <RowIcon>
-                  <Repeat />
-                </RowIcon>
-              }
-              title={schedule.name}
-              subtitle={
-                <>
-                  <span className="capitalize">{schedule.frequency}</span> ·{" "}
-                  {moneyLabel(
-                    schedule.amount,
-                    wallets.find((w) => w.id === schedule.wallet_id)?.currency ?? "BDT",
-                  )}
-                  {!schedule.active ? (
+      {dueToday.length || soon.length ? (
+        <section aria-label="Due soon" className="min-w-0">
+          <Section title="Due soon">
+            <List>
+              {dueToday.map((bill) => (
+                <DueRow
+                  key={bill.id}
+                  bill={bill}
+                  today={today}
+                  wallet={walletFor(bill.wallet_id)}
+                  ready={ready}
+                  onPay={openPay}
+                  onSkip={openSkip}
+                />
+              ))}
+              {soon.map((bill) => (
+                <UpcomingRow
+                  key={`${bill.schedule_id}-${bill.due_date}`}
+                  bill={bill}
+                  today={today}
+                  wallet={walletFor(bill.wallet_id)}
+                />
+              ))}
+            </List>
+          </Section>
+        </section>
+      ) : null}
+      {later.length ? (
+        <section aria-label="Upcoming" className="min-w-0">
+          <Section title="Upcoming">
+            <List>
+              {later.map((bill) => (
+                <UpcomingRow
+                  key={`${bill.schedule_id}-${bill.due_date}`}
+                  bill={bill}
+                  today={today}
+                  wallet={walletFor(bill.wallet_id)}
+                />
+              ))}
+            </List>
+            <p className="text-caption font-normal text-muted-foreground">
+              Bills appear here up to {upcomingDays} days ahead. You can pay one once it is due.
+            </p>
+          </Section>
+        </section>
+      ) : null}
+      <BillHistory wallets={wallets} />
+      <section aria-label="Your schedules" className="min-w-0">
+        <Section title="Your schedules">
+          <LoadError
+            error={schedulesQuery.error}
+            hasData={Boolean(schedulesQuery.data)}
+            onRetry={() => void schedulesQuery.refetch()}
+            what="schedules"
+          />
+          {schedulesQuery.isPending ? <ListSkeleton rows={2} /> : null}
+          {schedulesQuery.data && !schedules.length ? (
+            <p className="text-sm text-muted-foreground">
+              Add rent, Wi-Fi, or another regular bill.
+            </p>
+          ) : null}
+          {schedules.length ? (
+            <List>
+              {schedules.map((schedule) => (
+                <ListRow
+                  key={schedule.id}
+                  data-testid="schedule-row"
+                  className={schedule.active ? undefined : "opacity-75"}
+                  leading={
+                    <RowIcon>
+                      <Repeat />
+                    </RowIcon>
+                  }
+                  title={
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="min-w-0 break-words">{schedule.name}</span>
+                      {!schedule.active ? <Badge variant="outline">Paused</Badge> : null}
+                    </span>
+                  }
+                  subtitle={
                     <>
-                      {" "}
-                      <Badge variant="outline">Inactive</Badge>
+                      <span className="capitalize">{schedule.frequency}</span> ·{" "}
+                      {moneyLabel(
+                        schedule.amount,
+                        walletFor(schedule.wallet_id)?.currency ?? "BDT",
+                      )}
+                      {nextDue(schedule, bills, future, today)}
                     </>
-                  ) : null}
-                </>
-              }
-              trailing={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`Edit ${schedule.name}`}
-                  disabled={!ready}
-                  onClick={(e) => editor.open({ type: "edit", schedule }, e)}
-                >
-                  Edit
-                </Button>
-              }
-            />
-          ))}
-        </List>
-      ) : null}
-      </Section>
+                  }
+                  trailing={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-primary"
+                      aria-label={`Edit ${schedule.name}`}
+                      disabled={!ready}
+                      onClick={(e) => editor.open({ type: "edit", schedule }, e)}
+                    >
+                      Edit
+                    </Button>
+                  }
+                />
+              ))}
+            </List>
+          ) : null}
+        </Section>
+      </section>
       <Modal
         open={editor.isOpen}
         onClose={editor.close}
@@ -244,11 +310,218 @@ export function Bills() {
             body={(form) => ({ reason: form.text("reason") })}
             send={(body, key) => writes.skipBill(value.bill.id, body, { key })}
           >
+            <p className="text-sm text-muted-foreground">
+              {value.bill.name}, due {fullDate(value.bill.due_date)},{" "}
+              {moneyLabel(value.bill.amount, walletFor(value.bill.wallet_id)?.currency ?? "BDT")}.
+            </p>
             <Notes label="Reason" name="reason" required />
           </SaveForm>
         ) : null}
       </Modal>
     </>
+  );
+}
+
+function nextDue(schedule: Schedule, due: Bill[], future: UpcomingBill[], today: string) {
+  if (!schedule.active) return " · no new bills while paused";
+  if (due.some((bill) => bill.schedule_id === schedule.id)) return " · due now";
+  const next = future.find((bill) => bill.schedule_id === schedule.id);
+  return next ? ` · next ${shortDate(next.due_date, today)}` : "";
+}
+
+// An unpaid occurrence: how late it is, what it costs, and Pay. Skip is in its menu.
+function DueRow({
+  bill,
+  today,
+  wallet,
+  ready,
+  onPay,
+  onSkip,
+}: {
+  bill: Bill;
+  today: string;
+  wallet: Wallet | undefined;
+  ready: boolean;
+  onPay: (bill: Bill, event: SyntheticEvent<HTMLElement>) => void;
+  onSkip: (bill: Bill, event?: SyntheticEvent<HTMLElement>) => void;
+}) {
+  const label = dueLabel(bill.due_date, today);
+  const [menuTrigger, setMenuTrigger] = useState<HTMLElement | null>(null);
+  return (
+    <div
+      role="article"
+      aria-label={`Due ${bill.name}`}
+      className="flex min-h-16 min-w-0 items-center gap-3 px-4 py-3"
+    >
+      <div className="shrink-0 max-[379px]:hidden">
+        <RowIcon tone={label.tone === "overdue" ? "warning" : "primary"}>
+          {label.tone === "overdue" ? <CalendarX /> : <CalendarClock />}
+        </RowIcon>
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <p className="min-w-0 break-words font-medium">{bill.name}</p>
+        <p className="min-w-0 break-words text-label font-normal text-muted-foreground">
+          <span
+            data-testid="due-label"
+            className={cn(label.tone === "overdue" && "font-medium text-warning")}
+          >
+            {label.text}
+          </span>
+          {wallet ? ` · ${wallet.name}` : ""}
+        </p>
+        {bill.note ? (
+          <p className="min-w-0 truncate text-caption font-normal text-muted-foreground">
+            {bill.note}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <Money className="font-semibold" amount={bill.amount} currency={wallet?.currency ?? "BDT"} />
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+           
+            disabled={!ready}
+            onClick={(event) => onPay(bill, event)}
+          >
+            Pay
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                ref={setMenuTrigger}
+                size="icon"
+                variant="ghost"
+                className="-mr-2 text-muted-foreground"
+                aria-label={`More actions for ${bill.name}`}
+              >
+                <Ellipsis />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="data-[state=closed]:animate-none">
+              <DropdownMenuItem
+                // Focus returns to the menu button once the skip sheet closes.
+                onSelect={() => {
+                  if (menuTrigger) menuTrigger.focus();
+                  onSkip(bill);
+                }}
+              >
+                <SkipForward aria-hidden />
+                Skip this bill
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A future occurrence. It has no id until it comes due, so it cannot be paid yet.
+function UpcomingRow({
+  bill,
+  today,
+  wallet,
+}: {
+  bill: UpcomingBill;
+  today: string;
+  wallet: Wallet | undefined;
+}) {
+  const label = dueLabel(bill.due_date, today);
+  return (
+    <ListRow
+      data-testid="upcoming-row"
+      leading={
+        <RowIcon>
+          <CalendarClock />
+        </RowIcon>
+      }
+      title={bill.name}
+      subtitle={`${label.text} · ${shortDate(bill.due_date, today)}${wallet ? ` · ${wallet.name}` : ""}`}
+      trailing={
+        <Money
+          className="font-medium text-muted-foreground"
+          amount={bill.amount}
+          currency={wallet?.currency ?? "BDT"}
+        />
+      }
+    />
+  );
+}
+
+// Paid and skipped bills, newest first. Loaded only once the section is looked at.
+function BillHistory({ wallets }: { wallets: Wallet[] }) {
+  const [status, setStatus] = useState<"paid" | "skipped">("paid");
+  const history = useBillHistory(status);
+  const rows = history.data?.pages.flat() ?? [];
+  return (
+    <section aria-label="History" className="min-w-0">
+      <Section
+        title="History"
+        action={
+          <ToggleGroup
+            type="single"
+            aria-label="Show bills"
+            className="w-56 max-w-full"
+            value={status}
+            onValueChange={(next) => next && setStatus(next as "paid" | "skipped")}
+          >
+            <ToggleGroupItem value="paid">Paid</ToggleGroupItem>
+            <ToggleGroupItem value="skipped">Skipped</ToggleGroupItem>
+          </ToggleGroup>
+        }
+      >
+        <LoadError
+          error={history.error}
+          hasData={Boolean(history.data)}
+          onRetry={() => void history.refetch()}
+          what="bill history"
+        />
+        {history.isPending ? <ListSkeleton rows={2} /> : null}
+        {history.data && !rows.length ? (
+          <p className="text-sm text-muted-foreground">
+            {status === "paid" ? "No paid bills yet." : "No skipped bills."}
+          </p>
+        ) : null}
+        {rows.length ? (
+          <List data-testid="bill-history">
+            {rows.map((bill) => {
+              const currency = wallets.find((w) => w.id === bill.wallet_id)?.currency ?? "BDT";
+              return (
+                <ListRow
+                  key={bill.id}
+                  leading={
+                    <RowIcon tone={status === "paid" ? "income" : "neutral"}>
+                      {status === "paid" ? <CircleCheck /> : <SkipForward />}
+                    </RowIcon>
+                  }
+                  title={bill.name}
+                  subtitle={`${status === "paid" ? "Paid" : "Skipped"} · due ${fullDate(bill.due_date)}`}
+                  trailing={
+                    <Money
+                      className={cn("font-medium", status === "skipped" && "text-muted-foreground")}
+                      amount={bill.amount}
+                      currency={currency}
+                    />
+                  }
+                />
+              );
+            })}
+          </List>
+        ) : null}
+        {history.hasNextPage ? (
+          <Button
+            variant="outline"
+            className="self-center"
+            disabled={history.isFetchingNextPage}
+            onClick={() => void history.fetchNextPage()}
+          >
+            {history.isFetchingNextPage ? "Loading…" : "Show older bills"}
+          </Button>
+        ) : null}
+      </Section>
+    </section>
   );
 }
 
@@ -387,7 +660,7 @@ function ScheduleForm({
           defaultValue={initial.active ? "active" : "inactive"}
           options={[
             { value: "active", label: "Active" },
-            { value: "inactive", label: "Inactive" },
+            { value: "inactive", label: "Paused (no new bills)" },
           ]}
         />
       ) : null}

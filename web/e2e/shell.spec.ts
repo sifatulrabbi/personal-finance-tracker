@@ -21,16 +21,17 @@ function background(page: Page) {
 test("the tab bar marks the current page on every tab", async ({ page }) => {
   await signedIn(page);
   const nav = mainNavigation(page);
-  await expect(nav.getByRole("link")).toHaveText(["Activity", "Wallets", "Bills"]);
-  await expect(nav.getByRole("button")).toHaveText(["", "More"]);
-  for (const name of ["Wallets", "Bills", "Activity"]) {
+  await expect(nav.getByRole("link")).toHaveText(["Home", "Activity", "Bills", "Wallets"]);
+  await expect(nav.getByRole("button")).toHaveText([""]);
+  await expect(nav.getByRole("button")).toHaveAccessibleName("Add record");
+  for (const name of ["Wallets", "Bills", "Activity", "Home"]) {
     await nav.getByRole("link", { name, exact: true }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
     await expect(nav.getByRole("link", { name, exact: true })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    for (const other of ["Activity", "Wallets", "Bills"].filter((n) => n !== name))
+    for (const other of ["Home", "Activity", "Wallets", "Bills"].filter((n) => n !== name))
       await expect(nav.getByRole("link", { name: other, exact: true })).not.toHaveAttribute(
         "aria-current",
       );
@@ -145,7 +146,7 @@ test("no page scrolls sideways on a 320px phone", async ({ page }) => {
     opening_balance: "123456789.99",
   });
   await page.reload();
-  for (const name of ["Activity", "Wallets", "Bills", "Monthly spending", "Settings"]) {
+  for (const name of ["Home", "Activity", "Wallets", "Bills", "Monthly spending", "Settings"]) {
     await navigate(page, name);
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
@@ -183,15 +184,16 @@ test("wide screens get a sidebar with the same destinations and a centered dialo
   // Exactly one main navigation is exposed: the sidebar, not the tab bar.
   await expect(nav).toHaveCount(1);
   await expect(nav.getByRole("link")).toHaveText([
+    "Home",
     "Activity",
-    "Wallets",
     "Bills",
+    "Wallets",
     "Monthly spending",
     "Settings",
   ]);
   const bounds = (await nav.boundingBox())!;
   expect(bounds.x).toBeLessThan(300);
-  await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "More", exact: true })).toBeHidden();
   for (const name of ["Monthly spending", "Settings", "Wallets"]) {
     await nav.getByRole("link", { name, exact: true }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
