@@ -44,36 +44,46 @@ type PaymentInput struct {
 	Rate     string `json:"rate"`
 }
 
-func validateSchedule(tx *sql.Tx, in ScheduleInput) error {
+// validateSchedule checks a new schedule (previous == nil) or an update to previous. An archived
+// wallet is accepted only when an update keeps the wallet and does not turn the schedule back on,
+// so a schedule on a closed account can still be edited or paused but never newly bills it.
+func validateSchedule(tx *sql.Tx, in ScheduleInput, active bool, previous *Schedule) error {
 	if _, e := categoryID(tx, "expense", in.CategoryID); e != nil {
 		return e
 	}
-	if strings.TrimSpace(in.Name) == "" || len(in.Name) > 120 || len(in.Note) > 2000 {
-		return ErrInvalid
+	if strings.TrimSpace(in.Name) == "" || len(in.Name) > 120 {
+		return invalid("name", "Enter a name of at most 120 bytes.")
+	}
+	if len(in.Note) > 2000 {
+		return invalid("note", "Keep the note to at most 2,000 bytes.")
+	}
+	if in.Frequency != "weekly" && in.Frequency != "monthly" && in.Frequency != "yearly" {
+		return invalid("frequency", "Choose weekly, monthly, or yearly.")
 	}
 	if _, e := OccurrenceDate(in.StartDate, in.Frequency, 0); e != nil {
-		return e
+		return invalid("start_date", "Enter a start date as YYYY-MM-DD.")
 	}
 	if in.EndDate != "" && (!validDate(in.EndDate) || in.EndDate < in.StartDate) {
-		return ErrInvalid
+		return invalid("end_date", "Enter an end date as YYYY-MM-DD, on or after the start date.")
 	}
 	n, e := ParseMoney(in.Amount)
 	if e != nil || n <= 0 {
-		return ErrInvalid
+		return invalid("amount", "Enter a positive amount with at most two decimal places.")
 	}
 	w, e := wallet(tx, in.WalletID)
 	if e != nil {
-		return e
+		return walletNotFound("wallet_id", e)
 	}
-	if w.Archived {
-		return ErrInvalid
+	kept := previous != nil && previous.WalletID == in.WalletID && (previous.Active || !active)
+	if w.Archived && !kept {
+		return archived("wallet_id", "This wallet is archived. Choose an active wallet for this bill.")
 	}
 	return nil
 }
 func (s *Store) CreateSchedule(ctx context.Context, actor, key string, in ScheduleInput) (Schedule, error) {
 	return write(ctx, s, actor, key, "schedule.create", in, func(tx *sql.Tx) (Schedule, error) {
 		out := Schedule{ScheduleInput: in, ID: id(), Version: 1, Active: true}
-		if e := validateSchedule(tx, in); e != nil {
+		if e := validateSchedule(tx, in, true, nil); e != nil {
 			return out, e
 		}
 		out.Amount = FormatMoney(mustMoney(in.Amount))
@@ -203,7 +213,7 @@ func (s *Store) ConfirmBill(ctx context.Context, actor, key, bid string, in Paym
 			return out, e
 		}
 		if b.Status != "due" {
-			return out, ErrConflict
+			return out, ErrAlreadySettled
 		}
 		if in.WalletID == "" {
 			in.WalletID = b.WalletID
@@ -215,10 +225,10 @@ func (s *Store) ConfirmBill(ctx context.Context, actor, key, bid string, in Paym
 			}
 			actual, err := wallet(tx, in.WalletID)
 			if err != nil {
-				return out, err
+				return out, walletNotFound("wallet_id", err)
 			}
 			if expected.Currency != actual.Currency {
-				return out, ErrInvalid
+				return out, invalid("amount", "Enter the amount paid; the payment wallet uses a different currency from the bill.")
 			}
 			in.Amount = b.Amount
 		}
@@ -256,12 +266,15 @@ func (s *Store) UpdateSchedule(ctx context.Context, actor, key string, in Schedu
 			return in, ErrNotFound
 		}
 		if old.Version != in.Version {
-			return in, ErrConflict
+			return in, ErrStaleVersion
 		}
-		if in.StartDate != old.StartDate || in.Frequency != old.Frequency {
-			return in, ErrInvalid
+		if in.StartDate != old.StartDate {
+			return in, invalid("start_date", "A schedule's start date cannot change.")
 		}
-		if e = validateSchedule(tx, in.ScheduleInput); e != nil {
+		if in.Frequency != old.Frequency {
+			return in, invalid("frequency", "A schedule's frequency cannot change.")
+		}
+		if e = validateSchedule(tx, in.ScheduleInput, in.Active, &old); e != nil {
 			return in, e
 		}
 		in.Amount = FormatMoney(mustMoney(in.Amount))
@@ -284,10 +297,10 @@ func (s *Store) SkipBill(ctx context.Context, actor, key, bid, reason string) (B
 			return b, e
 		}
 		if b.Status != "due" {
-			return b, ErrConflict
+			return b, ErrAlreadySettled
 		}
 		if strings.TrimSpace(reason) == "" || len(reason) > 500 {
-			return b, ErrInvalid
+			return b, invalid("reason", "Enter a reason of at most 500 bytes.")
 		}
 		old := b
 		b.Status = "skipped"

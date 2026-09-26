@@ -178,7 +178,7 @@ func (s *Store) EnsureUser(ctx context.Context, email, name string) (User, error
 func write[T any](ctx context.Context, s *Store, actor, key, operation string, input any, fn func(*sql.Tx) (T, error)) (T, error) {
 	var zero T
 	if len(key) < 1 || len(key) > 128 {
-		return zero, ErrInvalid
+		return zero, invalid("", "Send an Idempotency-Key header of 1 to 128 characters.")
 	}
 	raw, e := json.Marshal(input)
 	if e != nil {
@@ -195,7 +195,7 @@ func write[T any](ctx context.Context, s *Store, actor, key, operation string, i
 	e = tx.QueryRowContext(ctx, `SELECT fingerprint,response FROM request_keys WHERE actor_id=? AND key=?`, actor, key).Scan(&prior, &body)
 	if e == nil {
 		if prior != fingerprint {
-			return zero, ErrConflict
+			return zero, ErrIdempotencyKeyReused
 		}
 		var out T
 		e = json.Unmarshal([]byte(body), &out)
@@ -242,41 +242,41 @@ func (s *Store) audit(tx *sql.Tx, actor, entity, action string, before, after an
 func (s *Store) CreateWallet(ctx context.Context, actor, key string, in WalletInput) (Wallet, error) {
 	return write(ctx, s, actor, key, "wallet.create", in, func(tx *sql.Tx) (Wallet, error) {
 		var zero Wallet
-		if strings.TrimSpace(in.Name) == "" || len(in.Name) > 120 || len(in.Details) > 2000 {
-			return zero, ErrInvalid
+		if e := validWalletText(in.Name, in.Details); e != nil {
+			return zero, e
 		}
 		if in.Currency == "" {
 			in.Currency = "BDT"
 		}
 		if in.Currency != "BDT" && in.Currency != "USD" {
-			return zero, ErrInvalid
+			return zero, invalid("currency", "Choose BDT or USD.")
 		}
 		if in.Type != "physical" && in.Type != "bank" && in.Type != "digital" && in.Type != "card" {
-			return zero, ErrInvalid
+			return zero, invalid("type", "Choose physical, bank, digital, or card.")
 		}
 		if in.Type == "card" {
 			if in.CardType != "credit" && in.CardType != "debit" {
-				return zero, ErrInvalid
+				return zero, invalid("card_type", "Choose credit or debit for a card.")
 			}
 		} else if in.CardType != "" {
-			return zero, ErrInvalid
+			return zero, invalid("card_type", "Only card wallets have a card type.")
 		}
 		opening, limit := int64(0), int64(0)
 		var e error
 		if in.OpeningBalance != "" {
 			opening, e = ParseMoney(in.OpeningBalance)
 			if e != nil {
-				return zero, e
+				return zero, invalid("opening_balance", "Enter an opening balance with at most two decimal places.")
 			}
 		}
 		if in.CreditLimit != "" {
 			limit, e = ParseMoney(in.CreditLimit)
 			if e != nil || limit < 0 {
-				return zero, ErrInvalid
+				return zero, invalid("credit_limit", "Enter a credit limit of zero or more, with at most two decimal places.")
 			}
 		}
 		if in.CardType != "credit" && limit != 0 {
-			return zero, ErrInvalid
+			return zero, invalid("credit_limit", "Only credit cards have a credit limit.")
 		}
 		wid := id()
 		_, e = tx.Exec(`INSERT INTO wallets(id,name,type,card_type,currency,details,credit_limit) VALUES(?,?,?,?,?,?,?)`, wid, in.Name, in.Type, in.CardType, in.Currency, in.Details, limit)
@@ -304,6 +304,16 @@ func (s *Store) CreateWallet(ctx context.Context, actor, key string, in WalletIn
 		}
 		return w, s.audit(tx, actor, wid, "create", nil, w)
 	})
+}
+
+func validWalletText(name, details string) error {
+	if strings.TrimSpace(name) == "" || len(name) > 120 {
+		return invalid("name", "Enter a name of at most 120 bytes.")
+	}
+	if len(details) > 2000 {
+		return invalid("details", "Keep the details to at most 2,000 bytes.")
+	}
+	return nil
 }
 
 type querier interface {

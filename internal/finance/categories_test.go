@@ -1,6 +1,7 @@
 package finance_test
 
 import (
+	"errors"
 	"fmt"
 	"simply-finance/internal/finance"
 	"sync"
@@ -26,7 +27,7 @@ func TestConcurrentCategoryCreationKeepsOneExactName(t *testing.T) {
 	for e := range results {
 		if e == nil {
 			successes++
-		} else if e != finance.ErrConflict {
+		} else if !errors.Is(e, finance.ErrDuplicateName) {
 			t.Fatal(e)
 		}
 	}
@@ -38,7 +39,7 @@ func TestConcurrentCategoryCreationKeepsOneExactName(t *testing.T) {
 		t.Fatalf("separate type: %+v %v", c, e)
 	}
 	for i, name := range []string{"", "   "} {
-		if _, e = s.CreateCategory(ctx, u.ID, fmt.Sprint("invalid-", i), finance.CategoryInput{Name: name, Type: "expense"}); e != finance.ErrInvalid {
+		if _, e = s.CreateCategory(ctx, u.ID, fmt.Sprint("invalid-", i), finance.CategoryInput{Name: name, Type: "expense"}); !errors.Is(e, finance.ErrInvalid) {
 			t.Fatalf("empty name: %v", e)
 		}
 	}
@@ -70,6 +71,39 @@ func TestBillKeepsCategoryFromOccurrence(t *testing.T) {
 	}
 }
 
+// Regression (C3): a correction that omits category_id keeps the prior category, like rate;
+// moving a record to Others takes an explicit Others ID.
+func TestCorrectionWithoutCategoryKeepsPriorCategory(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	groceries, e := s.CreateCategory(ctx, u.ID, "groceries", finance.CategoryInput{Name: "Test pet care", Type: "expense"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	w := createWallet(t, s, u, "Cash", "BDT", "", "1000")
+	r, e := s.CreateTransaction(ctx, u.ID, "expense", finance.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "100", Date: "2026-09-14", CategoryID: groceries.ID})
+	if e != nil {
+		t.Fatal(e)
+	}
+	r, e = s.ReviseTransaction(ctx, u.ID, "amount", r.ID, 1, finance.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "120", Date: "2026-09-14"}, false)
+	if e != nil || r.CategoryID != groceries.ID {
+		t.Fatalf("omitted category: %+v %v", r, e)
+	}
+	month, e := s.Monthly(ctx, "2026-09")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, c := range month.Categories {
+		if c.CategoryID == groceries.ID && c.Spent != "120.00" {
+			t.Fatalf("monthly moved spending: %+v", month.Categories)
+		}
+	}
+	r, e = s.ReviseTransaction(ctx, u.ID, "others", r.ID, 2, finance.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "120", Date: "2026-09-14", CategoryID: "others-expense"}, false)
+	if e != nil || r.CategoryID != "others-expense" {
+		t.Fatalf("explicit others: %+v %v", r, e)
+	}
+}
+
 func TestCategoriesKeepNamesAndEnforceTransactionType(t *testing.T) {
 	s := openStore(t)
 	u := user(t, s)
@@ -92,7 +126,7 @@ func TestCategoriesKeepNamesAndEnforceTransactionType(t *testing.T) {
 		t.Fatalf("category: %+v %v", r, e)
 	}
 	in.Kind = "income"
-	if _, e = s.CreateTransaction(ctx, u.ID, "wrong-type", in); e != finance.ErrInvalid {
+	if _, e = s.CreateTransaction(ctx, u.ID, "wrong-type", in); !errors.Is(e, finance.ErrInvalid) {
 		t.Fatalf("wrong type: %v", e)
 	}
 	in.CategoryID = ""
@@ -102,7 +136,7 @@ func TestCategoriesKeepNamesAndEnforceTransactionType(t *testing.T) {
 	}
 	in.Kind = "transfer"
 	in.CategoryID = c.ID
-	if _, e = s.CreateTransaction(ctx, u.ID, "transfer", in); e != finance.ErrInvalid {
+	if _, e = s.CreateTransaction(ctx, u.ID, "transfer", in); !errors.Is(e, finance.ErrInvalid) {
 		t.Fatalf("transfer: %v", e)
 	}
 }

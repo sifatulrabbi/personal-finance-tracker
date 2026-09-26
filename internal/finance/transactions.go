@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 )
@@ -35,6 +36,15 @@ type effect struct {
 	delta    int64
 }
 
+func validPage(limit, offset int) error {
+	if limit < 1 || limit > 200 {
+		return invalid("limit", "Use a limit from 1 to 200.")
+	}
+	if offset < 0 {
+		return invalid("offset", "Use an offset of zero or more.")
+	}
+	return nil
+}
 func validDate(date string) bool {
 	d, e := time.Parse("2006-01-02", date)
 	return e == nil && d.Year() >= 1900 && d.Year() <= 9999
@@ -47,6 +57,9 @@ func (s *Store) createTransaction(tx *sql.Tx, actor string, in TransactionInput)
 	if e != nil {
 		return Transaction{}, e
 	}
+	if e = keepArchivedBalances(tx, in, nil, effects, "This wallet is archived. Choose an active wallet."); e != nil {
+		return Transaction{}, e
+	}
 	r.ID = id()
 	r.Version = 1
 	if _, e = tx.Exec(`INSERT INTO transactions(id,version) VALUES(?,1)`, r.ID); e != nil {
@@ -56,50 +69,61 @@ func (s *Store) createTransaction(tx *sql.Tx, actor string, in TransactionInput)
 }
 func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect, error) {
 	r := Transaction{TransactionInput: in}
+	if in.Kind != "income" && in.Kind != "expense" && in.Kind != "transfer" {
+		return r, nil, invalid("kind", "Choose income, expense, or transfer.")
+	}
 	cid, err := categoryID(tx, in.Kind, in.CategoryID)
 	if err != nil {
 		return r, nil, err
 	}
 	r.CategoryID = cid
-	if !validDate(in.Date) || len(in.Note) > 2000 || len(in.Reason) > 500 {
-		return r, nil, ErrInvalid
+	if !validDate(in.Date) {
+		return r, nil, invalid("date", "Enter a date as YYYY-MM-DD.")
 	}
-	if in.Kind != "income" && in.Kind != "expense" && in.Kind != "transfer" {
-		return r, nil, ErrInvalid
+	if len(in.Note) > 2000 {
+		return r, nil, invalid("note", "Keep the note to at most 2,000 bytes.")
+	}
+	if len(in.Reason) > 500 {
+		return r, nil, invalid("reason", "Keep the reason to at most 500 bytes.")
 	}
 	w, e := wallet(tx, in.WalletID)
 	if e != nil {
-		return r, nil, e
-	}
-	if w.Archived {
-		return r, nil, ErrInvalid
+		return r, nil, walletNotFound("wallet_id", e)
 	}
 	amount, e := ParseMoney(in.Amount)
 	if e != nil || amount <= 0 {
-		return r, nil, ErrInvalid
+		return r, nil, invalid("amount", "Enter a positive amount with at most two decimal places.")
 	}
 	r.Amount = FormatMoney(amount)
-	rate := int64(0)
-	needsRate := w.Currency == "USD"
+	var to Wallet
 	if in.Kind == "transfer" {
-		to, e := wallet(tx, in.ToWalletID)
-		if e != nil {
-			return r, nil, e
+		if in.ToWalletID == w.ID {
+			return r, nil, invalid("to_wallet_id", "Choose a different wallet to transfer to.")
 		}
-		needsRate = needsRate || to.Currency == "USD"
+		if to, e = wallet(tx, in.ToWalletID); e != nil {
+			return r, nil, walletNotFound("to_wallet_id", e)
+		}
+	} else if in.ToWalletID != "" {
+		return r, nil, invalid("to_wallet_id", "Only transfers have a destination wallet.")
+	} else if in.ReceivedAmount != "" {
+		return r, nil, invalid("received_amount", "Only transfers have a received amount.")
 	}
+	rate := int64(0)
+	needsRate := w.Currency == "USD" || to.Currency == "USD"
 	if in.Rate != "" {
 		rate, e = ParseRate(in.Rate)
 		if e != nil {
-			return r, nil, e
+			return r, nil, invalid("rate", "Enter a positive rate with at most six decimal places.")
 		}
 	} else if needsRate {
 		set, e := settings(tx)
 		if e != nil {
 			return r, nil, e
 		}
-		rate, e = ParseRate(set.Rate)
-		if e != nil {
+		if set.Rate == "" {
+			return r, nil, ErrRateRequired
+		}
+		if rate, e = ParseRate(set.Rate); e != nil {
 			return r, nil, e
 		}
 	}
@@ -110,47 +134,72 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 	if w.Currency == "USD" {
 		bdt, e = Convert(amount, rate, "USD")
 		if e != nil {
-			return r, nil, e
+			return r, nil, invalid("amount", "This amount is larger than the supported limit at this rate.")
 		}
 	}
 	r.BDTAmount = FormatMoney(bdt)
 	if in.Kind == "transfer" {
-		if in.ToWalletID == w.ID {
-			return r, nil, ErrInvalid
-		}
-		to, e := wallet(tx, in.ToWalletID)
-		if e != nil {
-			return r, nil, e
-		}
-		if to.Archived {
-			return r, nil, ErrInvalid
-		}
 		received := amount
 		if in.ReceivedAmount != "" {
 			received, e = ParseMoney(in.ReceivedAmount)
 			if e != nil || received <= 0 {
-				return r, nil, ErrInvalid
+				return r, nil, invalid("received_amount", "Enter a positive received amount with at most two decimal places.")
 			}
 		} else if to.Currency != w.Currency {
 			received, e = Convert(amount, rate, w.Currency)
 			if e != nil || received <= 0 {
-				return r, nil, ErrInvalid
+				return r, nil, invalid("received_amount", "Enter the received amount; it cannot be derived from this amount and rate.")
 			}
 		}
 		if to.Currency == w.Currency && received != amount {
-			return r, nil, ErrInvalid
+			return r, nil, invalid("received_amount", "A transfer between wallets of the same currency must receive the amount sent.")
 		}
 		r.ReceivedAmount = FormatMoney(received)
 		return r, []effect{{w.ID, -amount}, {to.ID, received}}, nil
-	}
-	if in.ToWalletID != "" || in.ReceivedAmount != "" {
-		return r, nil, ErrInvalid
 	}
 	delta := amount
 	if in.Kind == "expense" {
 		delta = -amount
 	}
 	return r, []effect{{w.ID, delta}}, nil
+}
+
+// keepArchivedBalances rejects a change that would move the balance of an archived wallet the
+// record names. A new record may not use an archived wallet at all; a correction may keep one when
+// its balance stays the same (note, date, category, or a USD rate that only changes the BDT value).
+// Moving a record off an archived wallet is allowed: like void, it is an explicit repair that takes
+// the record away from the closed account, and the corrected record no longer names that wallet.
+func keepArchivedBalances(tx *sql.Tx, in TransactionInput, before, after []effect, message string) error {
+	net := map[string]int64{}
+	for _, ef := range after {
+		net[ef.walletID] += ef.delta
+	}
+	for _, ef := range before {
+		if _, named := net[ef.walletID]; named {
+			net[ef.walletID] -= ef.delta
+		}
+	}
+	changed := []string{}
+	for wid, delta := range net {
+		if delta != 0 {
+			changed = append(changed, wid)
+		}
+	}
+	sort.Strings(changed)
+	for _, wid := range changed {
+		w, e := wallet(tx, wid)
+		if e != nil {
+			return e
+		}
+		if w.Archived {
+			field := "wallet_id"
+			if wid == in.ToWalletID && wid != in.WalletID {
+				field = "to_wallet_id"
+			}
+			return archived(field, message)
+		}
+	}
+	return nil
 }
 func (s *Store) saveRevision(tx *sql.Tx, actor string, r Transaction, effects []effect) (Transaction, error) {
 	r.CreatedAt = s.now().UTC().Format(time.RFC3339Nano)
@@ -173,7 +222,7 @@ func (s *Store) saveRevision(tx *sql.Tx, actor string, r Transaction, effects []
 			return r, e
 		}
 		if balance > MaxMoney || balance < -MaxMoney {
-			return r, ErrInvalid
+			return r, errBalanceLimit
 		}
 		if _, e = tx.Exec(`UPDATE wallets SET version=version+1 WHERE id=?`, ef.walletID); e != nil {
 			return r, e
@@ -181,6 +230,9 @@ func (s *Store) saveRevision(tx *sql.Tx, actor string, r Transaction, effects []
 	}
 	return r, nil
 }
+
+var errBalanceLimit = invalid("amount", "This would take a wallet balance beyond the supported limit.")
+
 func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, version int, in TransactionInput, void bool) (Transaction, error) {
 	request := struct {
 		ID      string
@@ -193,24 +245,49 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		if e != nil {
 			return old, e
 		}
-		if old.Version != version || old.Voided {
-			return old, ErrConflict
+		// Reconciliation records are final at every version, so this comes before the stale check.
+		if old.Kind == "opening" || old.Kind == "adjustment" {
+			return old, ErrNotCorrectable
 		}
-		if (void && strings.TrimSpace(in.Reason) == "") || len(in.Reason) > 500 || (old.Kind == "opening" || old.Kind == "adjustment") {
-			return old, ErrInvalid
+		if old.Version != version {
+			return old, ErrStaleVersion
+		}
+		if old.Voided {
+			return old, errVoided
+		}
+		if void && strings.TrimSpace(in.Reason) == "" {
+			return old, invalid("reason", "Enter a reason for voiding this record.")
+		}
+		if len(in.Reason) > 500 {
+			return old, invalid("reason", "Keep the reason to at most 500 bytes.")
+		}
+		previous, e := currentEntries(tx, tid, version)
+		if e != nil {
+			return old, e
 		}
 		r := old
 		var effects []effect
 		if !void {
+			// Omitted correction fields keep the prior value where empty is not itself a valid choice.
 			if in.Rate == "" {
 				in.Rate = old.Rate
 			}
+			if in.CategoryID == "" {
+				in.CategoryID = old.CategoryID
+			}
 			if in.Kind != old.Kind {
-				return old, ErrInvalid
+				return old, invalid("kind", "A record's kind cannot change. Void it and record a new one.")
 			}
 			r, effects, e = s.prepare(tx, in)
 			if e != nil {
 				return r, e
+			}
+			before := make([]effect, len(previous))
+			for i, entry := range previous {
+				before[i] = entry.effect
+			}
+			if e = keepArchivedBalances(tx, in, before, effects, "This correction would change an archived wallet's balance. Void the record or unarchive the wallet first."); e != nil {
+				return old, e
 			}
 		} else {
 			r.Reason = in.Reason
@@ -225,34 +302,11 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		if e != nil {
 			return r, e
 		}
-		rows, e := tx.Query(`SELECT id,wallet_id,delta FROM wallet_entries WHERE transaction_id=? AND version=? AND reversal_of IS NULL`, tid, version)
-		if e != nil {
-			return r, e
-		}
-		type oldEffect struct {
-			id    int64
-			wid   string
-			delta int64
-		}
-		previous := []oldEffect{}
-		for rows.Next() {
-			var ef oldEffect
-			if e = rows.Scan(&ef.id, &ef.wid, &ef.delta); e != nil {
-				rows.Close()
+		for _, entry := range previous {
+			if _, e = tx.Exec(`INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta,reversal_of) VALUES(?,?,?,?,?)`, tid, r.Version, entry.walletID, -entry.delta, entry.id); e != nil {
 				return r, e
 			}
-			previous = append(previous, ef)
-		}
-		e = rows.Err()
-		rows.Close()
-		if e != nil {
-			return r, e
-		}
-		for _, ef := range previous {
-			if _, e = tx.Exec(`INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta,reversal_of) VALUES(?,?,?,?,?)`, tid, r.Version, ef.wid, -ef.delta, ef.id); e != nil {
-				return r, e
-			}
-			if _, e = tx.Exec(`UPDATE wallets SET version=version+1 WHERE id=?`, ef.wid); e != nil {
+			if _, e = tx.Exec(`UPDATE wallets SET version=version+1 WHERE id=?`, entry.walletID); e != nil {
 				return r, e
 			}
 		}
@@ -265,8 +319,8 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 			}
 		}
 		touched := map[string]bool{}
-		for _, ef := range previous {
-			touched[ef.wid] = true
+		for _, entry := range previous {
+			touched[entry.walletID] = true
 		}
 		for _, ef := range effects {
 			touched[ef.walletID] = true
@@ -277,7 +331,7 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 				return r, e
 			}
 			if balance > MaxMoney || balance < -MaxMoney {
-				return r, ErrInvalid
+				return r, errBalanceLimit
 			}
 		}
 		if void {
@@ -297,10 +351,35 @@ func (s *Store) ReviseTransaction(ctx context.Context, actor, key, tid string, v
 		return r, nil
 	})
 }
+
+type entry struct {
+	id int64
+	effect
+}
+
+// currentEntries returns the wallet entries a revision applied, which a correction or void reverses.
+func currentEntries(tx *sql.Tx, tid string, version int) ([]entry, error) {
+	rows, e := tx.Query(`SELECT id,wallet_id,delta FROM wallet_entries WHERE transaction_id=? AND version=? AND reversal_of IS NULL`, tid, version)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []entry{}
+	for rows.Next() {
+		var en entry
+		if e = rows.Scan(&en.id, &en.walletID, &en.delta); e != nil {
+			return nil, e
+		}
+		out = append(out, en)
+	}
+	return out, rows.Err()
+}
 func transaction(q querier, tid string) (Transaction, error) {
 	var r Transaction
 	var body string
-	e := q.QueryRow(`SELECT r.payload FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version WHERE t.id=?`, tid).Scan(&body)
+	var version int
+	var voided bool
+	e := q.QueryRow(`SELECT r.payload,t.version,t.voided FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version WHERE t.id=?`, tid).Scan(&body, &version, &voided)
 	if errors.Is(e, sql.ErrNoRows) {
 		return r, ErrNotFound
 	}
@@ -309,6 +388,8 @@ func transaction(q querier, tid string) (Transaction, error) {
 	}
 	e = json.Unmarshal([]byte(body), &r)
 	defaultCategory(&r)
+	// The row, not the payload, is authoritative: opening payloads were stored without a version.
+	r.ID, r.Version, r.Voided = tid, version, voided
 	return r, e
 }
 func (s *Store) History(ctx context.Context, tid string) ([]Transaction, error) {
@@ -341,8 +422,8 @@ func (s *Store) History(ctx context.Context, tid string) ([]Transaction, error) 
 	return out, rows.Err()
 }
 func (s *Store) Transactions(ctx context.Context, limit, offset int) ([]Transaction, error) {
-	if limit < 1 || limit > 200 || offset < 0 {
-		return nil, ErrInvalid
+	if e := validPage(limit, offset); e != nil {
+		return nil, e
 	}
 	rows, e := s.db.QueryContext(ctx, `SELECT r.payload,t.id,r.version,u.email,r.created_at FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version JOIN users u ON u.id=r.actor_id ORDER BY json_extract(r.payload,'$.date') DESC,r.created_at DESC,t.id LIMIT ? OFFSET ?`, limit, offset)
 	if e != nil {

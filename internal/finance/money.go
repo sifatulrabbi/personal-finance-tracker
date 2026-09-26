@@ -1,7 +1,6 @@
 package finance
 
 import (
-	"errors"
 	"math/big"
 	"regexp"
 	"strconv"
@@ -11,9 +10,6 @@ import (
 const MaxMoney int64 = 9_000_000_000_000
 const RateScale int64 = 1_000_000
 
-var ErrInvalid = errors.New("invalid input")
-var ErrConflict = errors.New("record changed or request key reused")
-var ErrNotFound = errors.New("record not found")
 var decimal = regexp.MustCompile(`^-?[0-9]+(?:\.[0-9]+)?$`)
 
 func parseDecimal(s string, places int, limit int64) (int64, error) {

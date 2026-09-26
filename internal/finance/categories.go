@@ -34,15 +34,18 @@ func (s *Store) Categories(ctx context.Context) ([]Category, error) {
 func (s *Store) CreateCategory(ctx context.Context, actor, key string, in CategoryInput) (Category, error) {
 	return write(ctx, s, actor, key, "category.create", in, func(tx *sql.Tx) (Category, error) {
 		out := Category{CategoryInput: in, ID: id()}
-		if (in.Type != "income" && in.Type != "expense") || strings.TrimSpace(in.Name) == "" || len(in.Name) > 120 {
-			return out, ErrInvalid
+		if in.Type != "income" && in.Type != "expense" {
+			return out, invalid("type", "Choose income or expense.")
+		}
+		if strings.TrimSpace(in.Name) == "" || len(in.Name) > 120 {
+			return out, invalid("name", "Enter a name of at most 120 bytes.")
 		}
 		var count int
 		if e := tx.QueryRow(`SELECT count(*) FROM categories WHERE type=? AND name=?`, in.Type, in.Name).Scan(&count); e != nil {
 			return out, e
 		}
 		if count != 0 {
-			return out, ErrConflict
+			return out, ErrDuplicateName
 		}
 		if _, e := tx.Exec(`INSERT INTO categories(id,type,name) VALUES(?,?,?)`, out.ID, out.Type, out.Name); e != nil {
 			return out, e
@@ -53,7 +56,7 @@ func (s *Store) CreateCategory(ctx context.Context, actor, key string, in Catego
 func categoryID(q querier, kind, cid string) (string, error) {
 	if kind != "income" && kind != "expense" {
 		if cid != "" {
-			return "", ErrInvalid
+			return "", invalid("category_id", "Only income and expenses have a category.")
 		}
 		return "", nil
 	}
@@ -65,7 +68,7 @@ func categoryID(q querier, kind, cid string) (string, error) {
 		return "", e
 	}
 	if count != 1 {
-		return "", ErrInvalid
+		return "", invalid("category_id", "Choose an existing "+kind+" category.")
 	}
 	return cid, nil
 }

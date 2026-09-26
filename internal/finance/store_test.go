@@ -2,6 +2,8 @@ package finance_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"simply-finance/internal/finance"
 	"testing"
@@ -44,7 +46,7 @@ func TestWalletOpeningBalanceIsDurableAndRetrySafe(t *testing.T) {
 		t.Fatalf("retry: %+v %v", again, e)
 	}
 	in.Name = "Other"
-	if _, e = s.CreateWallet(ctx, u.ID, "open-cash", in); e != finance.ErrConflict {
+	if _, e = s.CreateWallet(ctx, u.ID, "open-cash", in); !errors.Is(e, finance.ErrIdempotencyKeyReused) {
 		t.Fatalf("key mismatch: %v", e)
 	}
 	if e = s.Close(); e != nil {
@@ -87,7 +89,7 @@ func TestIncomeExpenseAndCorrectionsPreserveHistory(t *testing.T) {
 	if e != nil || edited.Version != 2 {
 		t.Fatalf("edit: %+v %v", edited, e)
 	}
-	if _, e = s.ReviseTransaction(ctx, u.ID, "stale", record.ID, 1, input, false); e != finance.ErrConflict {
+	if _, e = s.ReviseTransaction(ctx, u.ID, "stale", record.ID, 1, input, false); !errors.Is(e, finance.ErrStaleVersion) {
 		t.Fatalf("stale edit: %v", e)
 	}
 	ws, e := s.Wallets(ctx)
@@ -104,6 +106,133 @@ func TestIncomeExpenseAndCorrectionsPreserveHistory(t *testing.T) {
 	ws, e = s.Wallets(ctx)
 	if e != nil || ws[0].Balance != "1000.00" {
 		t.Fatalf("void balance: %+v %v", ws, e)
+	}
+}
+func balances(t *testing.T, s *finance.Store) map[string]string {
+	t.Helper()
+	ws, e := s.Wallets(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	out := map[string]string{}
+	for _, w := range ws {
+		out[w.ID] = w.Balance
+	}
+	return out
+}
+
+// Regression (C2): an archived wallet keeps its balance, so a correction may touch a record on it
+// only when that wallet's balance stays the same. Void remains the explicit way to reverse one.
+func TestCorrectionsOnArchivedWalletsMustNotChangeTheirBalance(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	closed := createWallet(t, s, u, "closed", "BDT", "", "1000")
+	open := createWallet(t, s, u, "open", "BDT", "", "1000")
+	usd := createWallet(t, s, u, "usd", "USD", "", "100")
+	if _, e := s.SetRate(ctx, u.ID, "rate", "120", 1); e != nil {
+		t.Fatal(e)
+	}
+	expense := finance.TransactionInput{Kind: "expense", WalletID: closed.ID, Amount: "100", Date: "2026-09-14", Note: "Groceris"}
+	onClosed, e := s.CreateTransaction(ctx, u.ID, "on-closed", expense)
+	if e != nil {
+		t.Fatal(e)
+	}
+	onOpen, e := s.CreateTransaction(ctx, u.ID, "on-open", finance.TransactionInput{Kind: "expense", WalletID: open.ID, Amount: "50", Date: "2026-09-14"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	transfer, e := s.CreateTransaction(ctx, u.ID, "transfer", finance.TransactionInput{Kind: "transfer", WalletID: open.ID, ToWalletID: closed.ID, Amount: "10", Date: "2026-09-14"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	dollars, e := s.CreateTransaction(ctx, u.ID, "usd", finance.TransactionInput{Kind: "expense", WalletID: usd.ID, Amount: "1", Date: "2026-09-14"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	archiveWallet(t, s, u, closed.ID)
+	archiveWallet(t, s, u, usd.ID)
+	before := balances(t, s)
+
+	expense.Note = "Groceries"
+	expense.Date = "2026-09-13"
+	if onClosed, e = s.ReviseTransaction(ctx, u.ID, "fix-note", onClosed.ID, 1, expense, false); e != nil || onClosed.Note != "Groceries" {
+		t.Fatalf("note fix on archived wallet: %+v %v", onClosed, e)
+	}
+	if _, e = s.ReviseTransaction(ctx, u.ID, "usd-rate", dollars.ID, 1, finance.TransactionInput{Kind: "expense", WalletID: usd.ID, Amount: "1", Date: "2026-09-14", Rate: "121"}, false); e != nil {
+		t.Fatalf("rate fix on archived USD wallet: %v", e)
+	}
+	for name, tc := range map[string]struct {
+		id    string
+		in    finance.TransactionInput
+		field string
+	}{
+		"amount on archived":     {onClosed.ID, finance.TransactionInput{Kind: "expense", WalletID: closed.ID, Amount: "90", Date: "2026-09-13"}, "wallet_id"},
+		"move onto archived":     {onOpen.ID, finance.TransactionInput{Kind: "expense", WalletID: closed.ID, Amount: "50", Date: "2026-09-14"}, "wallet_id"},
+		"transfer into archived": {transfer.ID, finance.TransactionInput{Kind: "transfer", WalletID: open.ID, ToWalletID: closed.ID, Amount: "20", Date: "2026-09-14"}, "to_wallet_id"},
+	} {
+		version := 1
+		if tc.id == onClosed.ID {
+			version = 2
+		}
+		_, e = s.ReviseTransaction(ctx, u.ID, "reject-"+name, tc.id, version, tc.in, false)
+		var fe *finance.Error
+		if !errors.As(e, &fe) || fe.Code != finance.CodeArchivedWallet || fe.Field != tc.field {
+			t.Errorf("%s: %v", name, e)
+		}
+	}
+	if after := balances(t, s); fmt.Sprint(after) != fmt.Sprint(before) {
+		t.Fatalf("archived balances moved: %v -> %v", before, after)
+	}
+	// Moving a record off an archived wallet is an explicit repair, like void, so it is allowed.
+	if _, e = s.ReviseTransaction(ctx, u.ID, "move-off", onClosed.ID, 2, finance.TransactionInput{Kind: "expense", WalletID: open.ID, Amount: "100", Date: "2026-09-13"}, false); e != nil {
+		t.Fatalf("move off archived wallet: %v", e)
+	}
+	if b := balances(t, s)[closed.ID]; b != "1010.00" {
+		t.Fatalf("balance after moving off %s", b)
+	}
+	if _, e = s.ReviseTransaction(ctx, u.ID, "void-transfer", transfer.ID, 1, finance.TransactionInput{Reason: "Duplicate"}, true); e != nil {
+		t.Fatalf("void on archived wallet: %v", e)
+	}
+	if b := balances(t, s)[closed.ID]; b != "1000.00" {
+		t.Fatalf("void balance %s", b)
+	}
+}
+
+// Regression (C4, C16): opening payloads carry no version, so the stale check used to fire first
+// and report a retryable 409. Reconciliation records are refused as not correctable at any version.
+func TestOpeningAndAdjustmentRecordsAreNotCorrectable(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	w := createWallet(t, s, u, "cash", "BDT", "", "100")
+	adjustment, e := s.AdjustWallet(ctx, u.ID, "adjust", w.ID, w.Version, "80", "Counted cash")
+	if e != nil {
+		t.Fatal(e)
+	}
+	list, e := s.Transactions(ctx, 10, 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var opening finance.Transaction
+	for _, r := range list {
+		if r.Kind == "opening" {
+			opening = r
+		}
+	}
+	if opening.Version != 1 {
+		t.Fatalf("opening version: %+v", opening)
+	}
+	for _, r := range []finance.Transaction{opening, adjustment} {
+		for _, version := range []int{0, 1} {
+			if _, e = s.ReviseTransaction(ctx, u.ID, fmt.Sprint("edit-", r.ID, version), r.ID, version, finance.TransactionInput{Kind: r.Kind, WalletID: w.ID, Amount: "1", Date: "2026-09-14"}, false); !errors.Is(e, finance.ErrNotCorrectable) {
+				t.Errorf("correct %s v%d: %v", r.Kind, version, e)
+			}
+			if _, e = s.ReviseTransaction(ctx, u.ID, fmt.Sprint("void-", r.ID, version), r.ID, version, finance.TransactionInput{Reason: "Mistake"}, true); !errors.Is(e, finance.ErrNotCorrectable) {
+				t.Errorf("void %s v%d: %v", r.Kind, version, e)
+			}
+		}
+	}
+	if b := balances(t, s)[w.ID]; b != "80.00" {
+		t.Fatalf("balance %s", b)
 	}
 }
 func TestCreditPurchaseAndRepaymentAreNotDoubleCounted(t *testing.T) {
@@ -140,7 +269,7 @@ func TestRatesAreSnapshottedAndCrossCurrencyTransfersUseActualAmounts(t *testing
 	usd := createWallet(t, s, u, "USD", "USD", "", "100")
 	bdt := createWallet(t, s, u, "BDT", "BDT", "", "0")
 	input := finance.TransactionInput{Kind: "expense", WalletID: usd.ID, Amount: "1", Date: "2026-09-14"}
-	if _, e := s.CreateTransaction(ctx, u.ID, "no-rate", input); e != finance.ErrInvalid {
+	if _, e := s.CreateTransaction(ctx, u.ID, "no-rate", input); !errors.Is(e, finance.ErrRateRequired) {
 		t.Fatalf("missing rate: %v", e)
 	}
 	if _, e := s.SetRate(ctx, u.ID, "rate-1", "120", 1); e != nil {
@@ -184,7 +313,7 @@ func TestAdjustmentsAndArchivingUseCurrentWalletVersion(t *testing.T) {
 	if e != nil || adjusted.Amount != "-20.00" {
 		t.Fatalf("adjustment: %+v %v", adjusted, e)
 	}
-	if _, e = s.AdjustWallet(ctx, u.ID, "stale-adjust", w.ID, w.Version, "90", "Stale count"); e != finance.ErrConflict {
+	if _, e = s.AdjustWallet(ctx, u.ID, "stale-adjust", w.ID, w.Version, "90", "Stale count"); !errors.Is(e, finance.ErrStaleVersion) {
 		t.Fatalf("stale: %v", e)
 	}
 	ws, _ := s.Wallets(ctx)
@@ -195,7 +324,7 @@ func TestAdjustmentsAndArchivingUseCurrentWalletVersion(t *testing.T) {
 	if e != nil || !updated.Archived {
 		t.Fatalf("archive: %+v %v", updated, e)
 	}
-	if _, e = s.CreateTransaction(ctx, u.ID, "archived-expense", finance.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "1", Date: "2026-09-14"}); e != finance.ErrInvalid {
+	if _, e = s.CreateTransaction(ctx, u.ID, "archived-expense", finance.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "1", Date: "2026-09-14"}); !errors.Is(e, finance.ErrArchivedWallet) {
 		t.Fatalf("archived expense: %v", e)
 	}
 	events, e := s.Audit(ctx, 100, 0)
