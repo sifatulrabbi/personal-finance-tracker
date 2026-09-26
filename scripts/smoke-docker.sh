@@ -51,6 +51,10 @@ start "$container" "$source_volume"
 ready
 test "$(docker exec "$container" id -u)" = 10001
 curl -fsS "http://127.0.0.1:$port/" | grep -q 'Simply Finance'
+# A refreshed page URL must load the app from the built image, while a missing asset stays 404.
+curl -fsS "http://127.0.0.1:$port/wallets" | grep -q 'Simply Finance'
+curl -fsS "http://127.0.0.1:$port/wallets/" | grep -q 'Simply Finance'
+test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/assets/missing.js")" = 404
 request POST /login login '{"email":"test@example.test","password":"test-household-password"}' >/dev/null
 wallet="$(request POST /wallets wallet '{"name":"Backup test","type":"physical","opening_balance":"1000"}')"
 wallet_id="$(printf %s "$wallet" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
