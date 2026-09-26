@@ -1,5 +1,8 @@
 import { useRef, useState } from "react";
-import { api, mutationKey, type Category, type MutationKey } from "@/lib/api";
+import { errorMessage } from "@/api/errors";
+import { mutationKey, type MutationKey } from "@/api/idempotency";
+import type { Category } from "@/api/types";
+import { useWrites } from "@/cache/writes";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,7 +16,6 @@ import {
   TextField,
   ErrorMessage,
   SaveForm,
-  value,
 } from "@/components/forms";
 
 export function CategoryChoice({
@@ -21,28 +23,22 @@ export function CategoryChoice({
   type,
   initial,
   onEditingChange,
-  onCreated,
 }: {
   categories: Category[];
   type: Category["type"];
   initial?: string;
   onEditingChange: (editing: boolean) => void;
-  onCreated: () => void;
 }) {
+  const writes = useWrites();
   const [selected, setSelected] = useState(initial || `others-${type}`);
-  const [created, setCreated] = useState<Category[]>([]);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const key = useRef<MutationKey | undefined>(undefined);
   const inFlight = useRef(false);
-  const options = [
-    ...categories,
-    ...created.filter(
-      (c) => !categories.some((existing) => existing.id === c.id),
-    ),
-  ].filter((c) => c.type === type);
+  // The created category arrives through the categories cache, so it is listed here too.
+  const options = categories.filter((c) => c.type === type);
   function toggle(open: boolean) {
     setEditing(open);
     onEditingChange(open);
@@ -54,22 +50,20 @@ export function CategoryChoice({
     setBusy(true);
     setError("");
     const body = { name, type };
-    key.current = mutationKey(key.current, "/categories", body);
+    key.current = mutationKey(key.current, "category", body);
     try {
-      const category = await api<Category>(
-        "/categories",
-        "POST",
-        body,
-        key.current.key,
-      );
-      setCreated((previous) => [...previous, category]);
+      const category = await writes.createCategory(body, { key: key.current.key });
+      // A new name typed later is a new request, not a replay of this one.
+      key.current = undefined;
       setSelected(category.id);
       setName("");
       toggle(false);
-      onCreated();
-    } catch {
+    } catch (problem) {
       setError(
-        "Could not create the category. Check for an identical name in this list, or retry.",
+        errorMessage(
+          problem,
+          "Could not create the category. Check for an identical name in this list, or retry.",
+        ),
       );
     } finally {
       inFlight.current = false;
@@ -128,13 +122,8 @@ export function CategoryChoice({
   );
 }
 
-export function CategorySettings({
-  categories,
-  onSaved,
-}: {
-  categories: Category[];
-  onSaved: () => void;
-}) {
+export function CategorySettings({ categories }: { categories: Category[] }) {
+  const writes = useWrites();
   return (
     <>
       {(["expense", "income"] as const).map((type) => {
@@ -162,15 +151,16 @@ export function CategorySettings({
                       </li>
                     ))}
                 </ul>
+                {/* Not keyed by the category count: creating one category must not wipe
+                    a half-typed name in the other form. This form clears only itself. */}
                 <SaveForm
-                  key={categories.length}
-                  path="/categories"
                   label="Create category"
-                  onSaved={onSaved}
+                  resetOnSuccess
                   body={(form) => ({
-                    name: value(form, `${type}_category_name`),
+                    name: form.text(`${type}_category_name`),
                     type,
                   })}
+                  send={(body, key) => writes.createCategory(body, { key })}
                 >
                   <TextField
                     label="Category name"

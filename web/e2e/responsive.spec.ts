@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import type { Locator, Page } from "@playwright/test";
 import { navigate, submitLogin } from "./login";
 
 const viewports = [
@@ -225,7 +226,7 @@ test("every page and financial modal stays inside compact mobile viewports", asy
   }
 });
 
-test("safe areas and a reduced visual viewport keep mobile controls reachable", async ({
+test("safe areas and a keyboard-sized viewport keep mobile controls reachable", async ({
   page,
 }) => {
   const viewport = { width: 320, height: 568 };
@@ -273,32 +274,15 @@ test("safe areas and a reduced visual viewport keep mobile controls reachable", 
 
   await page.getByRole("button", { name: "Add wallet", exact: true }).click();
   await page.getByLabel("Wallet name", { exact: true }).focus();
-  await page.evaluate(() => {
-    const root = document.documentElement;
-    root.dataset.visualViewportOverride = "true";
-    root.dataset.visualViewportReduced = "true";
-    root.style.setProperty("--visual-viewport-height", "280px");
-    root.style.setProperty("--visual-viewport-bottom", "288px");
-  });
+  // With interactive-widget=resizes-content an open keyboard shrinks the layout viewport,
+  // which a smaller Playwright viewport reproduces. The sheet sizes itself with dvh.
+  await page.setViewportSize(visibleViewport);
   await page.getByRole("dialog").evaluate(async (dialog) => {
     await Promise.all(
       dialog.getAnimations().map((animation) =>
         animation.finished.catch(() => undefined),
       ),
     );
-  });
-  const viewportStyles = await page.getByRole("dialog").evaluate(() => {
-    const rootStyles = getComputedStyle(document.documentElement);
-    return {
-      heightVariable: rootStyles.getPropertyValue("--visual-viewport-height"),
-      bottomVariable: rootStyles.getPropertyValue("--visual-viewport-bottom"),
-      viewportWidth: window.innerWidth,
-    };
-  });
-  expect(viewportStyles).toEqual({
-    heightVariable: "280px",
-    bottomVariable: "288px",
-    viewportWidth: 320,
   });
   await expectModalContained(page, visibleViewport);
   const dialogBounds = await page.getByRole("dialog").boundingBox();
@@ -308,14 +292,25 @@ test("safe areas and a reduced visual viewport keep mobile controls reachable", 
   );
   await expectPageContained(page);
 
-  const landscapeViewport = { width: 844, height: 390 };
+  // Regression: a visualViewport listener rewrote root CSS variables on every keyboard
+  // scroll, which moved the sheet while iOS was scrolling the focused input into view.
+  expect(
+    await page.evaluate(() => {
+      const root = document.documentElement;
+      return {
+        inlineVariables: [...root.style].filter((name) =>
+          name.startsWith("--visual-viewport"),
+        ),
+        viewportData: Object.keys(root.dataset).filter((key) =>
+          key.startsWith("visualViewport"),
+        ),
+        dialogBottom: (document.querySelector('[role="dialog"]') as HTMLElement).style
+          .bottom,
+      };
+    }),
+  ).toEqual({ inlineVariables: [], viewportData: [], dialogBottom: "" });
+
   const landscapeVisibleViewport = { width: 844, height: 220 };
-  await page.setViewportSize(landscapeViewport);
-  await page.evaluate(() => {
-    const root = document.documentElement;
-    root.dataset.visualViewportReduced = "true";
-    root.style.setProperty("--visual-viewport-height", "220px");
-    root.style.setProperty("--visual-viewport-bottom", "170px");
-  });
+  await page.setViewportSize(landscapeVisibleViewport);
   await expectModalContained(page, landscapeVisibleViewport);
 });

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { navigate, signIn } from "./login";
 
 test("page URLs survive login, reload, and browser history", async ({ page }) => {

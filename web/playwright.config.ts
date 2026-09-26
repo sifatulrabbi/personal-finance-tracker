@@ -1,12 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
+import { appOrigin } from "./e2e/ports";
 
+// One backend serves every test, and each test resets it to a fresh database first,
+// so tests run one at a time. Set E2E_PORT to run several worktrees side by side.
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,
   use: {
-    baseURL: "http://127.0.0.1:47833",
+    baseURL: appOrigin,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
@@ -16,7 +19,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "bun run build && bun run e2e/server.ts",
-    url: "http://127.0.0.1:47833/healthz",
+    url: `${appOrigin}/healthz`,
     reuseExistingServer: false,
     timeout: 120_000,
   },

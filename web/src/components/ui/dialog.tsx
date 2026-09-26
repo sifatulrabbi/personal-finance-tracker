@@ -49,7 +49,6 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
-  style,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
@@ -63,7 +62,6 @@ function DialogContent({
           "responsive-dialog-content fixed z-50 flex min-w-0 flex-col gap-0 overflow-hidden rounded-t-xl border bg-background p-0 shadow-lg outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 md:w-full md:max-w-lg md:rounded-lg",
           className,
         )}
-        style={{ bottom: "var(--dialog-bottom)", ...style }}
         {...props}
       >
         {children}

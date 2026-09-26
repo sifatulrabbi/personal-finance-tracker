@@ -1,17 +1,21 @@
-import { useEffect, useState } from "react";
+import { useState, type MouseEvent } from "react";
 import {
   Plus,
   ArrowDownLeft,
   ArrowUpRight,
   ArrowLeftRight,
 } from "lucide-react";
+import type { Category, Settings, Transaction, Wallet } from "@/api/types";
 import {
-  api,
-  dhakaDate,
-  moneyLabel,
-  type Data,
-  type Transaction,
-} from "@/lib/api";
+  useCategories,
+  useHistory,
+  useSettings,
+  useTransactions,
+  useWallets,
+} from "@/cache/queries";
+import { useWrites } from "@/cache/writes";
+import { dhakaDate } from "@/lib/dates";
+import { moneyLabel } from "@/money/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,12 +24,18 @@ import {
   ErrorMessage,
   MoneyField,
   Notes,
+  RateField,
   SaveForm,
   TextField,
   WalletChoice,
-  value,
 } from "@/components/forms";
-import { Modal, NoRecords } from "@/components/layout";
+import {
+  LoadError,
+  Modal,
+  NoRecords,
+  PageHeading,
+  useEditor,
+} from "@/components/layout";
 import { CategoryChoice } from "@/components/categories";
 
 const kinds = [
@@ -33,34 +43,32 @@ const kinds = [
   { value: "income", label: "Income" },
   { value: "transfer", label: "Transfer / card repayment" },
 ];
-export function Activity({
-  data,
-  onSaved,
-}: {
-  data: Data;
-  onSaved: () => void;
-}) {
-  const [editor, setEditor] = useState<"create" | Transaction | null>(null);
-  const [older, setOlder] = useState<Transaction[]>([]);
-  const [more, setMore] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    setOlder([]);
-    setMore(data.transactions.length === 50);
-  }, [data.transactions]);
-  const saved = () => {
-    setEditor(null);
-    onSaved();
-  };
+
+type Editor = { type: "create" } | { type: "detail"; record: Transaction };
+
+export function Activity() {
+  const list = useTransactions();
+  const walletsQuery = useWallets();
+  const categoriesQuery = useCategories();
+  const settingsQuery = useSettings();
+  const wallets = walletsQuery.data ?? [];
+  const categories = categoriesQuery.data ?? [];
+  const editor = useEditor<Editor>();
+  const ready = Boolean(walletsQuery.data && categoriesQuery.data && settingsQuery.data);
+  // Show the latest copy of the open record, falling back to the one that was clicked.
+  const detail =
+    editor.value?.type === "detail"
+      ? (list.records.find((r) => r.id === (editor.value as { record: Transaction }).record.id) ??
+        editor.value.record)
+      : undefined;
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold">Money records</h2>
+        <PageHeading>Money records</PageHeading>
         <Button
           size="sm"
-          disabled={!data.wallets.some((w) => !w.archived)}
-          onClick={() => setEditor("create")}
+          disabled={!ready || !wallets.some((w) => !w.archived)}
+          onClick={(e) => editor.open({ type: "create" }, e)}
         >
           <Plus data-icon="inline-start" />
           Add record
@@ -69,128 +77,153 @@ export function Activity({
       <p className="text-sm text-muted-foreground">
         Every entry, with the person who recorded it.
       </p>
-      {!data.transactions.length ? (
+      <LoadError
+        error={list.isFetchNextPageError ? null : list.error}
+        hasData={Boolean(list.data)}
+        onRetry={() => void list.refetch()}
+        what="records"
+      />
+      {list.isPending ? <Skeleton className="h-48 w-full" /> : null}
+      {list.data && !list.records.length ? (
         <NoRecords
           title="A fresh start"
           description="Add a wallet, then record your first income or expense."
         />
       ) : null}
-      <div className="flex flex-col overflow-hidden rounded-xl border bg-card">
-        {[...data.transactions, ...older].map((record) => {
-          const wallet = data.wallets.find((w) => w.id === record.wallet_id);
-          const Icon =
-            record.kind === "transfer"
-              ? ArrowLeftRight
-              : record.kind === "income"
-                ? ArrowDownLeft
-                : ArrowUpRight;
-          return (
-            <button
+      {list.records.length ? (
+        <div
+          data-testid="activity-list"
+          className="flex flex-col overflow-hidden rounded-xl border bg-card"
+        >
+          {list.records.map((record) => (
+            <RecordRow
               key={record.id}
-              className="flex min-h-24 w-full items-start gap-3 border-b p-4 text-left last:border-0 hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-              onClick={() => setEditor(record)}
-            >
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-                <Icon className="size-4" />
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <div className="flex flex-wrap justify-between gap-1">
-                  <span className="break-words font-medium">
-                    {record.note ||
-                      `${record.kind[0].toUpperCase()}${record.kind.slice(1)}`}
-                  </span>
-                  <span className="font-semibold tabular-nums">
-                    {moneyLabel(record.amount, wallet?.currency ?? "BDT")}
-                  </span>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {wallet?.name} · {record.date}
-                </span>
-                <span className="break-all text-xs text-muted-foreground">
-                  {record.actor_email}
-                </span>
-                {record.category_id && (
-                  <span className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                    {
-                      data.categories.find((c) => c.id === record.category_id)
-                        ?.name
-                    }
-                  </span>
-                )}
-                {record.voided ? <Badge variant="outline">Voided</Badge> : null}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-      <ErrorMessage error={error} />
-      {more ? (
+              record={record}
+              wallets={wallets}
+              categories={categories}
+              onOpen={(e) => editor.open({ type: "detail", record }, e)}
+            />
+          ))}
+        </div>
+      ) : null}
+      {list.isFetchNextPageError ? (
+        <ErrorMessage error="Could not load older records. Please retry." />
+      ) : null}
+      {list.hasNextPage ? (
         <Button
           variant="outline"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setError("");
-            try {
-              const next = await api<Transaction[]>(
-                `/transactions?limit=50&offset=${data.transactions.length + older.length}`,
-              );
-              setOlder((previous) => [...previous, ...next]);
-              setMore(next.length === 50);
-            } catch {
-              setError("Could not load older records. Please retry.");
-            } finally {
-              setBusy(false);
-            }
-          }}
+          disabled={list.isFetchingNextPage}
+          onClick={() => void list.fetchNextPage()}
         >
-          {busy ? "Loading…" : "Load older records"}
+          {list.isFetchingNextPage ? "Loading…" : "Load older records"}
         </Button>
       ) : null}
-      {editor === "create" ? (
-        <Modal
-          title="Add record"
-          description="Record what actually moved. Transfers are not income or spending."
-          onClose={() => setEditor(null)}
-        >
+      <Modal
+        open={editor.isOpen}
+        onClose={editor.close}
+        returnFocus={editor.trigger}
+        title={editor.value?.type === "detail" ? "Record details" : "Add record"}
+        description={
+          editor.value?.type === "detail"
+            ? "Corrections preserve the previous values and who changed them."
+            : "Record what actually moved. Transfers are not income or spending."
+        }
+      >
+        {ready && editor.value?.type === "create" ? (
           <TransactionForm
-            data={data}
-            onSaved={saved}
-            onCategoriesChanged={onSaved}
+            wallets={wallets}
+            categories={categories}
+            settings={settingsQuery.data!}
+            onSaved={editor.close}
           />
-        </Modal>
-      ) : null}
-      {editor && editor !== "create" ? (
-        <Modal
-          title="Record details"
-          description="Corrections preserve the previous values and who changed them."
-          onClose={() => setEditor(null)}
-        >
+        ) : null}
+        {ready && detail ? (
           <RecordDetail
-            data={data}
-            record={editor}
-            onSaved={saved}
-            onCategoriesChanged={onSaved}
+            key={detail.id}
+            record={detail}
+            wallets={wallets}
+            categories={categories}
+            settings={settingsQuery.data!}
+            onSaved={editor.close}
           />
-        </Modal>
-      ) : null}
+        ) : null}
+      </Modal>
     </section>
   );
 }
 
-function TransactionForm({
-  data,
-  initial,
-  onSaved,
-  onCategoriesChanged,
+function RecordRow({
+  record,
+  wallets,
+  categories,
+  onOpen,
 }: {
-  data: Data;
+  record: Transaction;
+  wallets: Wallet[];
+  categories: Category[];
+  onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  const wallet = wallets.find((w) => w.id === record.wallet_id);
+  const Icon =
+    record.kind === "transfer"
+      ? ArrowLeftRight
+      : record.kind === "income"
+        ? ArrowDownLeft
+        : ArrowUpRight;
+  return (
+    <button
+      data-testid="activity-row"
+      className="flex min-h-24 w-full items-start gap-3 border-b p-4 text-left last:border-0 hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+      onClick={onOpen}
+    >
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+        <Icon className="size-4" />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-wrap justify-between gap-1">
+          <span className="break-words font-medium">
+            {record.note ||
+              `${record.kind[0].toUpperCase()}${record.kind.slice(1)}`}
+          </span>
+          <span className="font-semibold whitespace-nowrap tabular-nums">
+            {moneyLabel(record.amount, wallet?.currency ?? "BDT")}
+          </span>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {wallet?.name} · {record.date}
+        </span>
+        <span className="break-all text-xs text-muted-foreground">
+          {record.actor_email}
+        </span>
+        {record.category_id && (
+          <span className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
+            {categories.find((c) => c.id === record.category_id)?.name}
+          </span>
+        )}
+        {record.voided ? <Badge variant="outline">Voided</Badge> : null}
+      </div>
+    </button>
+  );
+}
+
+function TransactionForm({
+  wallets,
+  categories,
+  settings,
+  initial: initialProp,
+  onSaved,
+}: {
+  wallets: Wallet[];
+  categories: Category[];
+  settings: Settings;
   initial?: Transaction;
   onSaved: () => void;
-  onCategoriesChanged: () => void;
 }) {
-  const active = data.wallets.filter((w) => !w.archived);
-  const [kind, setKind] = useState(initial?.kind ?? "expense");
+  const writes = useWrites();
+  // Snapshot at open: the correction is checked against the version the user started from.
+  const [initial] = useState(initialProp);
+  const active = wallets.filter((w) => !w.archived);
+  const [kind, setKind] = useState<Transaction["kind"]>(initial?.kind ?? "expense");
   const [categoryEditing, setCategoryEditing] = useState(false);
   const [walletID, setWalletID] = useState(
     initial?.wallet_id ?? active[0]?.id ?? "",
@@ -205,26 +238,29 @@ function TransactionForm({
     (kind === "transfer" && target?.currency === "USD");
   const crossCurrency =
     kind === "transfer" && wallet?.currency !== target?.currency;
+  const recordKind = kind as "income" | "expense" | "transfer";
   return (
     <SaveForm
-      path={initial ? `/transactions/${initial.id}` : "/transactions"}
-      method={initial ? "PUT" : "POST"}
       label={initial ? "Save correction" : "Save record"}
       onSaved={onSaved}
       disabled={categoryEditing || !wallet || (kind === "transfer" && !target)}
       body={(form) => ({
-        kind,
-        category_id: kind === "transfer" ? "" : value(form, "category_id"),
+        kind: recordKind,
+        category_id: kind === "transfer" ? "" : form.text("category_id"),
         wallet_id: walletID,
         to_wallet_id: kind === "transfer" ? destination : "",
-        amount: value(form, "amount"),
-        received_amount: crossCurrency ? value(form, "received_amount") : "",
-        date: value(form, "date"),
-        rate: value(form, "rate"),
-        note: value(form, "note"),
-        reason: value(form, "reason"),
-        ...(initial ? { version: initial.version } : {}),
+        amount: form.decimal("amount"),
+        received_amount: crossCurrency ? form.decimal("received_amount") : "",
+        date: form.text("date"),
+        rate: foreign ? form.decimal("rate") : "",
+        note: form.text("note"),
+        reason: form.text("reason"),
       })}
+      send={(body, key) =>
+        initial
+          ? writes.correctTransaction(initial.id, { ...body, version: initial.version }, { key })
+          : writes.createTransaction(body, { key })
+      }
     >
       {!initial ? (
         <Choice
@@ -232,7 +268,7 @@ function TransactionForm({
           name="kind"
           value={kind}
           onChange={(value) => {
-            setKind(value);
+            setKind(value as Transaction["kind"]);
             setCategoryEditing(false);
           }}
           options={kinds}
@@ -241,7 +277,7 @@ function TransactionForm({
         <Badge variant="secondary">Correcting {kind}</Badge>
       )}
       <WalletChoice
-        wallets={data.wallets}
+        wallets={wallets}
         label={kind === "transfer" ? "From wallet" : "Wallet"}
         value={walletID}
         onChange={setWalletID}
@@ -253,15 +289,14 @@ function TransactionForm({
         <CategoryChoice
           key={kind}
           type={kind}
-          categories={data.categories}
+          categories={categories}
           initial={initial?.category_id}
           onEditingChange={setCategoryEditing}
-          onCreated={onCategoriesChanged}
         />
       )}
       {kind === "transfer" ? (
         <WalletChoice
-          wallets={data.wallets}
+          wallets={wallets}
           disabledID={walletID}
           label="To wallet"
           name="to_wallet_id"
@@ -291,16 +326,12 @@ function TransactionForm({
         />
       ) : null}
       {foreign ? (
-        <TextField
+        <RateField
           label="Exchange rate (BDT per USD)"
           name="rate"
-          type="number"
-          step="0.000001"
-          min="0.000001"
-          inputMode="decimal"
           defaultValue={initial?.rate}
-          placeholder={data.settings.rate || "Set a rate"}
-          required={!data.settings.rate && !initial?.rate}
+          placeholder={settings.rate || "Set a rate"}
+          required={!settings.rate && !initial?.rate}
           hint="An empty field uses the default rate. Saved records keep their own rate."
         />
       ) : null}
@@ -326,52 +357,40 @@ function TransactionForm({
 }
 
 function RecordDetail({
-  data,
   record,
+  wallets,
+  categories,
+  settings,
   onSaved,
-  onCategoriesChanged,
 }: {
-  data: Data;
   record: Transaction;
+  wallets: Wallet[];
+  categories: Category[];
+  settings: Settings;
   onSaved: () => void;
-  onCategoriesChanged: () => void;
 }) {
-  const [mode, setMode] = useState("view");
-  const [history, setHistory] = useState<Transaction[] | null>(null);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    api<Transaction[]>(`/transactions/${record.id}/history`)
-      .then((rows) => {
-        if (active) setHistory(rows);
-      })
-      .catch(() => {
-        if (active)
-          setError("Could not load history. Close and reopen to retry.");
-      });
-    return () => {
-      active = false;
-    };
-  }, [record.id]);
+  const writes = useWrites();
+  const [mode, setMode] = useState<"view" | "edit" | "void">("view");
+  const history = useHistory(record.id);
+  // The version the user saw when choosing to void.
+  const [voidVersion, setVoidVersion] = useState(record.version);
   if (mode === "edit")
     return (
       <TransactionForm
-        data={data}
+        wallets={wallets}
+        categories={categories}
+        settings={settings}
         initial={record}
         onSaved={onSaved}
-        onCategoriesChanged={onCategoriesChanged}
       />
     );
   if (mode === "void")
     return (
       <SaveForm
-        path={`/transactions/${record.id}/void`}
         label="Confirm void"
         onSaved={onSaved}
-        body={(form) => ({
-          version: record.version,
-          reason: value(form, "reason"),
-        })}
+        body={(form) => ({ version: voidVersion, reason: form.text("reason") })}
+        send={(body, key) => writes.voidTransaction(record.id, body, { key })}
       >
         <p className="text-sm">
           This reverses the balance changes. The original record stays in
@@ -380,17 +399,16 @@ function RecordDetail({
         <Notes label="Reason" name="reason" required />
       </SaveForm>
     );
-  const wallet = data.wallets.find((w) => w.id === record.wallet_id);
+  const wallet = wallets.find((w) => w.id === record.wallet_id);
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-2xl font-semibold">
+      <p className="text-2xl font-semibold whitespace-nowrap tabular-nums">
         {moneyLabel(record.amount, wallet?.currency ?? "BDT")}
       </p>
       <p className="break-words">{record.note || record.kind}</p>
       {record.category_id && (
         <p className="whitespace-pre-wrap break-words">
-          Category:{" "}
-          {data.categories.find((c) => c.id === record.category_id)?.name}
+          Category: {categories.find((c) => c.id === record.category_id)?.name}
         </p>
       )}
       <p className="text-sm text-muted-foreground">
@@ -398,7 +416,7 @@ function RecordDetail({
       </p>
       {record.to_wallet_id ? (
         <p className="text-sm">
-          To {data.wallets.find((w) => w.id === record.to_wallet_id)?.name} ·{" "}
+          To {wallets.find((w) => w.id === record.to_wallet_id)?.name} ·{" "}
           {record.received_amount}
         </p>
       ) : null}
@@ -419,7 +437,10 @@ function RecordDetail({
           <Button
             className="w-full sm:w-auto"
             variant="destructive"
-            onClick={() => setMode("void")}
+            onClick={() => {
+              setVoidVersion(record.version);
+              setMode("void");
+            }}
           >
             Void record
           </Button>
@@ -432,9 +453,14 @@ function RecordDetail({
         </p>
       )}
       <h3 className="font-semibold">Edit history</h3>
-      <ErrorMessage error={error} />
-      {history ? (
-        history.map((revision) => (
+      <LoadError
+        error={history.error}
+        hasData={Boolean(history.data)}
+        onRetry={() => void history.refetch()}
+        what="the history"
+      />
+      {history.data ? (
+        history.data.map((revision) => (
           <div
             key={revision.version}
             className="flex flex-col gap-1 rounded-lg border p-3 text-sm"
@@ -456,19 +482,16 @@ function RecordDetail({
             {revision.category_id && (
               <p className="whitespace-pre-wrap break-words">
                 Category:{" "}
-                {
-                  data.categories.find((c) => c.id === revision.category_id)
-                    ?.name
-                }
+                {categories.find((c) => c.id === revision.category_id)?.name}
               </p>
             )}
             {revision.reason ? <p>Reason: {revision.reason}</p> : null}
             {revision.rate ? <p>Rate: {revision.rate}</p> : null}
           </div>
         ))
-      ) : (
+      ) : history.isPending ? (
         <Skeleton className="h-20 w-full" />
-      )}
+      ) : null}
     </div>
   );
 }

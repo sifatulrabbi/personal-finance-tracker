@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { api, type Settings as SettingsData, type User } from "@/lib/api";
+import type { User } from "@/api/types";
+import { useAudit, useCategories, useSettings } from "@/cache/queries";
+import { useWrites } from "@/cache/writes";
 import {
   Card,
   CardHeader,
@@ -9,53 +11,34 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { SaveForm, TextField, ErrorMessage, value } from "@/components/forms";
+import { Skeleton } from "@/components/ui/skeleton";
+import { RateField, SaveForm } from "@/components/forms";
+import { LoadError, PageHeading } from "@/components/layout";
 import { CategorySettings } from "@/components/categories";
-import type { Category } from "@/lib/api";
 
-type Audit = {
-  id: number;
-  actor_email: string;
-  action: string;
-  before: unknown;
-  after: unknown;
-  created_at: string;
-};
-export function Settings({
-  settings,
-  categories,
-  user,
-  onSaved,
-}: {
-  settings: SettingsData;
-  categories: Category[];
-  user: User;
-  onSaved: () => void;
-}) {
+export function Settings({ user }: { user: User }) {
+  const writes = useWrites();
+  const settingsQuery = useSettings();
+  const categoriesQuery = useCategories();
+  const settings = settingsQuery.data;
   const [saved, setSaved] = useState(false);
-  const [audit, setAudit] = useState<Audit[] | null>(null);
-  const [error, setError] = useState("");
-  const [more, setMore] = useState(true);
-  const [busy, setBusy] = useState(false);
-  async function loadAudit() {
-    setBusy(true);
-    setError("");
-    try {
-      const rows = await api<Audit[]>(
-        `/audit?limit=50&offset=${audit?.length ?? 0}`,
-      );
-      setAudit((previous) => [...(previous ?? []), ...rows]);
-      setMore(rows.length === 50);
-    } catch {
-      setError("Could not load the change log. Please retry.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [showAudit, setShowAudit] = useState(false);
+  const audit = useAudit(showAudit);
+  const events = audit.data?.pages.flat() ?? [];
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="text-xl font-semibold">Household settings</h2>
-      <CategorySettings categories={categories} onSaved={onSaved} />
+      <PageHeading>Household settings</PageHeading>
+      <LoadError
+        error={categoriesQuery.error}
+        hasData={Boolean(categoriesQuery.data)}
+        onRetry={() => void categoriesQuery.refetch()}
+        what="categories"
+      />
+      {categoriesQuery.data ? (
+        <CategorySettings categories={categoriesQuery.data} />
+      ) : categoriesQuery.isPending ? (
+        <Skeleton className="h-40 w-full" />
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>Currency conversion</CardTitle>
@@ -65,37 +48,39 @@ export function Settings({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <SaveForm
-            key={settings.version}
-            path="/settings"
-            method="PUT"
-            label="Save settings"
-            onSaved={() => {
-              setSaved(true);
-              onSaved();
-            }}
-            body={(form) => ({
-              rate: value(form, "rate"),
-              version: settings.version,
-            })}
-          >
-            <TextField
-              label="Default exchange rate (BDT per USD)"
-              name="rate"
-              type="number"
-              step="0.000001"
-              min="0.000001"
-              inputMode="decimal"
-              defaultValue={settings.rate}
-              onChange={() => setSaved(false)}
-              placeholder="For example, 125.00"
-              required
-            />
-            <p className="text-sm text-muted-foreground">
-              Existing records keep their saved rates. No live exchange-rate
-              service is used.
-            </p>
-          </SaveForm>
+          <LoadError
+            error={settingsQuery.error}
+            hasData={Boolean(settings)}
+            onRetry={() => void settingsQuery.refetch()}
+            what="settings"
+          />
+          {settings ? (
+            // Not keyed by version: saving keeps the field and its focus. The version is
+            // read from the latest settings at submit time.
+            <SaveForm
+              label="Save settings"
+              onSaved={() => setSaved(true)}
+              body={(form) => ({
+                rate: form.decimal("rate"),
+                version: settings.version,
+              })}
+              send={(body, key) => writes.updateSettings(body, { key })}
+            >
+              <RateField
+                label="Default exchange rate (BDT per USD)"
+                name="rate"
+                defaultValue={settings.rate}
+                onChange={() => setSaved(false)}
+                placeholder="For example, 125.00"
+              />
+              <p className="text-sm text-muted-foreground">
+                Existing records keep their saved rates. No live exchange-rate
+                service is used.
+              </p>
+            </SaveForm>
+          ) : settingsQuery.isPending ? (
+            <Skeleton className="h-24 w-full" />
+          ) : null}
         </CardContent>
       </Card>
       {saved ? (
@@ -113,7 +98,7 @@ export function Settings({
         <CardContent className="flex flex-col gap-2 text-sm">
           <p>{user.name}</p>
           <p className="break-all text-muted-foreground">{user.email}</p>
-          <p>Timezone: Asia/Dhaka</p>
+          <p>Timezone: {settings?.timezone ?? "Asia/Dhaka"}</p>
         </CardContent>
       </Card>
       <h3 className="font-semibold">Change log</h3>
@@ -121,8 +106,13 @@ export function Settings({
         Wallet, schedule, and settings changes. Open an Activity record for its
         transaction history.
       </p>
-      <ErrorMessage error={error} />
-      {audit?.map((event) => (
+      <LoadError
+        error={audit.error}
+        hasData={Boolean(audit.data)}
+        onRetry={() => void audit.refetch()}
+        what="the change log"
+      />
+      {events.map((event) => (
         <details
           key={event.id}
           className="rounded-lg border bg-card p-3 text-sm"
@@ -147,13 +137,13 @@ export function Settings({
           </div>
         </details>
       ))}
-      {more ? (
+      {!showAudit || audit.hasNextPage ? (
         <Button
           variant="outline"
-          disabled={busy}
-          onClick={() => void loadAudit()}
+          disabled={audit.isFetching}
+          onClick={() => (showAudit ? void audit.fetchNextPage() : setShowAudit(true))}
         >
-          {busy ? "Loading…" : audit ? "Load older changes" : "View change log"}
+          {audit.isFetching ? "Loading…" : showAudit ? "Load older changes" : "View change log"}
         </Button>
       ) : null}
     </section>
