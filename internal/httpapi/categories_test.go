@@ -6,8 +6,8 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
-	"simply-finance/internal/finance"
 	"simply-finance/internal/httpapi"
+	"simply-finance/internal/ledger"
 	"testing"
 	"time"
 )
@@ -26,7 +26,7 @@ func TestCategoryAndMonthlyHTTP(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
-	h, e := httpapi.New(s, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true})
+	h, e := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -43,27 +43,27 @@ func TestCategoryAndMonthlyHTTP(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("login %d %s", status, body)
 	}
-	status, body = request(t, c, "POST", server.URL+"/api/v1/categories", finance.CategoryInput{Name: "Food", Type: "expense"}, "food")
+	status, body = request(t, c, "POST", server.URL+"/api/v1/categories", ledger.CategoryInput{Name: "Food", Type: "expense"}, "food")
 	if status != 200 {
 		t.Fatalf("category %d %s", status, body)
 	}
-	var category finance.Category
+	var category ledger.Category
 	if e = json.Unmarshal(body, &category); e != nil {
 		t.Fatal(e)
 	}
-	status, body = request(t, c, "POST", server.URL+"/api/v1/wallets", finance.WalletInput{Name: "Cash", Type: "physical", OpeningBalance: "1000"}, "wallet")
+	status, body = request(t, c, "POST", server.URL+"/api/v1/wallets", ledger.WalletInput{Name: "Cash", Type: "physical", OpeningBalance: "1000"}, "wallet")
 	if status != 200 {
 		t.Fatalf("wallet %d %s", status, body)
 	}
-	var wallet finance.Wallet
+	var wallet ledger.Wallet
 	if e = json.Unmarshal(body, &wallet); e != nil {
 		t.Fatal(e)
 	}
-	status, body = request(t, c, "POST", server.URL+"/api/v1/transactions", finance.TransactionInput{Kind: "expense", WalletID: wallet.ID, Amount: "100", Date: "2026-09-14", CategoryID: category.ID}, "expense")
+	status, body = request(t, c, "POST", server.URL+"/api/v1/transactions", ledger.TransactionInput{Kind: "expense", WalletID: wallet.ID, Amount: "100", Date: "2026-09-14", CategoryID: category.ID}, "expense")
 	if status != 200 {
 		t.Fatalf("expense %d %s", status, body)
 	}
-	status, _ = request(t, c, "POST", server.URL+"/api/v1/transactions", finance.TransactionInput{Kind: "income", WalletID: wallet.ID, Amount: "100", Date: "2026-09-14", CategoryID: category.ID}, "wrong-type")
+	status, _ = request(t, c, "POST", server.URL+"/api/v1/transactions", ledger.TransactionInput{Kind: "income", WalletID: wallet.ID, Amount: "100", Date: "2026-09-14", CategoryID: category.ID}, "wrong-type")
 	if status != 400 {
 		t.Fatalf("category type %d", status)
 	}
@@ -71,7 +71,7 @@ func TestCategoryAndMonthlyHTTP(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("monthly %d %s", status, body)
 	}
-	var monthly finance.MonthlySpending
+	var monthly ledger.MonthlySpending
 	if e = json.Unmarshal(body, &monthly); e != nil {
 		t.Fatal(e)
 	}

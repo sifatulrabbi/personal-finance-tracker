@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"regexp"
-	"simply-finance/internal/finance"
 	"simply-finance/internal/httpapi"
+	"simply-finance/internal/ledger"
 	"strings"
 	"sync"
 	"testing"
@@ -40,7 +40,7 @@ func TestAccessLogRecordsRequestsWithoutPrivateData(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
-	h, e := httpapi.New(s, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true, Logger: logger})
+	h, e := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true, Logger: logger})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -60,7 +60,7 @@ func TestAccessLogRecordsRequestsWithoutPrivateData(t *testing.T) {
 	if login.Code != 200 {
 		t.Fatalf("login %d", login.Code)
 	}
-	var me finance.User
+	var me ledger.User
 	json.Unmarshal(login.Body.Bytes(), &me)
 	cookie := login.Result().Cookies()[0]
 	created := send("POST", "/api/v1/wallets", `{"name":"Secret stash name","type":"physical","opening_balance":"424242"}`, cookie)

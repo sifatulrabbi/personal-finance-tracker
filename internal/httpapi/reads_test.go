@@ -3,17 +3,17 @@ package httpapi_test
 import (
 	"database/sql"
 	"fmt"
-	"simply-finance/internal/finance"
+	"simply-finance/internal/ledger"
 	"testing"
 )
 
 func TestSingleTransactionAndScheduleReads(t *testing.T) {
 	h := newHousehold(t)
-	var cash finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Cash", Type: "physical", OpeningBalance: "500"}, "cash", &cash)
-	var expense finance.Transaction
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: cash.ID, Amount: "20", Date: "2026-09-10", Note: "Tea"}, "tea", &expense)
-	var got finance.Transaction
+	var cash ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Cash", Type: "physical", OpeningBalance: "500"}, "cash", &cash)
+	var expense ledger.Transaction
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: cash.ID, Amount: "20", Date: "2026-09-10", Note: "Tea"}, "tea", &expense)
+	var got ledger.Transaction
 	h.spouse.ok("GET", "/transactions/"+expense.ID, nil, "", &got)
 	if got.ID != expense.ID || got.Amount != "20.00" || got.ActorEmail != "sifatul@example.test" || got.CreatedAt == "" || got.Voided || got.CategoryID != "others-expense" {
 		t.Fatalf("read: %+v", got)
@@ -25,8 +25,8 @@ func TestSingleTransactionAndScheduleReads(t *testing.T) {
 	}
 	h.me.fails("GET", "/transactions/missing", nil, "", 404, "not_found")
 
-	var schedule, read finance.Schedule
-	h.me.ok("POST", "/schedules", finance.ScheduleInput{Name: "Rent", WalletID: cash.ID, Amount: "100", Frequency: "monthly", StartDate: "2026-10-01"}, "rent", &schedule)
+	var schedule, read ledger.Schedule
+	h.me.ok("POST", "/schedules", ledger.ScheduleInput{Name: "Rent", WalletID: cash.ID, Amount: "100", Frequency: "monthly", StartDate: "2026-10-01"}, "rent", &schedule)
 	h.spouse.ok("GET", "/schedules/"+schedule.ID, nil, "", &read)
 	if read != schedule {
 		t.Fatalf("schedule: %+v, want %+v", read, schedule)
@@ -36,21 +36,21 @@ func TestSingleTransactionAndScheduleReads(t *testing.T) {
 
 func TestBillHistoryUpcomingAndConfirmDateDefault(t *testing.T) {
 	h := newHousehold(t)
-	var bank finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "10000"}, "bank", &bank)
-	var internet, paused finance.Schedule
-	h.me.ok("POST", "/schedules", finance.ScheduleInput{Name: "Internet", WalletID: bank.ID, Amount: "1000", Frequency: "monthly", StartDate: "2026-08-01"}, "internet", &internet)
-	h.me.ok("POST", "/schedules", finance.ScheduleInput{Name: "Gym", WalletID: bank.ID, Amount: "50", Frequency: "weekly", StartDate: "2026-09-20"}, "gym", &paused)
+	var bank ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "10000"}, "bank", &bank)
+	var internet, paused ledger.Schedule
+	h.me.ok("POST", "/schedules", ledger.ScheduleInput{Name: "Internet", WalletID: bank.ID, Amount: "1000", Frequency: "monthly", StartDate: "2026-08-01"}, "internet", &internet)
+	h.me.ok("POST", "/schedules", ledger.ScheduleInput{Name: "Gym", WalletID: bank.ID, Amount: "50", Frequency: "weekly", StartDate: "2026-09-20"}, "gym", &paused)
 	paused.Active = false
 	h.me.ok("PUT", "/schedules/"+paused.ID, paused, "pause-gym", nil)
 
-	var due []finance.Bill
+	var due []ledger.Bill
 	h.me.ok("GET", "/bills?status=due", nil, "", &due)
 	if len(due) != 2 || due[0].DueDate != "2026-08-01" || due[1].DueDate != "2026-09-01" {
 		t.Fatalf("due: %+v", due)
 	}
 	// An omitted payment date is the bill's due date.
-	var paid finance.Transaction
+	var paid ledger.Transaction
 	h.me.ok("POST", "/bills/"+due[0].ID+"/confirm", map[string]any{}, "pay-august", &paid)
 	if paid.Date != "2026-08-01" || paid.Amount != "1000.00" {
 		t.Fatalf("payment: %+v", paid)
@@ -58,7 +58,7 @@ func TestBillHistoryUpcomingAndConfirmDateDefault(t *testing.T) {
 	h.me.ok("POST", "/bills/"+due[1].ID+"/skip", map[string]any{"reason": "Waived"}, "skip-september", nil)
 
 	for status, want := range map[string]string{"due": "", "paid": "2026-08-01", "skipped": "2026-09-01"} {
-		var bills []finance.Bill
+		var bills []ledger.Bill
 		h.spouse.ok("GET", "/bills?status="+status, nil, "", &bills)
 		if (want == "") != (len(bills) == 0) || (want != "" && (len(bills) != 1 || bills[0].DueDate != want || bills[0].Status != status)) {
 			t.Errorf("%s: %+v", status, bills)
@@ -69,7 +69,7 @@ func TestBillHistoryUpcomingAndConfirmDateDefault(t *testing.T) {
 	}
 	h.me.fails("GET", "/bills?status=overdue", nil, "", 400, "validation_failed")
 
-	var upcoming []finance.UpcomingBill
+	var upcoming []ledger.UpcomingBill
 	h.me.ok("GET", "/bills/upcoming?days=60", nil, "", &upcoming)
 	if len(upcoming) != 2 || upcoming[0].DueDate != "2026-10-01" || upcoming[1].DueDate != "2026-11-01" || upcoming[0].ScheduleID != internet.ID || upcoming[0].Amount != "1000.00" {
 		t.Fatalf("upcoming: %+v", upcoming)
@@ -88,12 +88,12 @@ func TestBillHistoryUpcomingAndConfirmDateDefault(t *testing.T) {
 
 func TestUpcomingBillsAreCapped(t *testing.T) {
 	h := newHousehold(t)
-	var bank finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Bank", Type: "bank"}, "bank", &bank)
+	var bank ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Bank", Type: "bank"}, "bank", &bank)
 	for i := 0; i < 5; i++ {
-		h.me.ok("POST", "/schedules", finance.ScheduleInput{Name: fmt.Sprint("Weekly ", i), WalletID: bank.ID, Amount: "1", Frequency: "weekly", StartDate: "2026-09-15"}, fmt.Sprint("weekly", i), nil)
+		h.me.ok("POST", "/schedules", ledger.ScheduleInput{Name: fmt.Sprint("Weekly ", i), WalletID: bank.ID, Amount: "1", Frequency: "weekly", StartDate: "2026-09-15"}, fmt.Sprint("weekly", i), nil)
 	}
-	var upcoming []finance.UpcomingBill
+	var upcoming []ledger.UpcomingBill
 	h.me.ok("GET", "/bills/upcoming?days=366", nil, "", &upcoming)
 	if len(upcoming) != 200 {
 		t.Fatalf("got %d upcoming bills, want the cap of 200", len(upcoming))
@@ -107,19 +107,19 @@ func TestUpcomingBillsAreCapped(t *testing.T) {
 
 func TestSummaryForTheHomeScreen(t *testing.T) {
 	h := newHousehold(t)
-	var bank, usd, card, credit, cash finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "10000"}, "bank", &bank)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Dollars", Type: "bank", Currency: "USD", OpeningBalance: "100"}, "usd", &usd)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Debit", Type: "card", CardType: "debit", BankWalletID: bank.ID}, "debit", &card)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Credit", Type: "card", CardType: "credit", CreditLimit: "50000", OpeningBalance: "2000"}, "credit", &credit)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Pocket", Type: "physical", OpeningBalance: "500"}, "cash", &cash)
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: card.ID, Amount: "1000", Date: "2026-09-10"}, "september", nil)
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: bank.ID, Amount: "300", Date: "2026-08-20"}, "august", nil)
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: credit.ID, Amount: "250", Date: "2026-09-12"}, "card-spend", nil)
+	var bank, usd, card, credit, cash ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "10000"}, "bank", &bank)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Dollars", Type: "bank", Currency: "USD", OpeningBalance: "100"}, "usd", &usd)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Debit", Type: "card", CardType: "debit", BankWalletID: bank.ID}, "debit", &card)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Credit", Type: "card", CardType: "credit", CreditLimit: "50000", OpeningBalance: "2000"}, "credit", &credit)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Pocket", Type: "physical", OpeningBalance: "500"}, "cash", &cash)
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: card.ID, Amount: "1000", Date: "2026-09-10"}, "september", nil)
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: bank.ID, Amount: "300", Date: "2026-08-20"}, "august", nil)
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: credit.ID, Amount: "250", Date: "2026-09-12"}, "card-spend", nil)
 	h.me.ok("PUT", "/monthly/2026-08/target", map[string]any{"amount": "30000", "version": 1}, "august-target", nil)
-	h.me.ok("POST", "/schedules", finance.ScheduleInput{Name: "Internet", WalletID: bank.ID, Amount: "1000", Frequency: "monthly", StartDate: "2026-09-01"}, "internet", nil)
+	h.me.ok("POST", "/schedules", ledger.ScheduleInput{Name: "Internet", WalletID: bank.ID, Amount: "1000", Frequency: "monthly", StartDate: "2026-09-01"}, "internet", nil)
 
-	var sum finance.Summary
+	var sum ledger.Summary
 	h.spouse.ok("GET", "/summary", nil, "", &sum)
 	if sum.Today != "2026-09-14" || len(sum.Totals) != 2 {
 		t.Fatalf("summary: %+v", sum)

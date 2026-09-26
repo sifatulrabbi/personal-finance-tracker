@@ -11,10 +11,16 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // The image has no zoneinfo; the household time zone is embedded.
 
-	"simply-finance/internal/finance"
+	"simply-finance/internal/app"
 	"simply-finance/internal/httpapi"
+	"simply-finance/internal/ledger"
+	"simply-finance/internal/sqlite"
 )
+
+// householdTimezone is the calendar every date and recurrence boundary uses (CLAUDE.md).
+const householdTimezone = "Asia/Dhaka"
 
 func serve(path string) error {
 	var users []httpapi.Credential
@@ -25,18 +31,26 @@ func serve(path string) error {
 	if err != nil {
 		return errors.New("TRUSTED_PROXY_CIDRS must be a comma-separated list of IP addresses or CIDR ranges")
 	}
-	store, err := finance.Open(path, time.Now)
+	location, err := time.LoadLocation(householdTimezone)
+	if err != nil {
+		return fmt.Errorf("load the household time zone: %w", err)
+	}
+	store, err := sqlite.Open(path)
 	if err != nil {
 		return fmt.Errorf("open existing database (run migrate explicitly to initialize it): %w", err)
 	}
 	defer store.Close()
-	handler, err := httpapi.New(store, httpapi.Config{
+	finance, err := app.New(store, app.Config{Now: time.Now, Location: location})
+	if err != nil {
+		return err
+	}
+	handler, err := httpapi.New(finance, store, httpapi.Config{
 		Users: users, Origin: env("APP_ORIGIN", "http://localhost:47831"),
 		InsecureCookies: os.Getenv("ALLOW_INSECURE_COOKIES") == "true",
 		TrustedProxies:  proxies,
 	})
 	if err != nil {
-		if errors.Is(err, finance.ErrInvalid) {
+		if errors.Is(err, ledger.ErrInvalid) {
 			return errors.New("invalid authentication or origin configuration; HTTP requires ALLOW_INSECURE_COOKIES=true and HTTPS requires false")
 		}
 		return fmt.Errorf("initialize HTTP handler (database preparation requires the explicit migrate command): %w", err)

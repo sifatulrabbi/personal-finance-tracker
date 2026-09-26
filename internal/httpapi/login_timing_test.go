@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
-	"simply-finance/internal/finance"
+	"simply-finance/internal/apptest"
+	"simply-finance/internal/sqlite"
 	"strings"
 	"testing"
 	"time"
@@ -16,14 +17,15 @@ import (
 func timingServer(t *testing.T) *Server {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "timing.sqlite")
-	if e := finance.Migrate(path); e != nil {
+	if e := sqlite.Migrate(path); e != nil {
 		t.Fatal(e)
 	}
-	store, e := finance.Open(path, time.Now)
+	db, e := sqlite.Open(path)
 	if e != nil {
 		t.Fatal(e)
 	}
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { db.Close() })
+	store := apptest.Wrap(db, time.Now)
 	var users []Credential
 	for i, cost := range []int{10, 11} {
 		h, e := bcrypt.GenerateFromPassword([]byte("correct horse battery"), cost)
@@ -32,7 +34,7 @@ func timingServer(t *testing.T) *Server {
 		}
 		users = append(users, Credential{Email: []string{"low@example.test", "high@example.test"}[i], PasswordHash: string(h)})
 	}
-	s, e := newServer(store, Config{Users: users, Origin: "http://localhost:8080", InsecureCookies: true})
+	s, e := newServer(store.Service, store.Store, Config{Users: users, Origin: "http://localhost:8080", InsecureCookies: true})
 	if e != nil {
 		t.Fatal(e)
 	}

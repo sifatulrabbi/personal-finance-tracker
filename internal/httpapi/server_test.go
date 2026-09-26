@@ -3,16 +3,17 @@ package httpapi_test
 import (
 	"bytes"
 	"encoding/json"
-	"golang.org/x/crypto/bcrypt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
-	"simply-finance/internal/finance"
 	"simply-finance/internal/httpapi"
+	"simply-finance/internal/ledger"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func credentials(t *testing.T) []httpapi.Credential {
@@ -55,7 +56,7 @@ func TestAuthenticatedHouseholdHTTPWorkflow(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
-	h, e := httpapi.New(s, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true})
+	h, e := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:8080", InsecureCookies: true})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -75,17 +76,17 @@ func TestAuthenticatedHouseholdHTTPWorkflow(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("login %d %s", status, body)
 	}
-	status, body = request(t, c, "POST", server.URL+"/api/v1/wallets", finance.WalletInput{Name: "Cash", Type: "physical", OpeningBalance: "1000"}, "create-cash")
+	status, body = request(t, c, "POST", server.URL+"/api/v1/wallets", ledger.WalletInput{Name: "Cash", Type: "physical", OpeningBalance: "1000"}, "create-cash")
 	if status != 200 {
 		t.Fatalf("wallet %d %s", status, body)
 	}
-	var w finance.Wallet
+	var w ledger.Wallet
 	json.Unmarshal(body, &w)
-	status, body = request(t, c, "POST", server.URL+"/api/v1/transactions", finance.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "100", Date: "2026-09-14"}, "expense")
+	status, body = request(t, c, "POST", server.URL+"/api/v1/transactions", ledger.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "100", Date: "2026-09-14"}, "expense")
 	if status != 200 {
 		t.Fatalf("expense %d %s", status, body)
 	}
-	var r finance.Transaction
+	var r ledger.Transaction
 	json.Unmarshal(body, &r)
 	if r.ActorEmail != "sifatul@example.test" {
 		t.Fatal(r)
@@ -103,7 +104,7 @@ func TestAuthenticatedHouseholdHTTPWorkflow(t *testing.T) {
 		t.Fatal(status)
 	}
 	status, body = request(t, c, "GET", server.URL+"/api/v1/wallets", nil, "")
-	var ws []finance.Wallet
+	var ws []ledger.Wallet
 	json.Unmarshal(body, &ws)
 	if status != 200 || len(ws) != 1 || ws[0].Balance != "900.00" {
 		t.Fatalf("shared %d %s", status, body)
@@ -117,7 +118,7 @@ func TestSessionRevocationAndRequestGuards(t *testing.T) {
 	defer s.Close()
 	users := credentials(t)
 	config := httpapi.Config{Users: users, Origin: "https://finance.example.test"}
-	handler, e := httpapi.New(s, config)
+	handler, e := httpapi.New(s.Service, s.Store, config)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -161,13 +162,13 @@ func TestSessionRevocationAndRequestGuards(t *testing.T) {
 		}
 	}
 	config.Users = users[1:]
-	removed, e := httpapi.New(s, config)
+	removed, e := httpapi.New(s.Service, s.Store, config)
 	if e != nil {
 		t.Fatal(e)
 	}
 	check(removed, 401)
 	config.Users = users
-	restored, e := httpapi.New(s, config)
+	restored, e := httpapi.New(s.Service, s.Store, config)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -181,7 +182,7 @@ func TestHTTPRatesDebtAndRecurringPaymentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	h, err := httpapi.New(s, httpapi.Config{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: now})
+	h, err := httpapi.New(s.Service, s.Store, httpapi.Config{Users: credentials(t), Origin: "http://localhost:47831", InsecureCookies: true, Now: now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,26 +203,26 @@ func TestHTTPRatesDebtAndRecurringPaymentLifecycle(t *testing.T) {
 		}
 	}
 	call("POST", "/login", map[string]string{"email": "wife@example.test", "password": "correct horse battery"}, "", nil)
-	var bank, card finance.Wallet
-	call("POST", "/wallets", finance.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "10000"}, "bank", &bank)
-	call("POST", "/wallets", finance.WalletInput{Name: "Credit", Type: "card", CardType: "credit", CreditLimit: "50000"}, "card", &card)
-	var settings finance.Settings
+	var bank, card ledger.Wallet
+	call("POST", "/wallets", ledger.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "10000"}, "bank", &bank)
+	call("POST", "/wallets", ledger.WalletInput{Name: "Credit", Type: "card", CardType: "credit", CreditLimit: "50000"}, "card", &card)
+	var settings ledger.Settings
 	call("PUT", "/settings", map[string]any{"version": 1, "rate": "120"}, "rate", &settings)
 	if settings.Rate != "120.000000" {
 		t.Fatal(settings)
 	}
-	var purchase finance.Transaction
-	call("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: card.ID, Amount: "2000", Date: "2026-09-14"}, "purchase", &purchase)
-	call("POST", "/transactions", finance.TransactionInput{Kind: "transfer", WalletID: bank.ID, ToWalletID: card.ID, Amount: "1500", Date: "2026-09-14"}, "repay", nil)
-	var schedule finance.Schedule
-	call("POST", "/schedules", finance.ScheduleInput{Name: "Wi-Fi", WalletID: bank.ID, Amount: "1000", Frequency: "monthly", StartDate: "2026-09-01"}, "wifi", &schedule)
-	var due []finance.Bill
+	var purchase ledger.Transaction
+	call("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: card.ID, Amount: "2000", Date: "2026-09-14"}, "purchase", &purchase)
+	call("POST", "/transactions", ledger.TransactionInput{Kind: "transfer", WalletID: bank.ID, ToWalletID: card.ID, Amount: "1500", Date: "2026-09-14"}, "repay", nil)
+	var schedule ledger.Schedule
+	call("POST", "/schedules", ledger.ScheduleInput{Name: "Wi-Fi", WalletID: bank.ID, Amount: "1000", Frequency: "monthly", StartDate: "2026-09-01"}, "wifi", &schedule)
+	var due []ledger.Bill
 	call("GET", "/bills/due", nil, "", &due)
 	if len(due) != 1 {
 		t.Fatal(due)
 	}
-	var payment finance.Transaction
-	call("POST", "/bills/"+due[0].ID+"/confirm", finance.PaymentInput{Amount: "1020", Date: "2026-09-14", Note: "Includes charge"}, "confirm", &payment)
+	var payment ledger.Transaction
+	call("POST", "/bills/"+due[0].ID+"/confirm", ledger.PaymentInput{Amount: "1020", Date: "2026-09-14", Note: "Includes charge"}, "confirm", &payment)
 	if payment.Amount != "1020.00" || payment.ActorEmail != "wife@example.test" {
 		t.Fatal(payment)
 	}
@@ -234,8 +235,8 @@ func TestHTTPRatesDebtAndRecurringPaymentLifecycle(t *testing.T) {
 	if len(due) != 1 {
 		t.Fatal(due)
 	}
-	call("POST", "/bills/"+due[0].ID+"/confirm", finance.PaymentInput{Date: "2026-09-14"}, "confirm-again", nil)
-	var wallets []finance.Wallet
+	call("POST", "/bills/"+due[0].ID+"/confirm", ledger.PaymentInput{Date: "2026-09-14"}, "confirm-again", nil)
+	var wallets []ledger.Wallet
 	call("GET", "/wallets", nil, "", &wallets)
 	for _, w := range wallets {
 		if w.ID == bank.ID && w.Balance != "7500.00" {
@@ -245,7 +246,7 @@ func TestHTTPRatesDebtAndRecurringPaymentLifecycle(t *testing.T) {
 			t.Fatal(w)
 		}
 	}
-	var history []finance.Transaction
+	var history []ledger.Transaction
 	call("GET", "/transactions/"+payment.ID+"/history", nil, "", &history)
 	if len(history) != 3 || history[1].Reason != "" || !history[2].Voided {
 		t.Fatal(history)

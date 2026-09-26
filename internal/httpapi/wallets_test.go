@@ -1,14 +1,14 @@
 package httpapi_test
 
 import (
-	"simply-finance/internal/finance"
+	"simply-finance/internal/ledger"
 	"testing"
 )
 
 func TestSingleWalletRead(t *testing.T) {
 	h := newHousehold(t)
-	var created finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Cash", Type: "physical", OpeningBalance: "500"}, "cash", &created)
+	var created ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Cash", Type: "physical", OpeningBalance: "500"}, "cash", &created)
 	got := h.spouse.wallet(created.ID)
 	if got.ID != created.ID || got.Name != "Cash" || got.Balance != "500.00" {
 		t.Fatalf("%+v", got)
@@ -21,13 +21,13 @@ func TestSingleWalletRead(t *testing.T) {
 // metadata version that spending does not change; adjustments check a separate balance version.
 func TestRenameSucceedsWhileTheOtherMemberRecordsAnExpense(t *testing.T) {
 	h := newHousehold(t)
-	var bank finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "1000"}, "bank", &bank)
+	var bank ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "1000"}, "bank", &bank)
 	read := h.spouse.wallet(bank.ID)
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: bank.ID, Amount: "100", Date: "2026-09-14"}, "groceries", nil)
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: bank.ID, Amount: "100", Date: "2026-09-14"}, "groceries", nil)
 
 	read.Name = "Joint bank"
-	var renamed finance.Wallet
+	var renamed ledger.Wallet
 	h.spouse.ok("PUT", "/wallets/"+bank.ID, read, "rename", &renamed)
 	if renamed.Name != "Joint bank" || renamed.Balance != "900.00" || renamed.Version != read.Version+1 {
 		t.Fatalf("renamed: %+v", renamed)
@@ -35,7 +35,7 @@ func TestRenameSucceedsWhileTheOtherMemberRecordsAnExpense(t *testing.T) {
 	// A retry of the same edit sent after a refresh (read-only fields changed) replays, not 409.
 	refreshed := h.spouse.wallet(bank.ID)
 	refreshed.Version, refreshed.Name = read.Version, "Joint bank"
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: bank.ID, Amount: "1", Date: "2026-09-14"}, "snack", nil)
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: bank.ID, Amount: "1", Date: "2026-09-14"}, "snack", nil)
 	refreshed.Balance = h.spouse.wallet(bank.ID).Balance
 	h.spouse.ok("PUT", "/wallets/"+bank.ID, refreshed, "rename", nil)
 

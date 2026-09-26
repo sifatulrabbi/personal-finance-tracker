@@ -1,22 +1,22 @@
 package httpapi_test
 
 import (
-	"simply-finance/internal/finance"
+	"simply-finance/internal/ledger"
 	"testing"
 )
 
 type debitSetup struct {
 	h                  *household
-	bank, card, credit finance.Wallet
+	bank, card, credit ledger.Wallet
 }
 
 func newDebitSetup(t *testing.T) debitSetup {
 	t.Helper()
 	h := newHousehold(t)
 	d := debitSetup{h: h}
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "50000"}, "bank", &d.bank)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Debit", Type: "card", CardType: "debit", BankWalletID: d.bank.ID}, "debit", &d.card)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Credit", Type: "card", CardType: "credit", CreditLimit: "20000", OpeningBalance: "3000"}, "credit", &d.credit)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Bank", Type: "bank", OpeningBalance: "50000"}, "bank", &d.bank)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Debit", Type: "card", CardType: "debit", BankWalletID: d.bank.ID}, "debit", &d.card)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Credit", Type: "card", CardType: "credit", CreditLimit: "20000", OpeningBalance: "3000"}, "credit", &d.credit)
 	return d
 }
 
@@ -40,13 +40,13 @@ func TestDebitCardSpendingMovesItsBankWallet(t *testing.T) {
 	if d.card.Balance != "0.00" || d.card.BankWalletID != d.bank.ID || d.card.Currency != "BDT" {
 		t.Fatalf("card: %+v", d.card)
 	}
-	var expense finance.Transaction
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: d.card.ID, Amount: "1000", Date: "2026-09-14"}, "shop", &expense)
+	var expense ledger.Transaction
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: d.card.ID, Amount: "1000", Date: "2026-09-14"}, "shop", &expense)
 	if expense.WalletID != d.card.ID {
 		t.Fatalf("record lost the card: %+v", expense)
 	}
 	d.balances(t, "49000.00", "0.00")
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "transfer", WalletID: d.card.ID, ToWalletID: d.credit.ID, Amount: "2000", Date: "2026-09-14"}, "repay", nil)
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "transfer", WalletID: d.card.ID, ToWalletID: d.credit.ID, Amount: "2000", Date: "2026-09-14"}, "repay", nil)
 	d.balances(t, "47000.00", "0.00")
 	if c := h.me.wallet(d.credit.ID); c.Debt != "1000.00" {
 		t.Fatalf("credit: %+v", c)
@@ -57,14 +57,14 @@ func TestDebitCardSpendingMovesItsBankWallet(t *testing.T) {
 	d.balances(t, "48000.00", "0.00")
 
 	// A bill paid by the card is paid from the bank.
-	var due []finance.Bill
-	h.me.ok("POST", "/schedules", finance.ScheduleInput{Name: "Phone", WalletID: d.card.ID, Amount: "500", Frequency: "monthly", StartDate: "2026-09-01"}, "phone", nil)
+	var due []ledger.Bill
+	h.me.ok("POST", "/schedules", ledger.ScheduleInput{Name: "Phone", WalletID: d.card.ID, Amount: "500", Frequency: "monthly", StartDate: "2026-09-01"}, "phone", nil)
 	h.me.ok("GET", "/bills/due", nil, "", &due)
-	h.me.ok("POST", "/bills/"+due[0].ID+"/confirm", finance.PaymentInput{Date: "2026-09-14"}, "pay-phone", nil)
+	h.me.ok("POST", "/bills/"+due[0].ID+"/confirm", ledger.PaymentInput{Date: "2026-09-14"}, "pay-phone", nil)
 	d.balances(t, "47500.00", "0.00")
 
 	// Moving money between the card and its own bank is not a transfer.
-	env := h.me.fails("POST", "/transactions", finance.TransactionInput{Kind: "transfer", WalletID: d.bank.ID, ToWalletID: d.card.ID, Amount: "1", Date: "2026-09-14"}, "self", 400, "validation_failed")
+	env := h.me.fails("POST", "/transactions", ledger.TransactionInput{Kind: "transfer", WalletID: d.bank.ID, ToWalletID: d.card.ID, Amount: "1", Date: "2026-09-14"}, "self", 400, "validation_failed")
 	if env.Error.Field != "to_wallet_id" {
 		t.Fatalf("field %q", env.Error.Field)
 	}
@@ -82,26 +82,26 @@ func TestDebitCardSpendingMovesItsBankWallet(t *testing.T) {
 func TestDebitCardCreationRules(t *testing.T) {
 	d := newDebitSetup(t)
 	h := d.h
-	var cash, usdBank, closed finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Cash", Type: "physical"}, "cash", &cash)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "USD bank", Type: "bank", Currency: "USD"}, "usd-bank", &usdBank)
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Closed", Type: "bank"}, "closed", &closed)
+	var cash, usdBank, closed ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Cash", Type: "physical"}, "cash", &cash)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "USD bank", Type: "bank", Currency: "USD"}, "usd-bank", &usdBank)
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Closed", Type: "bank"}, "closed", &closed)
 	closed.Archived = true
 	h.me.ok("PUT", "/wallets/"+closed.ID, closed, "archive-closed", nil)
 	for _, tc := range []struct {
 		name        string
-		in          finance.WalletInput
+		in          ledger.WalletInput
 		status      int
 		code, field string
 	}{
-		{"no bank", finance.WalletInput{Name: "D", Type: "card", CardType: "debit"}, 400, "validation_failed", "bank_wallet_id"},
-		{"missing bank", finance.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: "missing"}, 404, "not_found", "bank_wallet_id"},
-		{"not a bank", finance.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: cash.ID}, 400, "validation_failed", "bank_wallet_id"},
-		{"archived bank", finance.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: closed.ID}, 400, "archived_wallet", "bank_wallet_id"},
-		{"own balance", finance.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: d.bank.ID, OpeningBalance: "100"}, 400, "validation_failed", "opening_balance"},
-		{"other currency", finance.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: d.bank.ID, Currency: "USD"}, 400, "validation_failed", "currency"},
-		{"link on a bank", finance.WalletInput{Name: "D", Type: "bank", BankWalletID: d.bank.ID}, 400, "validation_failed", "bank_wallet_id"},
-		{"link on a credit card", finance.WalletInput{Name: "D", Type: "card", CardType: "credit", BankWalletID: d.bank.ID}, 400, "validation_failed", "bank_wallet_id"},
+		{"no bank", ledger.WalletInput{Name: "D", Type: "card", CardType: "debit"}, 400, "validation_failed", "bank_wallet_id"},
+		{"missing bank", ledger.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: "missing"}, 404, "not_found", "bank_wallet_id"},
+		{"not a bank", ledger.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: cash.ID}, 400, "validation_failed", "bank_wallet_id"},
+		{"archived bank", ledger.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: closed.ID}, 400, "archived_wallet", "bank_wallet_id"},
+		{"own balance", ledger.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: d.bank.ID, OpeningBalance: "100"}, 400, "validation_failed", "opening_balance"},
+		{"other currency", ledger.WalletInput{Name: "D", Type: "card", CardType: "debit", BankWalletID: d.bank.ID, Currency: "USD"}, 400, "validation_failed", "currency"},
+		{"link on a bank", ledger.WalletInput{Name: "D", Type: "bank", BankWalletID: d.bank.ID}, 400, "validation_failed", "bank_wallet_id"},
+		{"link on a credit card", ledger.WalletInput{Name: "D", Type: "card", CardType: "credit", BankWalletID: d.bank.ID}, 400, "validation_failed", "bank_wallet_id"},
 	} {
 		env := h.me.fails("POST", "/wallets", tc.in, "bad-"+tc.name, tc.status, tc.code)
 		if env.Error.Field != tc.field {
@@ -109,13 +109,13 @@ func TestDebitCardCreationRules(t *testing.T) {
 		}
 	}
 	// Currency follows the bank when omitted, and an explicit zero opening balance is fine.
-	var usdCard finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "USD debit", Type: "card", CardType: "debit", BankWalletID: usdBank.ID, OpeningBalance: "0"}, "usd-card", &usdCard)
+	var usdCard ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "USD debit", Type: "card", CardType: "debit", BankWalletID: usdBank.ID, OpeningBalance: "0"}, "usd-card", &usdCard)
 	if usdCard.Currency != "USD" {
 		t.Fatalf("currency: %+v", usdCard)
 	}
 	// A debit card adds no opening record of its own.
-	var records []finance.Transaction
+	var records []ledger.Transaction
 	h.me.ok("GET", "/transactions", nil, "", &records)
 	for _, r := range records {
 		if r.WalletID == usdCard.ID || r.WalletID == d.card.ID {
@@ -130,19 +130,19 @@ func TestDebitCardCreationRules(t *testing.T) {
 func TestArchivedDebitCardsAndBanks(t *testing.T) {
 	d := newDebitSetup(t)
 	h := d.h
-	var expense finance.Transaction
-	h.me.ok("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: d.card.ID, Amount: "100", Date: "2026-09-14", Note: "Lunhc"}, "lunch", &expense)
+	var expense ledger.Transaction
+	h.me.ok("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: d.card.ID, Amount: "100", Date: "2026-09-14", Note: "Lunhc"}, "lunch", &expense)
 	card := h.me.wallet(d.card.ID)
 	card.Archived = true
 	h.me.ok("PUT", "/wallets/"+card.ID, card, "archive-card", nil)
-	h.me.fails("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: d.card.ID, Amount: "1", Date: "2026-09-14"}, "on-archived-card", 400, "archived_wallet")
+	h.me.fails("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: d.card.ID, Amount: "1", Date: "2026-09-14"}, "on-archived-card", 400, "archived_wallet")
 	h.me.ok("PUT", "/transactions/"+expense.ID, map[string]any{"version": 1, "kind": "expense", "wallet_id": d.card.ID, "amount": "100", "date": "2026-09-14", "note": "Lunch"}, "fix-note", nil)
-	h.me.fails("POST", "/transactions", finance.TransactionInput{Kind: "transfer", WalletID: d.credit.ID, ToWalletID: d.card.ID, Amount: "1", Date: "2026-09-14"}, "into-archived-card", 400, "archived_wallet")
+	h.me.fails("POST", "/transactions", ledger.TransactionInput{Kind: "transfer", WalletID: d.credit.ID, ToWalletID: d.card.ID, Amount: "1", Date: "2026-09-14"}, "into-archived-card", 400, "archived_wallet")
 
-	var other finance.Wallet
-	h.me.ok("POST", "/wallets", finance.WalletInput{Name: "Other debit", Type: "card", CardType: "debit", BankWalletID: d.bank.ID}, "other", &other)
+	var other ledger.Wallet
+	h.me.ok("POST", "/wallets", ledger.WalletInput{Name: "Other debit", Type: "card", CardType: "debit", BankWalletID: d.bank.ID}, "other", &other)
 	bank := h.me.wallet(d.bank.ID)
 	bank.Archived = true
 	h.me.ok("PUT", "/wallets/"+bank.ID, bank, "archive-bank", nil)
-	h.me.fails("POST", "/transactions", finance.TransactionInput{Kind: "expense", WalletID: other.ID, Amount: "1", Date: "2026-09-14"}, "via-archived-bank", 400, "archived_wallet")
+	h.me.fails("POST", "/transactions", ledger.TransactionInput{Kind: "expense", WalletID: other.ID, Amount: "1", Date: "2026-09-14"}, "via-archived-bank", 400, "archived_wallet")
 }

@@ -3,6 +3,7 @@ package ledger_test
 import (
 	"testing"
 	"time"
+	_ "time/tzdata"
 
 	"simply-finance/internal/ledger"
 )

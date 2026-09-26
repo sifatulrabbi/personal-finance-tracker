@@ -7,17 +7,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"golang.org/x/crypto/bcrypt"
 	"io"
 	"log/slog"
 	"mime"
 	"net/http"
 	"net/netip"
 	"net/url"
-	"simply-finance/internal/finance"
+	"simply-finance/internal/app"
+	"simply-finance/internal/ledger"
+	"simply-finance/internal/sqlite"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Credential struct {
@@ -37,7 +40,8 @@ type Config struct {
 	Logger *slog.Logger
 }
 type Server struct {
-	store   *finance.Store
+	app     *app.Service
+	store   *sqlite.Store
 	config  Config
 	users   map[string]Credential
 	dummy   []byte
@@ -47,14 +51,14 @@ type Server struct {
 }
 type actorKey struct{}
 
-func New(store *finance.Store, config Config) (http.Handler, error) {
-	s, e := newServer(store, config)
+func New(svc *app.Service, store *sqlite.Store, config Config) (http.Handler, error) {
+	s, e := newServer(svc, store, config)
 	if e != nil {
 		return nil, e
 	}
 	return s.handler(), nil
 }
-func newServer(store *finance.Store, config Config) (*Server, error) {
+func newServer(svc *app.Service, store *sqlite.Store, config Config) (*Server, error) {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
@@ -63,27 +67,27 @@ func newServer(store *finance.Store, config Config) (*Server, error) {
 	}
 	origin, e := url.Parse(config.Origin)
 	if e != nil || origin.Host == "" || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || origin.User != nil {
-		return nil, finance.ErrInvalid
+		return nil, ledger.ErrInvalid
 	}
 	if config.InsecureCookies != (origin.Scheme == "http") {
-		return nil, finance.ErrInvalid
+		return nil, ledger.ErrInvalid
 	}
-	s := &Server{store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword, logger: config.Logger}
+	s := &Server{app: svc, store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword, logger: config.Logger}
 	if len(config.Users) == 0 || len(config.Users) > 100 {
-		return nil, finance.ErrInvalid
+		return nil, ledger.ErrInvalid
 	}
 	dummyCost := bcrypt.MinCost
 	for _, u := range config.Users {
-		email, e := finance.NormalizeEmail(u.Email)
+		email, e := ledger.NormalizeEmail(u.Email)
 		if e != nil || len(u.Name) > 120 {
-			return nil, finance.ErrInvalid
+			return nil, ledger.ErrInvalid
 		}
 		if _, exists := s.users[email]; exists {
-			return nil, finance.ErrInvalid
+			return nil, ledger.ErrInvalid
 		}
 		cost, e := bcrypt.Cost([]byte(u.PasswordHash))
 		if e != nil || cost < 10 || cost > 14 {
-			return nil, finance.ErrInvalid
+			return nil, ledger.ErrInvalid
 		}
 		dummyCost = max(dummyCost, cost)
 		u.Email = email
@@ -125,46 +129,46 @@ func (s *Server) handler() http.Handler {
 	private.HandleFunc("GET /api/v1/me", func(w http.ResponseWriter, r *http.Request) { respond(w, actor(r), nil) })
 	private.HandleFunc("POST /api/v1/logout", s.logout)
 	private.HandleFunc("GET /api/v1/summary", func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.store.Summary(r.Context())
+		v, e := s.app.Summary(r.Context())
 		respond(w, v, e)
 	})
 	private.HandleFunc("GET /api/v1/categories", func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.store.Categories(r.Context())
+		v, e := s.app.Categories(r.Context())
 		respond(w, v, e)
 	})
-	private.HandleFunc("POST /api/v1/categories", input(func(r *http.Request, in finance.CategoryInput) (any, error) {
-		return s.store.CreateCategory(r.Context(), actor(r).ID, key(r), in)
+	private.HandleFunc("POST /api/v1/categories", input(func(r *http.Request, in ledger.CategoryInput) (any, error) {
+		return s.app.CreateCategory(r.Context(), actor(r).ID, key(r), in)
 	}))
 	private.HandleFunc("GET /api/v1/monthly", func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.store.Monthly(r.Context(), r.URL.Query().Get("month"))
+		v, e := s.app.Monthly(r.Context(), r.URL.Query().Get("month"))
 		respond(w, v, e)
 	})
 	private.HandleFunc("PUT /api/v1/monthly/{month}/target", input(func(r *http.Request, in struct {
 		Amount  string `json:"amount"`
 		Version int    `json:"version"`
 	}) (any, error) {
-		return s.store.SetMonthlyTarget(r.Context(), actor(r).ID, key(r), r.PathValue("month"), in.Amount, in.Version)
+		return s.app.SetMonthlyTarget(r.Context(), actor(r).ID, key(r), r.PathValue("month"), in.Amount, in.Version)
 	}))
-	private.HandleFunc("GET /api/v1/wallets", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Wallets(r.Context()); respond(w, v, e) })
+	private.HandleFunc("GET /api/v1/wallets", func(w http.ResponseWriter, r *http.Request) { v, e := s.app.Wallets(r.Context()); respond(w, v, e) })
 	private.HandleFunc("GET /api/v1/wallets/{id}", func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.store.Wallet(r.Context(), r.PathValue("id"))
+		v, e := s.app.Wallet(r.Context(), r.PathValue("id"))
 		respond(w, v, e)
 	})
-	private.HandleFunc("POST /api/v1/wallets", input(func(r *http.Request, in finance.WalletInput) (any, error) {
-		return s.store.CreateWallet(r.Context(), actor(r).ID, key(r), in)
+	private.HandleFunc("POST /api/v1/wallets", input(func(r *http.Request, in ledger.WalletInput) (any, error) {
+		return s.app.CreateWallet(r.Context(), actor(r).ID, key(r), in)
 	}))
-	private.HandleFunc("PUT /api/v1/wallets/{id}", input(func(r *http.Request, in finance.Wallet) (any, error) {
+	private.HandleFunc("PUT /api/v1/wallets/{id}", input(func(r *http.Request, in ledger.Wallet) (any, error) {
 		if in.ID != r.PathValue("id") {
 			return nil, errPathID
 		}
-		return s.store.UpdateWallet(r.Context(), actor(r).ID, key(r), in)
+		return s.app.UpdateWallet(r.Context(), actor(r).ID, key(r), in)
 	}))
 	private.HandleFunc("POST /api/v1/wallets/{id}/adjust", input(func(r *http.Request, in struct {
 		BalanceVersion int    `json:"balance_version"`
 		Balance        string `json:"balance"`
 		Reason         string `json:"reason"`
 	}) (any, error) {
-		return s.store.AdjustWallet(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.BalanceVersion, in.Balance, in.Reason)
+		return s.app.AdjustWallet(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.BalanceVersion, in.Balance, in.Reason)
 	}))
 	private.HandleFunc("GET /api/v1/transactions", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -174,16 +178,16 @@ func (s *Server) handler() http.Handler {
 				respond(w, nil, e)
 				return
 			}
-			f := finance.TransactionFilter{WalletID: q.Get("wallet_id"), Kind: q.Get("kind"), CategoryID: q.Get("category_id"), From: q.Get("from"), To: q.Get("to")}
+			f := app.TransactionFilter{WalletID: q.Get("wallet_id"), Kind: q.Get("kind"), CategoryID: q.Get("category_id"), From: q.Get("from"), To: q.Get("to")}
 			switch q.Get("include_voided") {
 			case "", "false":
 			case "true":
 				f.IncludeVoided = true
 			default:
-				respond(w, nil, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use true or false.", Field: "include_voided"})
+				respond(w, nil, &ledger.Error{Code: ledger.CodeValidationFailed, Message: "Use true or false.", Field: "include_voided"})
 				return
 			}
-			v, e := s.store.TransactionsPage(r.Context(), f, q.Get("cursor"), l)
+			v, e := s.app.TransactionsPage(r.Context(), f, q.Get("cursor"), l)
 			respond(w, v, e)
 			return
 		}
@@ -192,52 +196,52 @@ func (s *Server) handler() http.Handler {
 			respond(w, nil, e)
 			return
 		}
-		v, e := s.store.Transactions(r.Context(), l, o)
+		v, e := s.app.Transactions(r.Context(), l, o)
 		respond(w, v, e)
 	})
-	private.HandleFunc("POST /api/v1/transactions", input(func(r *http.Request, in finance.TransactionInput) (any, error) {
-		return s.store.CreateTransaction(r.Context(), actor(r).ID, key(r), in)
+	private.HandleFunc("POST /api/v1/transactions", input(func(r *http.Request, in ledger.TransactionInput) (any, error) {
+		return s.app.CreateTransaction(r.Context(), actor(r).ID, key(r), in)
 	}))
 	private.HandleFunc("PUT /api/v1/transactions/{id}", input(func(r *http.Request, in struct {
-		finance.TransactionInput
+		ledger.TransactionInput
 		Version int `json:"version"`
 	}) (any, error) {
-		return s.store.ReviseTransaction(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Version, in.TransactionInput, false)
+		return s.app.ReviseTransaction(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Version, in.TransactionInput, false)
 	}))
 	private.HandleFunc("POST /api/v1/transactions/{id}/void", input(func(r *http.Request, in struct {
 		Version int    `json:"version"`
 		Reason  string `json:"reason"`
 	}) (any, error) {
-		return s.store.ReviseTransaction(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Version, finance.TransactionInput{Reason: in.Reason}, true)
+		return s.app.ReviseTransaction(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Version, ledger.TransactionInput{Reason: in.Reason}, true)
 	}))
 	private.HandleFunc("GET /api/v1/transactions/{id}", func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.store.Transaction(r.Context(), r.PathValue("id"))
+		v, e := s.app.Transaction(r.Context(), r.PathValue("id"))
 		respond(w, v, e)
 	})
 	private.HandleFunc("GET /api/v1/transactions/{id}/history", func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.store.History(r.Context(), r.PathValue("id"))
+		v, e := s.app.History(r.Context(), r.PathValue("id"))
 		respond(w, v, e)
 	})
-	private.HandleFunc("GET /api/v1/settings", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Settings(r.Context()); respond(w, v, e) })
+	private.HandleFunc("GET /api/v1/settings", func(w http.ResponseWriter, r *http.Request) { v, e := s.app.Settings(r.Context()); respond(w, v, e) })
 	private.HandleFunc("PUT /api/v1/settings", input(func(r *http.Request, in struct {
 		Rate    string `json:"rate"`
 		Version int    `json:"version"`
 	}) (any, error) {
-		return s.store.SetRate(r.Context(), actor(r).ID, key(r), in.Rate, in.Version)
+		return s.app.SetRate(r.Context(), actor(r).ID, key(r), in.Rate, in.Version)
 	}))
-	private.HandleFunc("GET /api/v1/schedules", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Schedules(r.Context()); respond(w, v, e) })
+	private.HandleFunc("GET /api/v1/schedules", func(w http.ResponseWriter, r *http.Request) { v, e := s.app.Schedules(r.Context()); respond(w, v, e) })
 	private.HandleFunc("GET /api/v1/schedules/{id}", func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.store.Schedule(r.Context(), r.PathValue("id"))
+		v, e := s.app.Schedule(r.Context(), r.PathValue("id"))
 		respond(w, v, e)
 	})
-	private.HandleFunc("POST /api/v1/schedules", input(func(r *http.Request, in finance.ScheduleInput) (any, error) {
-		return s.store.CreateSchedule(r.Context(), actor(r).ID, key(r), in)
+	private.HandleFunc("POST /api/v1/schedules", input(func(r *http.Request, in ledger.ScheduleInput) (any, error) {
+		return s.app.CreateSchedule(r.Context(), actor(r).ID, key(r), in)
 	}))
-	private.HandleFunc("PUT /api/v1/schedules/{id}", input(func(r *http.Request, in finance.Schedule) (any, error) {
+	private.HandleFunc("PUT /api/v1/schedules/{id}", input(func(r *http.Request, in ledger.Schedule) (any, error) {
 		if in.ID != r.PathValue("id") {
 			return nil, errPathID
 		}
-		return s.store.UpdateSchedule(r.Context(), actor(r).ID, key(r), in)
+		return s.app.UpdateSchedule(r.Context(), actor(r).ID, key(r), in)
 	}))
 	private.HandleFunc("GET /api/v1/bills", func(w http.ResponseWriter, r *http.Request) {
 		l, o, e := page(r)
@@ -245,7 +249,7 @@ func (s *Server) handler() http.Handler {
 			respond(w, nil, e)
 			return
 		}
-		v, e := s.store.Bills(r.Context(), r.URL.Query().Get("status"), l, o)
+		v, e := s.app.Bills(r.Context(), r.URL.Query().Get("status"), l, o)
 		respond(w, v, e)
 	})
 	private.HandleFunc("GET /api/v1/bills/upcoming", func(w http.ResponseWriter, r *http.Request) {
@@ -253,22 +257,22 @@ func (s *Server) handler() http.Handler {
 		if raw := r.URL.Query().Get("days"); raw != "" {
 			n, e := strconv.Atoi(raw)
 			if e != nil {
-				respond(w, nil, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use a whole number of days.", Field: "days"})
+				respond(w, nil, &ledger.Error{Code: ledger.CodeValidationFailed, Message: "Use a whole number of days.", Field: "days"})
 				return
 			}
 			days = n
 		}
-		v, e := s.store.Upcoming(r.Context(), days)
+		v, e := s.app.Upcoming(r.Context(), days)
 		respond(w, v, e)
 	})
-	private.HandleFunc("GET /api/v1/bills/due", func(w http.ResponseWriter, r *http.Request) { v, e := s.store.Due(r.Context()); respond(w, v, e) })
-	private.HandleFunc("POST /api/v1/bills/{id}/confirm", input(func(r *http.Request, in finance.PaymentInput) (any, error) {
-		return s.store.ConfirmBill(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in)
+	private.HandleFunc("GET /api/v1/bills/due", func(w http.ResponseWriter, r *http.Request) { v, e := s.app.Due(r.Context()); respond(w, v, e) })
+	private.HandleFunc("POST /api/v1/bills/{id}/confirm", input(func(r *http.Request, in ledger.PaymentInput) (any, error) {
+		return s.app.ConfirmBill(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in)
 	}))
 	private.HandleFunc("POST /api/v1/bills/{id}/skip", input(func(r *http.Request, in struct {
 		Reason string `json:"reason"`
 	}) (any, error) {
-		return s.store.SkipBill(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Reason)
+		return s.app.SkipBill(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Reason)
 	}))
 	private.HandleFunc("GET /api/v1/audit", func(w http.ResponseWriter, r *http.Request) {
 		if cursorPaged(r) {
@@ -277,7 +281,7 @@ func (s *Server) handler() http.Handler {
 				respond(w, nil, e)
 				return
 			}
-			v, e := s.store.AuditPage(r.Context(), r.URL.Query().Get("cursor"), l)
+			v, e := s.app.AuditPage(r.Context(), r.URL.Query().Get("cursor"), l)
 			respond(w, v, e)
 			return
 		}
@@ -286,14 +290,14 @@ func (s *Server) handler() http.Handler {
 			respond(w, nil, e)
 			return
 		}
-		v, e := s.store.Audit(r.Context(), l, o)
+		v, e := s.app.Audit(r.Context(), l, o)
 		respond(w, v, e)
 	})
 	mux.Handle("/api/", s.authenticate(jsonErrors(private)))
 	return s.accessLog(s.security(jsonErrors(mux)))
 }
-func actor(r *http.Request) finance.User { return r.Context().Value(actorKey{}).(finance.User) }
-func key(r *http.Request) string         { return r.Header.Get("Idempotency-Key") }
+func actor(r *http.Request) ledger.User { return r.Context().Value(actorKey{}).(ledger.User) }
+func key(r *http.Request) string        { return r.Header.Get("Idempotency-Key") }
 func input[T any](fn func(*http.Request, T) (any, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var in T
@@ -320,7 +324,7 @@ func decode(w http.ResponseWriter, r *http.Request, out any) error {
 	if e = dec.Decode(out); e != nil {
 		var typeError *json.UnmarshalTypeError
 		if errors.As(e, &typeError) && typeError.Field != "" {
-			return &finance.Error{Code: finance.CodeValidationFailed, Message: "This field has the wrong JSON type.", Field: typeError.Field}
+			return &ledger.Error{Code: ledger.CodeValidationFailed, Message: "This field has the wrong JSON type.", Field: typeError.Field}
 		}
 		return errMalformedBody
 	}
@@ -331,10 +335,10 @@ func decode(w http.ResponseWriter, r *http.Request, out any) error {
 }
 
 var (
-	errBodyTooLarge  = &finance.Error{Code: finance.CodeValidationFailed, Message: "The request body could not be read or is larger than 32 KB."}
-	errNotOneObject  = &finance.Error{Code: finance.CodeValidationFailed, Message: "Send exactly one JSON object as the request body."}
-	errMalformedBody = &finance.Error{Code: finance.CodeValidationFailed, Message: "The request body is not valid JSON for this endpoint, or it has an unknown field."}
-	errPathID        = &finance.Error{Code: finance.CodeValidationFailed, Message: "The id in the body must match the id in the path.", Field: "id"}
+	errBodyTooLarge  = &ledger.Error{Code: ledger.CodeValidationFailed, Message: "The request body could not be read or is larger than 32 KB."}
+	errNotOneObject  = &ledger.Error{Code: ledger.CodeValidationFailed, Message: "Send exactly one JSON object as the request body."}
+	errMalformedBody = &ledger.Error{Code: ledger.CodeValidationFailed, Message: "The request body is not valid JSON for this endpoint, or it has an unknown field."}
+	errPathID        = &ledger.Error{Code: ledger.CodeValidationFailed, Message: "The id in the body must match the id in the path.", Field: "id"}
 )
 
 func respond(w http.ResponseWriter, v any, e error) {
@@ -351,13 +355,13 @@ func page(r *http.Request) (int, int, error) {
 	if r.URL.Query().Get("limit") != "" {
 		l, e = strconv.Atoi(r.URL.Query().Get("limit"))
 		if e != nil {
-			return 0, 0, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use a whole-number limit.", Field: "limit"}
+			return 0, 0, &ledger.Error{Code: ledger.CodeValidationFailed, Message: "Use a whole-number limit.", Field: "limit"}
 		}
 	}
 	if r.URL.Query().Get("offset") != "" {
 		o, e = strconv.Atoi(r.URL.Query().Get("offset"))
 		if e != nil {
-			return 0, 0, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use a whole-number offset.", Field: "offset"}
+			return 0, 0, &ledger.Error{Code: ledger.CodeValidationFailed, Message: "Use a whole-number offset.", Field: "offset"}
 		}
 	}
 	return l, o, nil
@@ -380,10 +384,10 @@ func cursorPaged(r *http.Request, filters ...string) bool {
 func cursorLimit(r *http.Request) (int, error) {
 	q := r.URL.Query()
 	if q.Has("page") && q.Get("page") != "cursor" {
-		return 0, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use page=cursor, or leave page out.", Field: "page"}
+		return 0, &ledger.Error{Code: ledger.CodeValidationFailed, Message: "Use page=cursor, or leave page out.", Field: "page"}
 	}
 	if q.Has("offset") {
-		return 0, &finance.Error{Code: finance.CodeValidationFailed, Message: "A cursor-paged list does not take an offset. Send the previous page's next_cursor as cursor.", Field: "offset"}
+		return 0, &ledger.Error{Code: ledger.CodeValidationFailed, Message: "A cursor-paged list does not take an offset. Send the previous page's next_cursor as cursor.", Field: "offset"}
 	}
 	l, _, e := page(r)
 	return l, e
@@ -401,7 +405,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, e)
 		return
 	}
-	email, e := finance.NormalizeEmail(in.Email)
+	email, e := ledger.NormalizeEmail(in.Email)
 	account := email
 	if e != nil {
 		account = "invalid email"
@@ -450,7 +454,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if e = s.store.SaveSession(r.Context(), digest(token), user.ID, digest(credential.PasswordHash), s.config.Now().Add(7*24*time.Hour).Unix()); e != nil {
+	now := s.config.Now()
+	if e = s.store.SaveSession(r.Context(), digest(token), user.ID, digest(credential.PasswordHash), now.Add(7*24*time.Hour), now); e != nil {
 		respond(w, nil, e)
 		return
 	}
@@ -469,17 +474,17 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, e := r.Cookie("sf_session")
 		if e != nil || len(c.Value) != 64 {
-			respond(w, nil, finance.ErrUnauthorized)
+			respond(w, nil, ledger.ErrUnauthorized)
 			return
 		}
-		u, hash, e := s.store.Session(r.Context(), digest(c.Value))
+		u, hash, e := s.store.Session(r.Context(), digest(c.Value), s.config.Now())
 		if e != nil {
 			respond(w, nil, e)
 			return
 		}
 		credential, ok := s.users[u.Email]
 		if !ok || digest(credential.PasswordHash) != hash {
-			respond(w, nil, finance.ErrUnauthorized)
+			respond(w, nil, ledger.ErrUnauthorized)
 			return
 		}
 		if a := entry(r); a != nil {

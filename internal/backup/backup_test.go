@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"simply-finance/internal/backup"
-	"simply-finance/internal/finance"
+	"simply-finance/internal/sqlite"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +19,7 @@ import (
 func preparedDatabase(t *testing.T) (string, *sql.DB) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "finance.sqlite")
-	if err := finance.Migrate(path); err != nil {
+	if err := sqlite.Migrate(path); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", path)
