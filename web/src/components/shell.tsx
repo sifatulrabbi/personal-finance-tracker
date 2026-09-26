@@ -151,7 +151,7 @@ function PageHeader({
             asChild
             variant="ghost"
             size="icon"
-            className="-ml-2 shrink-0 rounded-full text-muted-foreground"
+            className="shrink-0 rounded-full text-muted-foreground"
           >
             <Link to={back.to} aria-label={back.label}>
               <ChevronLeft className="size-6" />
@@ -198,7 +198,7 @@ function MoreMenu({ current }: { current: Page | undefined }) {
           size="icon"
           aria-label="More"
           className={cn(
-            "-mr-2 shrink-0 rounded-full lg:hidden",
+            "shrink-0 rounded-full lg:hidden",
             moreActive ? "text-primary" : "text-muted-foreground",
           )}
         >

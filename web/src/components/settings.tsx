@@ -47,7 +47,6 @@ export function Settings({ user }: { user: User }) {
             <ListRow
               data-testid="rate-row"
               onClick={(event) => {
-                dismissSaved(settingsSaved);
                 rateEditor.open(true, event);
               }}
               title="Default exchange rate"

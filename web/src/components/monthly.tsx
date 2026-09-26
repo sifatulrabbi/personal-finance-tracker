@@ -243,7 +243,6 @@ function SpendingCard({ data, disabled }: { data: MonthlySpending; disabled: boo
             className="self-start"
             disabled={disabled}
             onClick={() => {
-              dismissSaved(targetSaved);
               setEditing(true);
             }}
           >

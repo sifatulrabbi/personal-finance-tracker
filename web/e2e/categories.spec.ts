@@ -1,5 +1,13 @@
 import { expect, test } from "./fixtures";
-import { mainNavigation, navigate, submitLogin, toast } from "./login";
+import {
+  chooseMonth,
+  editTarget,
+  mainNavigation,
+  navigate,
+  payBill,
+  submitLogin,
+  toast,
+} from "./login";
 
 test("inline categories remain available after canceling a record", async ({
   page,
@@ -55,7 +63,7 @@ test("categories preserve record drafts and monthly shares use actual spending",
     exact: true,
   });
   await income.getByLabel("Category name").fill(`Salary ${info.project.name}`);
-  await income.getByRole("button", { name: "Create category" }).click();
+  await income.getByRole("button", { name: "Add category" }).click();
   await expect(
     income.getByText(`Salary ${info.project.name}`, { exact: true }),
   ).toBeVisible();
@@ -121,14 +129,15 @@ test("categories preserve record drafts and monthly shares use actual spending",
   await page.getByRole("button", { name: "Save record", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await navigate(page, "Monthly spending");
-  await page.getByLabel("Month", { exact: true }).fill(month);
+  await chooseMonth(page, month);
   await expect(page.getByTestId("monthly-total")).toHaveText("৳800.00");
+  await editTarget(page);
   await page.getByLabel("Monthly target (BDT)").fill("4000");
   await page.getByRole("button", { name: "Save target", exact: true }).click();
   await expect(toast(page, "Target saved")).toBeVisible();
+  await expect(page.getByTestId("monthly-target")).toHaveText("৳4,000.00");
   const row = page
-    .getByTestId("monthly-mobile-list")
-    .locator(":scope > div")
+    .getByTestId("monthly-category")
     .filter({ hasText: `Eating out ${info.project.name}` });
   await expect(row).toContainText("৳200.00");
   await expect(row).toContainText("25.00%");
@@ -164,14 +173,13 @@ test("categories preserve record drafts and monthly shares use actual spending",
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await navigate(page, "Monthly spending");
-  await page.getByLabel("Month", { exact: true }).fill(month);
+  await chooseMonth(page, month);
+  await expect(page.getByTestId("monthly-target")).toHaveText("৳4,000.00");
+  await editTarget(page);
   await expect(page.getByLabel("Monthly target (BDT)")).toHaveValue("4000.00");
   await expect(page.getByTestId("monthly-total")).toHaveText("৳800.00");
   await expect(
-    page
-      .getByTestId("monthly-mobile-list")
-      .locator(":scope > div")
-      .filter({ hasText: "Others" }),
+    page.getByTestId("monthly-category").filter({ hasText: "Others" }),
   ).toContainText("100.00%");
   await navigate(page, "Bills");
   await page.getByRole("button", { name: "Add bill", exact: true }).click();
@@ -183,10 +191,7 @@ test("categories preserve record drafts and monthly shares use actual spending",
     .selectOption({ label: `Eating out ${info.project.name}` });
   await page.getByRole("button", { name: "Create bill", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page
-    .getByRole("article", { name: `Due ${billName}` })
-    .getByRole("button", { name: "Confirm payment" })
-    .click();
+  await payBill(page, billName);
   await page
     .getByRole("button", { name: "Record payment", exact: true })
     .click();

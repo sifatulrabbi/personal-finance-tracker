@@ -36,9 +36,14 @@ export function mainNavigation(page: Page) {
   return page.getByRole("navigation", { name: "Main navigation" });
 }
 
-// Opens the More menu of the phone tab bar.
+// The More button in the page header on phones and tablets.
+export function moreButton(page: Page) {
+  return page.getByRole("banner").getByRole("button", { name: "More", exact: true });
+}
+
+// Opens the More menu in the page header.
 export async function openMore(page: Page) {
-  await mainNavigation(page).getByRole("button", { name: "More", exact: true }).click();
+  await moreButton(page).click();
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
   // Measure the menu at rest, not while it zooms in.
@@ -66,6 +71,8 @@ export async function openSheet(page: Page) {
 // Goes to a page the way a person would: its tab or sidebar link, or the More menu for
 // pages that have no tab.
 export async function navigate(page: Page, name: string) {
+  // An open or closing sheet hides the rest of the page from assistive technology.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   const link = mainNavigation(page).getByRole("link", { name, exact: true });
   if (await link.count()) {
     await link.click();
@@ -79,13 +86,89 @@ export async function navigate(page: Page, name: string) {
 
 // Sign out lives in the More menu on phones and in the sidebar on wide screens.
 export async function signOut(page: Page) {
-  const more = mainNavigation(page).getByRole("button", { name: "More", exact: true });
-  if (await more.count()) {
+  const more = moreButton(page);
+  if (await more.isVisible()) {
     await more.click();
     await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
   } else {
     await page.getByRole("button", { name: "Sign out", exact: true }).click();
   }
+}
+
+// A wallet's compact row on the Wallets page.
+export function walletRow(page: Page, name: string) {
+  return page
+    .getByTestId("wallet-row")
+    .filter({ has: page.getByText(name, { exact: true }) });
+}
+
+// Opens a wallet's detail page from the Wallets page.
+export async function openWallet(page: Page, name: string) {
+  await walletRow(page, name).click();
+  await expect(page.getByRole("region", { name: "Wallet details", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
+}
+
+// An unpaid bill's row on the Bills page.
+export function dueBill(page: Page, name: string) {
+  return page.getByRole("article", { name: `Due ${name}` });
+}
+
+export async function payBill(page: Page, name: string) {
+  await dueBill(page, name).getByRole("button", { name: "Pay", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: `Pay ${name}` })).toBeVisible();
+}
+
+export async function skipBill(page: Page, name: string) {
+  await dueBill(page, name).getByRole("button", { name: `More actions for ${name}` }).click();
+  await page.getByRole("menuitem", { name: "Skip this bill" }).click();
+  await expect(page.getByRole("dialog", { name: "Skip this bill" })).toBeVisible();
+}
+
+const monthNames = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+export function monthText(month: string) {
+  const [year, number] = month.split("-").map(Number);
+  return `${monthNames[number - 1]} ${year}`;
+}
+
+// Picks a month (YYYY-MM) on Monthly spending with the month picker, the way a person
+// would on either engine: step the year, then tap the month.
+export async function chooseMonth(page: Page, month: string) {
+  const year = Number(month.slice(0, 4));
+  await page.getByRole("button", { name: /^Choose month/ }).click();
+  const picker = await openSheet(page);
+  const shown = picker.getByTestId("picker-year");
+  for (let step = 0; step < 50; step++) {
+    const current = Number(await shown.textContent());
+    if (current === year) break;
+    await picker
+      .getByRole("button", { name: current > year ? "Previous year" : "Next year" })
+      .click();
+    await expect(shown).not.toHaveText(String(current));
+  }
+  await picker.getByRole("button", { name: monthText(month), exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("monthly-month")).toHaveText(monthText(month));
+}
+
+// Opens the inline target form on Monthly spending.
+export async function editTarget(page: Page) {
+  await page.getByRole("button", { name: /^(Edit|Set) target$/ }).click();
+  await expect(page.getByLabel("Monthly target (BDT)")).toBeVisible();
 }
 
 // A confirmation toast with the given text.
