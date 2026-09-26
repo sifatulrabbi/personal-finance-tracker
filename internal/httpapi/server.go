@@ -38,6 +38,7 @@ type Server struct {
 	config   Config
 	users    map[string]Credential
 	dummy    []byte
+	compare  func(hash, password []byte) error
 	mu       sync.Mutex
 	attempts map[string]attempt
 }
@@ -48,6 +49,13 @@ type attempt struct {
 type actorKey struct{}
 
 func New(store *finance.Store, config Config) (http.Handler, error) {
+	s, e := newServer(store, config)
+	if e != nil {
+		return nil, e
+	}
+	return s.handler(), nil
+}
+func newServer(store *finance.Store, config Config) (*Server, error) {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
@@ -58,10 +66,11 @@ func New(store *finance.Store, config Config) (http.Handler, error) {
 	if config.InsecureCookies != (origin.Scheme == "http") {
 		return nil, finance.ErrInvalid
 	}
-	s := &Server{store: store, config: config, users: map[string]Credential{}, attempts: map[string]attempt{}}
+	s := &Server{store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword, attempts: map[string]attempt{}}
 	if len(config.Users) == 0 || len(config.Users) > 100 {
 		return nil, finance.ErrInvalid
 	}
+	dummyCost := bcrypt.MinCost
 	for _, u := range config.Users {
 		email, e := finance.NormalizeEmail(u.Email)
 		if e != nil || len(u.Name) > 120 {
@@ -74,6 +83,7 @@ func New(store *finance.Store, config Config) (http.Handler, error) {
 		if e != nil || cost < 10 || cost > 14 {
 			return nil, finance.ErrInvalid
 		}
+		dummyCost = max(dummyCost, cost)
 		u.Email = email
 		s.users[email] = u
 	}
@@ -84,10 +94,15 @@ func New(store *finance.Store, config Config) (http.Handler, error) {
 	if e = store.ReconcileSessions(context.Background(), allowed); e != nil {
 		return nil, e
 	}
-	s.dummy, e = bcrypt.GenerateFromPassword([]byte("unconfigured-account-dummy"), 10)
+	// Unknown emails are checked against a dummy hash at the slowest configured cost, so a wrong
+	// password takes at least as long for an unknown email as for an allowed one.
+	s.dummy, e = bcrypt.GenerateFromPassword([]byte("unconfigured-account-dummy"), dummyCost)
 	if e != nil {
 		return nil, e
 	}
+	return s, nil
+}
+func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -202,7 +217,7 @@ func New(store *finance.Store, config Config) (http.Handler, error) {
 		respond(w, v, e)
 	})
 	mux.Handle("/api/", s.authenticate(private))
-	return s.security(mux), nil
+	return s.security(mux)
 }
 func actor(r *http.Request) finance.User { return r.Context().Value(actorKey{}).(finance.User) }
 func key(r *http.Request) string         { return r.Header.Get("Idempotency-Key") }
@@ -309,12 +324,15 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if exists {
 		hash = []byte(credential.PasswordHash)
 	}
-	if len(in.Password) > 72 {
-		respond(w, nil, finance.ErrUnauthorized)
-		return
+	// bcrypt reads at most 72 bytes; a longer password is compared on its prefix and then refused,
+	// so rejecting it costs the same time as any other wrong password.
+	password := []byte(in.Password)
+	tooLong := len(password) > 72
+	if tooLong {
+		password = password[:72]
 	}
-	e = bcrypt.CompareHashAndPassword(hash, []byte(in.Password))
-	if e != nil || !exists {
+	e = s.compare(hash, password)
+	if e != nil || !exists || tooLong {
 		respond(w, nil, finance.ErrUnauthorized)
 		return
 	}
