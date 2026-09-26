@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { CalendarDays, ChevronDown, X } from "lucide-react";
 import type { Category, Wallet } from "@/api/types";
@@ -41,14 +41,20 @@ function FilterSelect({
   disabled?: boolean;
   children: ReactNode;
 }) {
+  // Shows the choice at once while the URL catches up (see shownKind below).
+  const [shown, setShown] = useState(value);
+  useEffect(() => setShown(value), [value]);
   return (
     <div className="relative shrink-0">
       <select
         aria-label={label}
-        value={value}
+        value={shown}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(chip, value && activeChip)}
+        onChange={(event) => {
+          setShown(event.target.value);
+          onChange(event.target.value);
+        }}
+        className={cn(chip, shown && activeChip)}
       >
         {children}
       </select>
@@ -77,6 +83,10 @@ export function ActivityFilterBar({
   const dates = useEditor<true>();
   const set = (patch: Partial<ActivityFilters>) => onChange(compact({ ...filters, ...patch }));
   const kind = filters.kind;
+  // The URL updates in a transition, a moment after the tap. The chosen chip shows at once,
+  // instead of the controlled radio snapping back until the URL catches up.
+  const [shownKind, setShownKind] = useState(kind ?? "all");
+  useEffect(() => setShownKind(kind ?? "all"), [kind]);
   const categoryTypes = kind === "expense" || kind === "income" ? [kind] : (["expense", "income"] as const);
   const walletList = [...wallets.filter((w) => !w.archived), ...wallets.filter((w) => w.archived)];
   return (
@@ -84,8 +94,9 @@ export function ActivityFilterBar({
       <Segmented
         legend="Record type"
         field="kind"
-        value={kind ?? "all"}
+        value={shownKind}
         onChange={(value) => {
+          setShownKind(value);
           const next = value === "all" ? undefined : (value as ActivityKind);
           const category = categories.find((c) => c.id === filters.category);
           // A category of another type, or any category for transfers, cannot match anything.
