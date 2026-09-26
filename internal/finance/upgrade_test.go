@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"simply-finance/internal/finance"
 	"testing"
 	"time"
 )
@@ -59,5 +60,28 @@ func TestUpgradeCarriesTheWalletVersionIntoBothVersions(t *testing.T) {
 	w, e := s.Wallet(ctx, "cash")
 	if e != nil || w.Version != 5 || w.BalanceVersion != 5 {
 		t.Fatalf("%+v %v", w, e)
+	}
+}
+
+// Targets persisted by the old first-read initialization stay as saved snapshots when they carry an
+// amount, but an initialized "no target" row (never explicitly set) is dropped so the month
+// inherits instead of staying frozen empty.
+func TestUpgradeDropsTargetRowsThatOnlyRecordedNoTarget(t *testing.T) {
+	path := legacyDatabase(t, "007_wallet_balance_version.sql", `INSERT INTO monthly_targets VALUES('2026-01',3000000,2),('2026-02',NULL,1),('2026-03',3000000,1),('2026-06',NULL,1);`)
+	s, e := openPrepared(t, path, time.Now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	for month, want := range map[string]finance.MonthlyTarget{
+		"2026-01": {Amount: "30000.00", Version: 2},
+		"2026-02": {Amount: "30000.00", Version: 1, InheritedFrom: "2026-01"},
+		"2026-03": {Amount: "30000.00", Version: 1},
+		"2026-06": {Amount: "30000.00", Version: 1, InheritedFrom: "2026-03"},
+	} {
+		m, e := s.Monthly(ctx, month)
+		if e != nil || m.Target != want {
+			t.Errorf("%s: %+v %v, want %+v", month, m.Target, e, want)
+		}
 	}
 }

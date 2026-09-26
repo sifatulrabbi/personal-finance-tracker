@@ -1,6 +1,7 @@
 package finance_test
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -104,32 +105,71 @@ func monthlyCategory(t *testing.T, month finance.MonthlySpending, id string) fin
 	return finance.CategorySpending{}
 }
 
-func TestMonthlyTargetsAreCopiedOnceAndVersioned(t *testing.T) {
-	s := openStore(t)
-	u := user(t, s)
-	first, e := s.Monthly(ctx, "2026-09")
+// Regression (C5): a month's target was copied only from the immediately preceding saved row, and
+// the first read persisted that copy. A gap month lost the target, and peeking at a later month
+// froze it as "no target". A month without its own saved target now shows the latest earlier
+// saved target, computed on read, and reads never write.
+func TestMonthlyTargetsInheritTheLatestEarlierSavedMonth(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "targets.sqlite")
+	s, e := openPrepared(t, path, func() time.Time { return time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC) })
 	if e != nil {
 		t.Fatal(e)
 	}
-	target, e := s.SetMonthlyTarget(ctx, u.ID, "target", "2026-09", "40000", first.Target.Version)
-	if e != nil || target.Amount != "40000.00" {
-		t.Fatalf("target: %+v %v", target, e)
+	defer s.Close()
+	u := user(t, s)
+	target := func(month string) finance.MonthlyTarget {
+		t.Helper()
+		m, e := s.Monthly(ctx, month)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return m.Target
 	}
-	next, e := s.Monthly(ctx, "2026-10")
-	if e != nil || next.Target.Amount != "40000.00" {
-		t.Fatalf("copy: %+v %v", next, e)
+	// Peek at later months before anything is set.
+	if got := target("2026-05"); got.Amount != "" || got.Version != 1 || got.InheritedFrom != "" {
+		t.Fatalf("unset: %+v", got)
 	}
-	if _, e = s.SetMonthlyTarget(ctx, u.ID, "stale", "2026-09", "50000", first.Target.Version); !errors.Is(e, finance.ErrStaleVersion) {
-		t.Fatalf("stale: %v", e)
+	jan, e := s.SetMonthlyTarget(ctx, u.ID, "jan", "2026-01", "30000", target("2026-01").Version)
+	if e != nil || jan.Amount != "30000.00" || jan.Version != 2 {
+		t.Fatalf("jan: %+v %v", jan, e)
 	}
-	if _, e = s.SetMonthlyTarget(ctx, u.ID, "change", "2026-09", "50000", target.Version); e != nil {
+	// Across a gap: nobody opened February, and March still carries January's target.
+	if got := target("2026-03"); got.Amount != "30000.00" || got.InheritedFrom != "2026-01" || got.Version != 1 {
+		t.Fatalf("gap: %+v", got)
+	}
+	// Peeking at May earlier did not freeze it: setting April now changes what May shows.
+	april := target("2026-04")
+	if _, e = s.SetMonthlyTarget(ctx, u.ID, "april", "2026-04", "40000", april.Version); e != nil {
 		t.Fatal(e)
 	}
-	next, e = s.Monthly(ctx, "2026-10")
-	if e != nil || next.Target.Amount != "40000.00" {
-		t.Fatalf("independence: %+v %v", next, e)
+	if got := target("2026-05"); got.Amount != "40000.00" || got.InheritedFrom != "2026-04" {
+		t.Fatalf("after peek: %+v", got)
+	}
+	// An earlier month's target never flows forward past a month with its own saved target, and a
+	// later edit to it flows only into months that have none.
+	if _, e = s.SetMonthlyTarget(ctx, u.ID, "jan-edit", "2026-01", "35000", jan.Version); e != nil {
+		t.Fatal(e)
+	}
+	if got := target("2026-02"); got.Amount != "35000.00" {
+		t.Fatalf("follow: %+v", got)
+	}
+	if got := target("2026-05"); got.Amount != "40000.00" {
+		t.Fatalf("shadowed: %+v", got)
+	}
+	// Zero is a saved target and is inherited; stale versions are refused.
+	if _, e = s.SetMonthlyTarget(ctx, u.ID, "stale", "2026-04", "1", april.Version); !errors.Is(e, finance.ErrStaleVersion) {
+		t.Fatalf("stale: %v", e)
 	}
 	if _, e = s.Monthly(ctx, "2026-13"); !errors.Is(e, finance.ErrInvalid) {
 		t.Fatalf("month: %v", e)
+	}
+	var rows int
+	db, e := sql.Open("sqlite", path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	if e = db.QueryRow(`SELECT count(*) FROM monthly_targets`).Scan(&rows); e != nil || rows != 2 {
+		t.Fatalf("reads persisted target rows: %d %v", rows, e)
 	}
 }

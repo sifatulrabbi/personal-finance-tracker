@@ -6,4 +6,4 @@ New income and expense revisions store one validated category ID. Old payloads r
 
 Monthly spending uses only current, non-voided expense revisions and their saved BDT amounts. It never sums wallet entries, because reversals, transfers, and openings are not new spending. Aggregation and rounded percentage calculations use integer arithmetic, including arbitrary-precision totals to avoid overflow across many valid transactions. Independently rounded category percentages may not sum to exactly 100.00%.
 
-The first read of a month initializes its target from the immediately preceding month's saved target, if available. This copy is persisted once and does not follow later edits to the preceding month. No target is distinct from a zero target. Explicit target changes require a version and request key and record the actor in the audit log.
+Superseded by ADR 0010: a month without its own target inherits the latest earlier saved target on read, and reads never persist a copy. No target is distinct from a zero target. Explicit target changes require a version and request key and record the actor in the audit log.
