@@ -23,3 +23,20 @@ export async function submitLogin(page: Page) {
     page.getByRole("button", { name: "Open menu", exact: true }),
   ).toBeVisible();
 }
+
+export async function signIn(page: Page) {
+  await page.getByLabel("Email", { exact: true }).fill("test@example.test");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("test-household-password");
+  await submitLogin(page);
+}
+
+export async function navigate(page: Page, name: string) {
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name, exact: true })
+    .click();
+  await expect(page.getByRole("dialog", { name: "Navigation" })).toHaveCount(0);
+}

@@ -1,19 +1,10 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { submitLogin } from "./login";
+import { navigate, submitLogin } from "./login";
 
 const viewports = [
   { name: "compact portrait", width: 320, height: 568 },
   { name: "short landscape", width: 667, height: 375 },
 ] as const;
-
-async function navigate(page: Page, name: string) {
-  await page.getByRole("button", { name: "Open menu", exact: true }).click();
-  await page
-    .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("button", { name, exact: true })
-    .click();
-  await expect(page.getByRole("dialog", { name: "Navigation" })).toHaveCount(0);
-}
 
 async function expectInsideViewport(
   locator: Locator,
@@ -278,7 +269,7 @@ test("safe areas and a reduced visual viewport keep mobile controls reachable", 
   expect(drawerBounds!.x + drawerBounds!.width).toBeLessThanOrEqual(
     viewport.width - safeRight,
   );
-  await drawer.getByRole("button", { name: "Wallets", exact: true }).click();
+  await drawer.getByRole("link", { name: "Wallets", exact: true }).click();
 
   await page.getByRole("button", { name: "Add wallet", exact: true }).click();
   await page.getByLabel("Wallet name", { exact: true }).focus();

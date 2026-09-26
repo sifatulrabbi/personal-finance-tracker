@@ -1,5 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-import { submitLogin } from "./login";
+import { expect, test } from "@playwright/test";
+import { navigate, submitLogin } from "./login";
 
 test("inline categories remain available after canceling a record", async ({
   page,
@@ -41,14 +41,6 @@ test("inline categories remain available after canceling a record", async ({
   ).toBeVisible();
 });
 
-async function navigate(page: Page, name: string) {
-  await page.getByRole("button", { name: "Open menu", exact: true }).click();
-  await page
-    .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("button", { name, exact: true })
-    .click();
-}
-
 test("categories preserve record drafts and monthly shares use actual spending", async ({
   page,
 }, info) => {
@@ -82,6 +74,7 @@ test("categories preserve record drafts and monthly shares use actual spending",
   });
   expect(response.ok()).toBe(true);
   await page.reload();
+  await navigate(page, "Activity");
   await page.getByRole("button", { name: "Add record", exact: true }).click();
   await page.getByLabel("Amount", { exact: true }).fill("200");
   const month = info.project.name === "mobile-chromium" ? "2025-04" : "2025-05";

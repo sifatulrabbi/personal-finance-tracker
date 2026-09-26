@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Wallet as WalletIcon, RefreshCw, LogOut } from "lucide-react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api, APIError, loadData, type Data, type User } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,15 +17,16 @@ import { Wallets } from "@/components/wallets";
 import { Activity } from "@/components/activity";
 import { Bills } from "@/components/bills";
 import { Settings } from "@/components/settings";
-import { Navigation, type Page } from "@/components/navigation";
+import { Navigation } from "@/components/navigation";
 import { Monthly } from "@/components/monthly";
+import { homePath, pageForPath } from "@/routes";
 
 export function App() {
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
-  const [page, setPage] = useState<Page>("Activity");
   async function refresh() {
     try {
       setData(await loadData());
@@ -72,7 +74,6 @@ export function App() {
     return (
       <Login
         onLogin={(user) => {
-          setPage("Activity");
           setUser(user);
           setError("");
         }}
@@ -80,11 +81,50 @@ export function App() {
       />
     );
   return (
+    <AuthenticatedApp
+      data={data}
+      error={error}
+      user={user}
+      onRefresh={() => void refresh()}
+      onLogout={async () => {
+        try {
+          await api("/logout", "POST", {});
+          // The next person to sign in on this device starts on Activity, not on the last user's page.
+          navigate(homePath, { replace: true });
+          setUser(null);
+          setData(null);
+        } catch {
+          setError("Could not sign out. Please retry.");
+        }
+      }}
+    />
+  );
+}
+
+function AuthenticatedApp({
+  data,
+  error,
+  user,
+  onRefresh,
+  onLogout,
+}: {
+  data: Data | null;
+  error: string;
+  user: User;
+  onRefresh: () => void;
+  onLogout: () => Promise<void>;
+}) {
+  const location = useLocation();
+  if (location.pathname === "/") return <Navigate to={homePath} replace />;
+  const page = pageForPath(location.pathname);
+  return (
     <main className="app-shell mx-auto flex min-h-dvh max-w-md min-w-0 flex-col gap-6">
       <header className="app-header sticky top-0 z-40 flex min-w-0 items-center justify-between gap-3 bg-background pb-3">
-        <Navigation current={page} onSelect={setPage} />
+        <Navigation current={page} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-muted-foreground">{page}</p>
+          <p className="text-sm text-muted-foreground">
+            {page?.name ?? "Page not found"}
+          </p>
           <h1 className="text-xl font-semibold tracking-tight">
             Simply Finance
           </h1>
@@ -94,52 +134,68 @@ export function App() {
           size="icon"
           className="size-11"
           aria-label="Refresh records"
-          onClick={() => void refresh()}
+          onClick={onRefresh}
         >
           <RefreshCw />
         </Button>
       </header>
       <ErrorMessage error={error} />
       {data ? (
-        <section aria-label={page}>
-          {page === "Activity" && (
-            <Activity data={data} onSaved={() => void refresh()} />
-          )}
-          {page === "Wallets" && (
-            <Wallets wallets={data.wallets} onSaved={() => void refresh()} />
-          )}
-          {page === "Bills" && (
-            <Bills data={data} onSaved={() => void refresh()} />
-          )}
-          {page === "Settings" && (
-            <Settings
-              categories={data.categories}
-              settings={data.settings}
-              user={user}
-              onSaved={() => void refresh()}
-            />
-          )}
-          {page === "Monthly spending" && <Monthly refreshToken={data} />}
-        </section>
+        page ? (
+          <section aria-label={page.name}>
+            {page.path === "/activity" && (
+              <Activity data={data} onSaved={onRefresh} />
+            )}
+            {page.path === "/wallets" && (
+              <Wallets wallets={data.wallets} onSaved={onRefresh} />
+            )}
+            {page.path === "/bills" && (
+              <Bills data={data} onSaved={onRefresh} />
+            )}
+            {page.path === "/monthly" && <Monthly refreshToken={data} />}
+            {page.path === "/settings" && (
+              <Settings
+                categories={data.categories}
+                settings={data.settings}
+                user={user}
+                onSaved={onRefresh}
+              />
+            )}
+          </section>
+        ) : (
+          <NotFound />
+        )
       ) : (
         <Skeleton className="h-48 w-full" />
       )}
       <Button
         variant="ghost"
-        onClick={async () => {
-          try {
-            await api("/logout", "POST", {});
-            setUser(null);
-            setData(null);
-          } catch {
-            setError("Could not sign out. Please retry.");
-          }
-        }}
+        onClick={() => void onLogout()}
       >
         <LogOut data-icon="inline-start" />
         Sign out
       </Button>
     </main>
+  );
+}
+
+function NotFound() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle role="heading" aria-level={2}>
+          Page not found
+        </CardTitle>
+        <CardDescription>
+          This address does not match a Simply Finance page.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button asChild>
+          <Link to={homePath}>Go to Activity</Link>
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 

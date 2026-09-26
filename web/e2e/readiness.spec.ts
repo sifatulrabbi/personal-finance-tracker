@@ -1,13 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
-import { submitLogin } from "./login";
+import { expect, test } from "@playwright/test";
+import { navigate, submitLogin } from "./login";
 
-async function navigate(page: Page, name: string) {
-  await page.getByRole("button", { name: "Open menu", exact: true }).click();
-  await page
-    .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("button", { name, exact: true })
-    .click();
-}
 test("archived wallets are never silently replaced in transfers or bills", async ({
   page,
 }, info) => {
