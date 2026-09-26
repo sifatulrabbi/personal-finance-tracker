@@ -1,7 +1,30 @@
 import {
-  bignumberDependencies,
   create,
-  parseDependencies,
+  createAccessorNode,
+  createArrayNode,
+  createAssignmentNode,
+  createBigNumberClass,
+  createBignumber,
+  createBlockNode,
+  createConditionalNode,
+  createConstantNode,
+  createFunctionAssignmentNode,
+  createFunctionNode,
+  createIndexNode,
+  createIsBounded,
+  createNode,
+  createNumber,
+  createNumeric,
+  createObjectNode,
+  createOperatorNode,
+  createParenthesisNode,
+  createParse,
+  createRangeNode,
+  createRelationalNode,
+  createResultSet,
+  createSymbolNode,
+  createTyped,
+  factory,
   type BigNumber,
   type MathNode,
 } from "mathjs";
@@ -18,9 +41,45 @@ import { parseDecimalInput } from "@/money/decimal";
 // fraction of BigNumber integers, never a rounded BigNumber quotient: 1/3*0.015 is exactly
 // 0.005 and must round to 0.01 as it does on the server. 1000 significant digits hold every
 // integer a 200-byte formula can produce, so no digit is ever lost.
+//
+// The factories are listed one by one instead of mathjs's parseDependencies, which also
+// bundles units, matrices, and complex numbers (about 150 kB more). The parser's node types
+// need subset and size only to evaluate, which this module never asks mathjs to do, so they
+// are stubs that throw.
+const notBundled = (name: string) =>
+  factory(name, [], () => () => {
+    throw new Error(`mathjs ${name} is not bundled`);
+  });
 
 const math = create(
-  { parseDependencies, bignumberDependencies },
+  {
+    createParse,
+    createNode,
+    createConstantNode,
+    createOperatorNode,
+    createParenthesisNode,
+    createSymbolNode,
+    createFunctionNode,
+    createAccessorNode,
+    createArrayNode,
+    createAssignmentNode,
+    createBlockNode,
+    createConditionalNode,
+    createFunctionAssignmentNode,
+    createIndexNode,
+    createObjectNode,
+    createRangeNode,
+    createRelationalNode,
+    createResultSet,
+    createIsBounded,
+    createTyped,
+    createNumeric,
+    createNumber,
+    createBigNumberClass,
+    createBignumber,
+    subset: notBundled("subset"),
+    size: notBundled("size"),
+  },
   { number: "BigNumber", precision: 1000 },
 );
 
@@ -187,6 +246,19 @@ export function evaluateFormula(text: string): FormulaResult {
 // Canonical text uses ASCII operators; people read × ÷ and the typographic minus.
 export function displayFormula(formula: string) {
   return formula.replace(/\*/g, "×").replace(/\//g, "÷").replace(/-/g, "−");
+}
+
+// The sentences a record detail shows for the calculations it keeps.
+export function calculatedFrom(record: {
+  amount_formula?: string;
+  received_amount_formula?: string;
+  balance_formula?: string;
+}): string[] {
+  return [
+    record.amount_formula ? `Calculated from ${displayFormula(record.amount_formula)}` : "",
+    record.received_amount_formula ? `Received calculated from ${displayFormula(record.received_amount_formula)}` : "",
+    record.balance_formula ? `Balance calculated from ${displayFormula(record.balance_formula)}` : "",
+  ].filter(Boolean);
 }
 
 export type AmountInput =

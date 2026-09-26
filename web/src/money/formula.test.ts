@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseDecimalInput } from "./decimal";
-import { displayFormula, evaluateAmountInput, evaluateFormula } from "./formula";
+import { calculatedFrom, displayFormula, evaluateAmountInput, evaluateFormula } from "./formula";
 
 // The same file drives internal/money/formula_test.go, so the client and the server agree on
 // every case: same canonical text, same rounded result, same refusals.
@@ -100,6 +100,16 @@ describe("evaluateAmountInput", () => {
 
   test("an invalid calculation is an error, never empty or a plain value", () => {
     for (const text of ["5+", "2^3", "sqrt(4)", "1/0", "(1+2"]) expect(evaluateAmountInput(text).kind).toBe("invalid");
+  });
+
+  test("calculatedFrom lists each kept calculation", () => {
+    expect(calculatedFrom({})).toEqual([]);
+    expect(calculatedFrom({ amount_formula: "120 + 45.50 + 300 * 2" })).toEqual(["Calculated from 120 + 45.50 + 300 × 2"]);
+    expect(calculatedFrom({ amount_formula: "1 + 1", received_amount_formula: "10 / 4", balance_formula: "5 - 1" })).toEqual([
+      "Calculated from 1 + 1",
+      "Received calculated from 10 ÷ 4",
+      "Balance calculated from 5 − 1",
+    ]);
   });
 
   test("displayFormula shows people's operators", () => {

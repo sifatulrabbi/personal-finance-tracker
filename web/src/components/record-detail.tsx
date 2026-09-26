@@ -7,6 +7,7 @@ import { useHistory } from "@/cache/queries";
 import { useWrites } from "@/cache/writes";
 import { authorName, dhakaDateTime, longDate, revisionCurrencies } from "@/activity/people";
 import { directionForKind, rateLabel } from "@/money/format";
+import { calculatedFrom } from "@/money/formula";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -95,6 +96,11 @@ export function RecordDetail({
             voided={record.voided}
           />
         </p>
+        {calculatedFrom(record).map((line) => (
+          <p key={line} data-testid="record-formula" className="text-sm break-words text-muted-foreground tabular-nums">
+            {line}
+          </p>
+        ))}
         <p className="text-heading break-words">{recordTitle(record, categories)}</p>
       </div>
       <dl className="flex min-w-0 flex-col divide-y border-y">
@@ -226,6 +232,11 @@ function RecordHistory({
                       </span>
                     ) : null}
                   </p>
+                  {calculatedFrom(revision).map((line) => (
+                    <p key={line} data-testid="history-formula" className="min-w-0 break-words text-muted-foreground tabular-nums">
+                      {line}
+                    </p>
+                  ))}
                   <p className="min-w-0 break-words text-muted-foreground">
                     {[where, category, longDate(revision.date)].filter(Boolean).join(" · ")}
                   </p>
