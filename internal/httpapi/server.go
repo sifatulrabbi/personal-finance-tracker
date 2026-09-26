@@ -4,13 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"golang.org/x/crypto/bcrypt"
 	"io"
-	"log/slog"
 	"mime"
 	"net"
 	"net/http"
@@ -142,7 +140,7 @@ func (s *Server) handler() http.Handler {
 	}))
 	private.HandleFunc("PUT /api/v1/wallets/{id}", input(func(r *http.Request, in finance.Wallet) (any, error) {
 		if in.ID != r.PathValue("id") {
-			return nil, finance.ErrInvalid
+			return nil, errPathID
 		}
 		return s.store.UpdateWallet(r.Context(), actor(r).ID, key(r), in)
 	}))
@@ -194,7 +192,7 @@ func (s *Server) handler() http.Handler {
 	}))
 	private.HandleFunc("PUT /api/v1/schedules/{id}", input(func(r *http.Request, in finance.Schedule) (any, error) {
 		if in.ID != r.PathValue("id") {
-			return nil, finance.ErrInvalid
+			return nil, errPathID
 		}
 		return s.store.UpdateSchedule(r.Context(), actor(r).ID, key(r), in)
 	}))
@@ -216,8 +214,8 @@ func (s *Server) handler() http.Handler {
 		v, e := s.store.Audit(r.Context(), l, o)
 		respond(w, v, e)
 	})
-	mux.Handle("/api/", s.authenticate(private))
-	return s.security(mux)
+	mux.Handle("/api/", s.authenticate(jsonErrors(private)))
+	return s.security(jsonErrors(mux))
 }
 func actor(r *http.Request) finance.User { return r.Context().Value(actorKey{}).(finance.User) }
 func key(r *http.Request) string         { return r.Header.Get("Idempotency-Key") }
@@ -237,46 +235,39 @@ func decode(w http.ResponseWriter, r *http.Request, out any) error {
 	defer r.Body.Close()
 	b, e := io.ReadAll(r.Body)
 	if e != nil {
-		return finance.ErrInvalid
+		return errBodyTooLarge
 	}
 	if len(strings.TrimSpace(string(b))) == 0 || strings.TrimSpace(string(b))[0] != '{' {
-		return finance.ErrInvalid
+		return errNotOneObject
 	}
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.DisallowUnknownFields()
 	if e = dec.Decode(out); e != nil {
-		return finance.ErrInvalid
+		var typeError *json.UnmarshalTypeError
+		if errors.As(e, &typeError) && typeError.Field != "" {
+			return &finance.Error{Code: finance.CodeValidationFailed, Message: "This field has the wrong JSON type.", Field: typeError.Field}
+		}
+		return errMalformedBody
 	}
 	if e = dec.Decode(&struct{}{}); e != io.EOF {
-		return finance.ErrInvalid
+		return errNotOneObject
 	}
 	return nil
 }
+
+var (
+	errBodyTooLarge  = &finance.Error{Code: finance.CodeValidationFailed, Message: "The request body could not be read or is larger than 32 KB."}
+	errNotOneObject  = &finance.Error{Code: finance.CodeValidationFailed, Message: "Send exactly one JSON object as the request body."}
+	errMalformedBody = &finance.Error{Code: finance.CodeValidationFailed, Message: "The request body is not valid JSON for this endpoint, or it has an unknown field."}
+	errPathID        = &finance.Error{Code: finance.CodeValidationFailed, Message: "The id in the body must match the id in the path.", Field: "id"}
+)
+
 func respond(w http.ResponseWriter, v any, e error) {
-	w.Header().Set("Content-Type", "application/json")
 	if e != nil {
-		status := 500
-		message := "internal server error"
-		switch {
-		case errors.Is(e, finance.ErrInvalid):
-			status = 400
-			message = e.Error()
-		case errors.Is(e, finance.ErrUnauthorized):
-			status = 401
-			message = e.Error()
-		case errors.Is(e, finance.ErrNotFound), errors.Is(e, sql.ErrNoRows):
-			status = 404
-			message = "record not found"
-		case errors.Is(e, finance.ErrConflict):
-			status = 409
-			message = e.Error()
-		default:
-			slog.Error("request failed", "error_type", strings.SplitN(e.Error(), ":", 2)[0])
-		}
-		w.WriteHeader(status)
-		json.NewEncoder(w).Encode(map[string]string{"error": message})
+		writeError(w, e)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)
 }
 func page(r *http.Request) (int, int, error) {
@@ -285,13 +276,13 @@ func page(r *http.Request) (int, int, error) {
 	if r.URL.Query().Get("limit") != "" {
 		l, e = strconv.Atoi(r.URL.Query().Get("limit"))
 		if e != nil {
-			return 0, 0, finance.ErrInvalid
+			return 0, 0, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use a whole-number limit.", Field: "limit"}
 		}
 	}
 	if r.URL.Query().Get("offset") != "" {
 		o, e = strconv.Atoi(r.URL.Query().Get("offset"))
 		if e != nil {
-			return 0, 0, finance.ErrInvalid
+			return 0, 0, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use a whole-number offset.", Field: "offset"}
 		}
 	}
 	return l, o, nil
@@ -307,7 +298,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.allowLogin(host) {
 		w.Header().Set("Retry-After", "60")
-		w.WriteHeader(429)
+		writeError(w, errRateLimited)
 		return
 	}
 	var in struct {
@@ -333,7 +324,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	e = s.compare(hash, password)
 	if e != nil || !exists || tooLong {
-		respond(w, nil, finance.ErrUnauthorized)
+		writeError(w, errLoginFailed)
 		return
 	}
 	user, e := s.store.EnsureUser(r.Context(), email, credential.Name)
@@ -418,11 +409,11 @@ func (s *Server) security(next http.Handler) http.Handler {
 			origin := r.Header.Get("Origin")
 			media, _, e := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if r.Header.Get("X-CSRF-Protection") != "1" || (origin != "" && origin != s.config.Origin) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-				http.Error(w, "request origin rejected", 403)
+				writeError(w, errForbidden)
 				return
 			}
 			if e != nil || media != "application/json" {
-				http.Error(w, "JSON required", 415)
+				writeError(w, errMediaType)
 				return
 			}
 		}

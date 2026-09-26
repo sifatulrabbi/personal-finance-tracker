@@ -2,7 +2,33 @@
 
 All application endpoints use `/api/v1`. Amounts and rates are decimal strings, dates are `YYYY-MM-DD` in Asia/Dhaka, and audit timestamps are UTC instants. Authentication uses the `sf_session` HTTP-only cookie. Send `Content-Type: application/json` and `X-CSRF-Protection: 1` on every write, including login. Browser requests must use the configured `APP_ORIGIN`; no cross-origin client access is enabled.
 
-Every financial or settings mutation requires an `Idempotency-Key` header of 1–128 characters. Reuse the key only when retrying the exact same request. Corrections and metadata edits include the previously read `version`. The server returns 400 for invalid input, 401 for missing/expired access, 404 for missing records, and 409 for stale versions or conflicting request-key reuse. List endpoints for transactions and audit accept `limit` (1–200) and `offset`.
+Every financial or settings mutation requires an `Idempotency-Key` header of 1–128 characters. Reuse the key only when retrying the exact same request. Corrections and metadata edits include the previously read `version`. List endpoints for transactions and audit accept `limit` (1–200) and `offset`.
+
+## Errors
+
+Every error response is JSON: `{"error":{"code":"<code>","message":"<human text>","field":"<input name>"}}`. `field` is present only when one input field is at fault; it uses the JSON field name (for example `amount`, `rate`, `wallet_id`, `limit`). Messages are fixed, human-readable text that never echoes submitted values; clients should branch on `code` and may show `message`. See ADR 0008.
+
+| Code | Status | Meaning and client action |
+| --- | --- | --- |
+| `validation_failed` | 400 | The request or one field is invalid. Fix the input. |
+| `rate_required` | 400 | A USD amount needs a rate and no default is set. Enter a rate or set one in Settings. |
+| `archived_wallet` | 400 | The change would use an archived wallet or change its balance. |
+| `not_correctable` | 400 | Opening balances and adjustments cannot be corrected or voided. Record a new adjustment. |
+| `unauthenticated` | 401 | No valid session, or the login email or password is wrong. Sign in. |
+| `forbidden` | 403 | CSRF header or origin check failed. |
+| `not_found` | 404 | The record, a referenced wallet (with `field`), or the API route does not exist. |
+| `method_not_allowed` | 405 | The route exists but not for this method; see the `Allow` header. |
+| `stale_version` | 409 | The record changed since it was read. Reload and retry with the new `version`. |
+| `idempotency_key_reused` | 409 | This `Idempotency-Key` was used for a different request. Send a new key. |
+| `duplicate_name` | 409 | A category with this name and type exists. |
+| `already_settled` | 409 | The bill was already paid or skipped, or the record was already voided. |
+| `unsupported_media_type` | 415 | Send `Content-Type: application/json`. |
+| `rate_limited` | 429 | Too many login attempts; wait for `Retry-After` seconds. |
+| `internal` | 500 | Unexpected server fault. Retry later with the same `Idempotency-Key`, which cannot apply a write twice. |
+
+Unauthenticated requests to any `/api/v1` path, including unknown ones, get 401 before routing.
+
+## Endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
