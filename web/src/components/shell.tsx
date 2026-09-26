@@ -1,11 +1,13 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "cn";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
   ChartPie,
+  ChevronLeft,
   Ellipsis,
+  House,
   List,
   LogOut,
   Monitor,
@@ -40,6 +42,7 @@ import { notifyError } from "@/components/feedback";
 type Path = Page["path"];
 
 const icons: Record<Path, typeof List> = {
+  "/home": House,
   "/activity": List,
   "/wallets": WalletIcon,
   "/bills": CalendarClock,
@@ -47,8 +50,9 @@ const icons: Record<Path, typeof List> = {
   "/settings": SettingsIcon,
 };
 
-// Phones show three tabs, the Add button, and More; the rest live in More.
-const tabPaths: Path[] = ["/activity", "/wallets", "/bills"];
+// Phones show four tabs around the center Add button; the rest live in the More menu in
+// the page header.
+const tabPaths: Path[] = ["/home", "/activity", "/bills", "/wallets"];
 const morePaths: Path[] = ["/monthly", "/settings"];
 const pageByPath = (path: Path) => pages.find((page) => page.path === path)!;
 
@@ -58,7 +62,7 @@ export const themeOptions: { value: ThemePreference; label: string; icon: typeof
   { value: "system", label: "System", icon: Monitor },
 ];
 
-function useSignOut() {
+export function useSignOut() {
   const { signOut } = useSession();
   return () =>
     void signOut().catch((error) =>
@@ -66,42 +70,72 @@ function useSignOut() {
     );
 }
 
+const HeaderTitleContext = createContext<(title: string | undefined) => void>(() => {});
+
+// Lets a page name the header once its data has loaded, for example a wallet's name on
+// its detail page. The page's own name comes back when it unmounts.
+export function useHeaderTitle(title: string | undefined) {
+  const setTitle = useContext(HeaderTitleContext);
+  useEffect(() => {
+    setTitle(title);
+    return () => setTitle(undefined);
+  }, [setTitle, title]);
+}
+
 // The signed-in frame: a bottom tab bar on phones and tablets, a left sidebar from 1024px,
 // and a page header with the page name. Only one navigation is displayed at a time, so
 // only one is exposed to assistive technology.
 export function AppShell({
   page,
+  back,
   user,
   children,
 }: {
   page: Page | undefined;
+  // A link back to the parent page, shown before the title (for example a wallet's detail).
+  back?: { to: string; label: string };
   user: User;
   children: ReactNode;
 }) {
+  const [title, setTitle] = useState<string | undefined>();
   return (
     <AddRecordProvider>
-      <div className="min-h-dvh min-w-0">
-        <Sidebar current={page} user={user} />
-        <div className="flex min-h-dvh min-w-0 flex-col lg:pl-64">
-          <PageHeader title={page?.name ?? "Page not found"} />
-          <main
-            className={cn(
-              "mx-auto flex w-full max-w-3xl min-w-0 flex-1 flex-col gap-6 pt-2",
-              "pr-[max(1rem,var(--safe-area-right))] pl-[max(1rem,var(--safe-area-left))]",
-              // Room for the tab bar and the home indicator under it.
-              "pb-[calc(var(--tab-bar-height)+var(--safe-area-bottom)+2rem)] lg:px-8 lg:pb-12",
-            )}
-          >
-            {children}
-          </main>
+      <HeaderTitleContext.Provider value={setTitle}>
+        <div className="min-h-dvh min-w-0">
+          <Sidebar current={page} user={user} />
+          <div className="flex min-h-dvh min-w-0 flex-col lg:pl-64">
+            <PageHeader
+              title={title ?? page?.name ?? "Page not found"}
+              back={back}
+              current={page}
+            />
+            <main
+              className={cn(
+                "mx-auto flex w-full max-w-3xl min-w-0 flex-1 flex-col gap-6 pt-2",
+                "pr-[max(1rem,var(--safe-area-right))] pl-[max(1rem,var(--safe-area-left))]",
+                // Room for the tab bar and the home indicator under it.
+                "pb-[calc(var(--tab-bar-height)+var(--safe-area-bottom)+2rem)] lg:px-8 lg:pb-12",
+              )}
+            >
+              {children}
+            </main>
+          </div>
+          <TabBar current={page} />
         </div>
-        <TabBar current={page} />
-      </div>
+      </HeaderTitleContext.Provider>
     </AddRecordProvider>
   );
 }
 
-function PageHeader({ title }: { title: string }) {
+function PageHeader({
+  title,
+  back,
+  current,
+}: {
+  title: string;
+  back?: { to: string; label: string };
+  current: Page | undefined;
+}) {
   const queryClient = useQueryClient();
   const fetching = useIsFetching() > 0;
   return (
@@ -111,19 +145,31 @@ function PageHeader({ title }: { title: string }) {
         "pt-[max(0.5rem,var(--safe-area-top))] pr-[max(1rem,var(--safe-area-right))] pl-[max(1rem,var(--safe-area-left))] lg:px-0",
       )}
     >
-      <div className="mx-auto flex h-14 w-full max-w-3xl min-w-0 items-center justify-between gap-3 lg:h-16 lg:px-8">
+      <div className="mx-auto flex h-14 w-full max-w-3xl min-w-0 items-center gap-1 lg:h-16 lg:px-8">
+        {back ? (
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="-ml-2 shrink-0 rounded-full text-muted-foreground"
+          >
+            <Link to={back.to} aria-label={back.label}>
+              <ChevronLeft className="size-6" />
+            </Link>
+          </Button>
+        ) : null}
         {/* Receives focus when the element that opened a sheet no longer exists. */}
         <h1
           data-page-heading=""
           tabIndex={-1}
-          className="min-w-0 truncate text-title outline-none"
+          className="min-w-0 flex-1 truncate text-title outline-none"
         >
           {title}
         </h1>
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full text-muted-foreground"
+          className="shrink-0 rounded-full text-muted-foreground"
           aria-label="Refresh records"
           aria-busy={fetching}
           disabled={fetching}
@@ -132,16 +178,76 @@ function PageHeader({ title }: { title: string }) {
         >
           <RefreshCw className={fetching ? "animate-spin" : undefined} />
         </Button>
+        <MoreMenu current={current} />
       </div>
     </header>
   );
 }
 
-function TabBar({ current }: { current: Page | undefined }) {
-  const addRecord = useAddRecord();
+// Phones and tablets: the pages without a tab, the theme, and sign out, in the header's
+// top-right menu. From 1024px the sidebar shows all of them, so the menu is hidden there.
+function MoreMenu({ current }: { current: Page | undefined }) {
   const signOut = useSignOut();
   const { preference, setPreference } = useTheme();
   const moreActive = current ? morePaths.includes(current.path) : false;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="More"
+          className={cn(
+            "-mr-2 shrink-0 rounded-full lg:hidden",
+            moreActive ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <Ellipsis className="size-6" />
+        </Button>
+      </DropdownMenuTrigger>
+      {/* No close animation: after choosing a page, the menu must not linger over it. */}
+      <DropdownMenuContent
+        side="bottom"
+        align="end"
+        className="w-64 data-[state=closed]:animate-none"
+      >
+        {morePaths.map((path) => {
+          const Icon = icons[path];
+          const active = current?.path === path;
+          return (
+            <DropdownMenuItem key={path} asChild>
+              <Link to={path} aria-current={active ? "page" : undefined}>
+                <Icon aria-hidden />
+                {pageByPath(path).name}
+              </Link>
+            </DropdownMenuItem>
+          );
+        })}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Theme</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={preference}
+          onValueChange={(value) => setPreference(value as ThemePreference)}
+        >
+          {themeOptions.map(({ value, label, icon: Icon }) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              <Icon aria-hidden />
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={signOut}>
+          <LogOut aria-hidden />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function TabBar({ current }: { current: Page | undefined }) {
+  const addRecord = useAddRecord();
   const tab = (path: Path) => {
     const page = pageByPath(path);
     const Icon = icons[path];
@@ -167,8 +273,8 @@ function TabBar({ current }: { current: Page | undefined }) {
       )}
     >
       <div className="mx-auto grid h-(--tab-bar-height) max-w-lg grid-cols-5 items-stretch">
+        {tab("/home")}
         {tab("/activity")}
-        {tab("/wallets")}
         <div className="flex items-center justify-center">
           <button
             type="button"
@@ -180,55 +286,7 @@ function TabBar({ current }: { current: Page | undefined }) {
           </button>
         </div>
         {tab("/bills")}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className={cn(
-              tabClass,
-              "cursor-pointer",
-              moreActive ? "text-primary" : "text-muted-foreground",
-            )}
-          >
-            <Ellipsis aria-hidden className="size-6" strokeWidth={moreActive ? 2.25 : 1.75} />
-            <span>More</span>
-          </DropdownMenuTrigger>
-          {/* No close animation: after choosing a page, the menu must not linger over it. */}
-          <DropdownMenuContent
-            side="top"
-            align="end"
-            className="w-64 data-[state=closed]:animate-none"
-          >
-            {morePaths.map((path) => {
-              const Icon = icons[path];
-              const active = current?.path === path;
-              return (
-                <DropdownMenuItem key={path} asChild>
-                  <Link to={path} aria-current={active ? "page" : undefined}>
-                    <Icon aria-hidden />
-                    {pageByPath(path).name}
-                  </Link>
-                </DropdownMenuItem>
-              );
-            })}
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Theme</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={preference}
-              onValueChange={(value) => setPreference(value as ThemePreference)}
-            >
-              {themeOptions.map(({ value, label, icon: Icon }) => (
-                <DropdownMenuRadioItem key={value} value={value}>
-                  <Icon aria-hidden />
-                  {label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={signOut}>
-              <LogOut aria-hidden />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {tab("/wallets")}
       </div>
     </nav>
   );

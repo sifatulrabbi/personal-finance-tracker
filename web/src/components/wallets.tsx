@@ -1,20 +1,33 @@
-import { useState } from "react";
-import { Plus, Pencil, SlidersHorizontal, Wallet as WalletIcon } from "lucide-react";
-import type { CardType, Currency, Wallet, WalletType } from "@/api/types";
-import { useWallets } from "@/cache/queries";
-import { useWrites } from "@/cache/writes";
-import { Button } from "@/components/ui/button";
+import { useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
+  Archive,
+  ArchiveRestore,
+  Banknote,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  CreditCard,
+  Landmark,
+  List as ListIcon,
+  Pencil,
+  Plus,
+  SlidersHorizontal,
+  Smartphone,
+  Wallet as WalletIcon,
+} from "lucide-react";
+import type { CardType, Currency, Wallet, WalletType } from "@/api/types";
+import { isApiError } from "@/api/errors";
+import { useWallet, useWallets } from "@/cache/queries";
+import { useWrites } from "@/cache/writes";
+import { fillPercent } from "@/money/compare";
+import { walletPath } from "@/routes";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FieldDescription } from "@/components/ui/field";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Choice,
   MoneyField,
@@ -25,12 +38,19 @@ import {
 } from "@/components/forms";
 import {
   EmptyState,
+  List,
+  ListRow,
+  ListSkeleton,
   LoadError,
+  Meter,
   Modal,
   PageIntro,
+  RowIcon,
+  Section,
   useEditor,
 } from "@/components/layout";
 import { Money } from "@/components/money";
+import { useHeaderTitle } from "@/components/shell";
 
 const types: { value: WalletType; label: string }[] = [
   { value: "physical", label: "Physical cash" },
@@ -39,18 +59,55 @@ const types: { value: WalletType; label: string }[] = [
   { value: "card", label: "Card" },
 ];
 
-type Editor = { mode: "create" } | { mode: "edit" | "adjust"; id: string };
+// The groups on the Wallets page. Cards stay apart from cash so debt is never read as money
+// the household holds.
+const groups: { title: string; types: WalletType[] }[] = [
+  { title: "Cash & bank", types: ["physical", "bank"] },
+  { title: "Digital", types: ["digital"] },
+  { title: "Cards", types: ["card"] },
+];
+
+// A debit card created before bank linking keeps its own balance (ADR 0011).
+const isLegacyDebit = (wallet: Wallet) =>
+  wallet.type === "card" && wallet.card_type !== "credit" && !wallet.bank_wallet_id;
+
+function typeLabel(wallet: Wallet) {
+  if (wallet.card_type === "credit") return "Credit card";
+  if (wallet.type === "card") return "Debit card";
+  return types.find((type) => type.value === wallet.type)?.label ?? "Wallet";
+}
+
+function WalletIconFor({ wallet }: { wallet: Wallet }) {
+  if (wallet.card_type === "credit")
+    return (
+      <RowIcon tone="warning">
+        <CreditCard />
+      </RowIcon>
+    );
+  const icon =
+    wallet.type === "bank" ? (
+      <Landmark />
+    ) : wallet.type === "digital" ? (
+      <Smartphone />
+    ) : wallet.type === "card" ? (
+      <CreditCard />
+    ) : (
+      <Banknote />
+    );
+  return <RowIcon tone={wallet.archived ? "neutral" : "primary"}>{icon}</RowIcon>;
+}
+
+type Editor =
+  | { mode: "create" }
+  | { mode: "edit" | "adjust" | "archive"; id: string };
 
 export function Wallets() {
   const query = useWallets();
   const wallets = query.data ?? [];
   const editor = useEditor<Editor>();
   const [showArchived, setShowArchived] = useState(false);
-  // Read the wallet being edited from the cache so it is never a stale snapshot.
-  const current =
-    editor.value && editor.value.mode !== "create"
-      ? wallets.find((w) => w.id === (editor.value as { id: string }).id)
-      : undefined;
+  const active = wallets.filter((wallet) => !wallet.archived);
+  const archived = wallets.filter((wallet) => wallet.archived);
   return (
     <>
       <PageIntro
@@ -68,118 +125,324 @@ export function Wallets() {
         onRetry={() => void query.refetch()}
         what="wallets"
       />
-      {query.isPending ? (
-        <div aria-hidden className="flex flex-col gap-3">
-          <Skeleton className="h-36 w-full rounded-xl" />
-          <Skeleton className="h-36 w-full rounded-xl" />
-        </div>
-      ) : null}
+      {query.isPending ? <ListSkeleton rows={4} /> : null}
       {query.data && !wallets.length ? (
         <EmptyState
           icon={<WalletIcon />}
           title="Start with a wallet"
           description="Add your cash, bank account, bKash, or card with its current balance."
+          action={
+            <Button variant="outline" onClick={(e) => editor.open({ mode: "create" }, e)}>
+              Add your first wallet
+            </Button>
+          }
         />
       ) : null}
-      <div className="flex min-w-0 flex-col gap-3">
-      {wallets
-        .filter((wallet) => showArchived || !wallet.archived)
-        .map((wallet) => (
-          <Card key={wallet.id} className={wallet.archived ? "opacity-75" : undefined}>
-            <CardHeader>
-              <div className="flex items-start justify-between gap-3">
-                <CardTitle className="min-w-0 break-all">
-                  {wallet.name}
-                </CardTitle>
-                <Badge variant="outline">{wallet.currency}</Badge>
-              </div>
-              <CardDescription>
-                {wallet.card_type === "credit"
-                  ? "Credit card · debt owed"
-                  : types.find((type) => type.value === wallet.type)?.label}
-                {wallet.archived ? " · Archived" : ""}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="@container flex flex-col gap-1">
-              {/* Never break inside a number: the size shrinks with the card instead. */}
-              {wallet.bank_wallet_id ? (
-                // A linked debit card has no balance of its own (ADR 0011).
-                <p className="text-sm text-muted-foreground">
-                  Spends from{" "}
-                  {wallets.find((bank) => bank.id === wallet.bank_wallet_id)?.name ??
-                    "its bank wallet"}
-                </p>
-              ) : (
-                <p
-                  data-testid="wallet-balance"
-                  className="text-[min(2rem,9cqi)] leading-tight font-semibold tracking-tight"
-                >
-                  <Money
-                    amount={wallet.debt ?? wallet.balance}
-                    currency={wallet.currency}
-                    debt={wallet.card_type === "credit"}
-                  />
-                </p>
-              )}
-              {wallet.card_type === "credit" ? (
-                <p className="text-sm text-muted-foreground">
-                  Available{" "}
-                  <Money amount={wallet.available_credit ?? "0.00"} currency={wallet.currency} /> ·
-                  Limit <Money amount={wallet.credit_limit} currency={wallet.currency} />
-                </p>
-              ) : null}
-              {wallet.details ? (
-                <p className="break-words whitespace-pre-wrap text-sm text-muted-foreground">
-                  {wallet.details}
-                </p>
-              ) : null}
-            </CardContent>
-            <CardFooter className="flex flex-wrap gap-2 border-t pt-3 [.border-t]:pt-3">
+      {groups.map((group) => {
+        const members = active.filter((wallet) => group.types.includes(wallet.type));
+        if (!members.length) return null;
+        return (
+          <section key={group.title} aria-label={group.title} className="min-w-0">
+            <Section title={group.title}>
+              <List>
+                {members.map((wallet) => (
+                  <WalletRow key={wallet.id} wallet={wallet} wallets={wallets} />
+                ))}
+              </List>
+            </Section>
+          </section>
+        );
+      })}
+      {archived.length ? (
+        <div className="flex min-w-0 flex-col gap-3">
+          <Button
+            variant="ghost"
+            className="self-start text-muted-foreground"
+            aria-expanded={showArchived}
+            onClick={() => setShowArchived(!showArchived)}
+          >
+            {showArchived ? <ChevronDown data-icon="inline-start" /> : <ChevronRight data-icon="inline-start" />}
+            {showArchived ? "Hide" : "Show"} archived wallets ({archived.length})
+          </Button>
+          {showArchived ? (
+            <section aria-label="Archived wallets" className="min-w-0">
+              <List>
+                {archived.map((wallet) => (
+                  <WalletRow key={wallet.id} wallet={wallet} wallets={wallets} />
+                ))}
+              </List>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+      <WalletEditors editor={editor} wallets={wallets} />
+    </>
+  );
+}
+
+// One compact wallet row, linking to the wallet's own page.
+function WalletRow({ wallet, wallets }: { wallet: Wallet; wallets: Wallet[] }) {
+  const credit = wallet.card_type === "credit";
+  const bank = wallet.bank_wallet_id
+    ? wallets.find((other) => other.id === wallet.bank_wallet_id)
+    : undefined;
+  const currency = wallet.currency !== "BDT" ? ` · ${wallet.currency}` : "";
+  let subtitle: ReactNode = `${typeLabel(wallet)}${currency}`;
+  if (wallet.bank_wallet_id) subtitle = `Spends from ${bank?.name ?? "its bank wallet"}`;
+  else if (isLegacyDebit(wallet)) subtitle = "Debit card · not linked to a bank";
+  else if (credit)
+    subtitle = (
+      <>
+        <Money amount={wallet.available_credit ?? "0.00"} currency={wallet.currency} /> available
+        of <Money amount={wallet.credit_limit} currency={wallet.currency} />
+      </>
+    );
+  return (
+    <ListRow
+      to={walletPath(wallet.id)}
+      data-testid="wallet-row"
+      className={wallet.archived ? "opacity-75" : undefined}
+      leading={<WalletIconFor wallet={wallet} />}
+      title={
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="min-w-0 break-words">{wallet.name}</span>
+          {wallet.archived ? <Badge variant="outline">Archived</Badge> : null}
+        </span>
+      }
+      subtitle={subtitle}
+      trailing={
+        wallet.bank_wallet_id ? (
+          <ChevronRight aria-hidden className="size-5 text-muted-foreground" />
+        ) : (
+          <span className="flex flex-col items-end">
+            <Money
+              data-testid="wallet-balance"
+              className="font-semibold"
+              amount={wallet.debt ?? wallet.balance}
+              currency={wallet.currency}
+              debt={credit}
+            />
+            {credit ? (
+              <span className="text-caption font-normal text-muted-foreground">owed</span>
+            ) : null}
+          </span>
+        )
+      }
+      below={
+        credit && !wallet.archived ? (
+          <Meter
+            label={`${wallet.name} credit used`}
+            tone="warning"
+            percent={fillPercent(wallet.debt ?? "0", wallet.credit_limit)}
+          />
+        ) : undefined
+      }
+    />
+  );
+}
+
+// One wallet's page (/wallets/:id), read with GET /wallets/{id}, with its actions.
+export function WalletDetail({ id }: { id: string }) {
+  const query = useWallet(id);
+  const list = useWallets();
+  const editor = useEditor<Editor>();
+  const wallet = query.data;
+  useHeaderTitle(wallet?.name);
+  if (!wallet) {
+    if (query.error && isApiError(query.error) && query.error.code === "not_found")
+      return (
+        <EmptyState
+          icon={<WalletIcon />}
+          title="Wallet not found"
+          description="This wallet does not exist. It may have been opened from an old link."
+          action={
+            <Button asChild variant="outline">
+              <Link to="/wallets">Back to Wallets</Link>
+            </Button>
+          }
+        />
+      );
+    return (
+      <>
+        <LoadError
+          error={query.error}
+          hasData={false}
+          onRetry={() => void query.refetch()}
+          what="this wallet"
+        />
+        {query.isPending ? (
+          <div aria-hidden className="flex flex-col gap-4">
+            <Skeleton className="h-44 w-full rounded-xl" />
+            <Skeleton className="h-11 w-2/3" />
+          </div>
+        ) : null}
+      </>
+    );
+  }
+  const wallets = list.data ?? [];
+  const credit = wallet.card_type === "credit";
+  const linked = Boolean(wallet.bank_wallet_id);
+  const bank = linked ? wallets.find((other) => other.id === wallet.bank_wallet_id) : undefined;
+  return (
+    <>
+      <LoadError
+        error={query.error}
+        hasData
+        onRetry={() => void query.refetch()}
+        what="this wallet"
+      />
+      <Card className="gap-0 py-0" data-testid="wallet-detail">
+        <CardContent className="flex flex-col gap-4 px-5 py-5">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <WalletIconFor wallet={wallet} />
+            <span className="text-label">{typeLabel(wallet)}</span>
+            <Badge variant="outline">{wallet.currency}</Badge>
+            {wallet.archived ? <Badge variant="secondary">Archived</Badge> : null}
+          </div>
+          {linked ? (
+            <div className="flex flex-col gap-1">
+              <p className="text-heading">
+                Spends from{" "}
+                {bank ? (
+                  <Link className="text-primary underline-offset-2 hover:underline" to={walletPath(bank.id)}>
+                    {bank.name}
+                  </Link>
+                ) : (
+                  "its bank wallet"
+                )}
+              </p>
+              <p className="text-label font-normal text-muted-foreground">
+                This card has no balance of its own. Spending with it comes out of the bank
+                account.
+              </p>
+            </div>
+          ) : (
+            <div className="@container flex min-w-0 flex-col gap-1">
+              <p className="text-label text-muted-foreground">{credit ? "Debt owed" : "Balance"}</p>
+              <p
+                data-testid="wallet-balance"
+                className="text-[min(2rem,9cqi)] leading-tight font-semibold tracking-tight"
+              >
+                <Money amount={wallet.debt ?? wallet.balance} currency={wallet.currency} debt={credit} />
+              </p>
+            </div>
+          )}
+          {credit ? (
+            <div className="flex flex-col gap-2">
+              <Meter
+                label="Credit used"
+                tone="warning"
+                percent={fillPercent(wallet.debt ?? "0", wallet.credit_limit)}
+              />
+              <p className="text-label font-normal text-muted-foreground">
+                <Money amount={wallet.available_credit ?? "0.00"} currency={wallet.currency} />{" "}
+                available of <Money amount={wallet.credit_limit} currency={wallet.currency} /> limit
+              </p>
+            </div>
+          ) : null}
+          {isLegacyDebit(wallet) ? (
+            <Alert variant="warning" role="note">
+              <CircleAlert aria-hidden />
+              <AlertDescription>
+                This card was added before cards were linked to a bank account, so it keeps
+                its own balance. Move that money out, add a new card linked to its bank, and
+                archive this one.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {wallet.details ? (
+            <p className="break-words whitespace-pre-wrap text-sm text-muted-foreground">
+              {wallet.details}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2 border-t pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => editor.open({ mode: "edit", id: wallet.id }, e)}
+            >
+              <Pencil data-icon="inline-start" />
+              Edit wallet
+            </Button>
+            {!wallet.archived && !linked ? (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={(e) => editor.open({ mode: "edit", id: wallet.id }, e)}
+                onClick={(e) => editor.open({ mode: "adjust", id: wallet.id }, e)}
               >
-                <Pencil data-icon="inline-start" />
-                Edit wallet
+                <SlidersHorizontal data-icon="inline-start" />
+                Adjust {credit ? "debt" : "balance"}
               </Button>
-              {!wallet.archived && !wallet.bank_wallet_id ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground"
-                  onClick={(e) => editor.open({ mode: "adjust", id: wallet.id }, e)}
-                >
-                  <SlidersHorizontal data-icon="inline-start" />
-                  Adjust {wallet.card_type === "credit" ? "debt" : "balance"}
-                </Button>
-              ) : null}
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
-      {wallets.some((wallet) => wallet.archived) ? (
-        <Button variant="ghost" className="self-center" onClick={() => setShowArchived(!showArchived)}>
-          {showArchived ? "Hide" : "Show"} archived wallets
-        </Button>
-      ) : null}
-      <Modal
-        open={editor.isOpen}
-        onClose={editor.close}
-        returnFocus={editor.trigger}
-        {...modalText(editor.value, current)}
-      >
-        {editor.value?.mode === "create" ? (
-          <CreateWallet onSaved={editor.close} />
-        ) : null}
-        {editor.value?.mode === "edit" && current ? (
-          <EditWallet key={current.id} wallet={current} onSaved={editor.close} />
-        ) : null}
-        {editor.value?.mode === "adjust" && current ? (
-          <AdjustWallet key={current.id} wallet={current} onSaved={editor.close} />
-        ) : null}
-      </Modal>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={(e) => editor.open({ mode: "archive", id: wallet.id }, e)}
+            >
+              {wallet.archived ? (
+                <ArchiveRestore data-icon="inline-start" />
+              ) : (
+                <Archive data-icon="inline-start" />
+              )}
+              {wallet.archived ? "Restore wallet" : "Archive wallet"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Section title="Recent activity">
+        <EmptyState
+          icon={<ListIcon />}
+          title="Records for this wallet are coming soon"
+          description="Until then, every record, including this wallet's, is in Activity."
+          action={
+            <Button asChild variant="outline">
+              <Link to="/activity">Open Activity</Link>
+            </Button>
+          }
+        />
+      </Section>
+      <WalletEditors editor={editor} wallets={wallets} detail={wallet} />
     </>
+  );
+}
+
+// The create, edit, adjust, and archive sheets, shared by the list and the detail page.
+function WalletEditors({
+  editor,
+  wallets,
+  detail,
+}: {
+  editor: ReturnType<typeof useEditor<Editor>>;
+  wallets: Wallet[];
+  // On the detail page, the freshly read wallet is the one being edited.
+  detail?: Wallet;
+}) {
+  // Read the wallet being edited from the cache so it is never a stale snapshot.
+  const current =
+    editor.value && editor.value.mode !== "create"
+      ? detail?.id === (editor.value as { id: string }).id
+        ? detail
+        : wallets.find((w) => w.id === (editor.value as { id: string }).id)
+      : undefined;
+  return (
+    <Modal
+      open={editor.isOpen}
+      onClose={editor.close}
+      returnFocus={editor.trigger}
+      {...modalText(editor.value, current)}
+    >
+      {editor.value?.mode === "create" ? <CreateWallet onSaved={editor.close} /> : null}
+      {editor.value?.mode === "edit" && current ? (
+        <EditWallet key={current.id} wallet={current} onSaved={editor.close} />
+      ) : null}
+      {editor.value?.mode === "adjust" && current ? (
+        <AdjustWallet key={current.id} wallet={current} onSaved={editor.close} />
+      ) : null}
+      {editor.value?.mode === "archive" && current ? (
+        <ArchiveWallet key={current.id} wallet={current} onSaved={editor.close} />
+      ) : null}
+    </Modal>
   );
 }
 
@@ -196,10 +459,55 @@ function modalText(editor: Editor | undefined, wallet: Wallet | undefined) {
       description:
         "The difference is recorded with your reason. History stays intact.",
     };
+  if (editor?.mode === "archive")
+    return wallet?.archived
+      ? {
+          title: "Restore wallet",
+          description: "The wallet becomes available again for new records and bills.",
+        }
+      : {
+          title: "Archive wallet",
+          description:
+            "It keeps its balance and history, but new records, bills, and adjustments cannot use it.",
+        };
   return {
     title: "Add wallet",
     description: "Start with what you have today. No bank connection needed.",
   };
+}
+
+// Archives or restores with the wallet's metadata version, like an edit of its status.
+function ArchiveWallet(props: { wallet: Wallet; onSaved: () => void }) {
+  const writes = useWrites();
+  // Snapshot at open so the stale-edit check compares against what the user saw.
+  const [wallet] = useState(props.wallet);
+  const archive = !wallet.archived;
+  return (
+    <SaveForm
+      onSaved={props.onSaved}
+      saved={archive ? "Wallet archived" : "Wallet restored"}
+      label={archive ? "Archive wallet" : "Restore wallet"}
+      body={() => ({
+        id: wallet.id,
+        name: wallet.name,
+        type: wallet.type,
+        card_type: wallet.card_type,
+        currency: wallet.currency,
+        details: wallet.details,
+        credit_limit: wallet.card_type === "credit" ? wallet.credit_limit : "0.00",
+        ...(wallet.bank_wallet_id ? { bank_wallet_id: wallet.bank_wallet_id } : {}),
+        archived: archive,
+        version: wallet.version,
+      })}
+      send={(body, key) => writes.updateWallet(body, { key })}
+    >
+      <p className="text-sm text-muted-foreground">
+        {archive
+          ? `${wallet.name} moves to the archived list at the bottom of Wallets. You can restore it at any time.`
+          : `${wallet.name} moves back to its group in Wallets.`}
+      </p>
+    </SaveForm>
+  );
 }
 
 function AdjustWallet(props: { wallet: Wallet; onSaved: () => void }) {

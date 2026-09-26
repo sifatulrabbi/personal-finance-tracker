@@ -37,11 +37,11 @@ test("the signed-in user is You; others go by the name in their email", () => {
 });
 
 test("settings and target changes read as sentences with the values", () => {
-  expect(describeAudit(event("rate", { rate: "122.50" }, { rate: "123.00" }), context).sentence).toBe(
+  expect(describeAudit(event("rate", { rate: "122.50" }, { rate: "123.000000" }), context).sentence).toBe(
     "You changed the default exchange rate from 122.50 to 123.00 BDT per USD.",
   );
   expect(describeAudit(event("rate", { rate: "" }, { rate: "125" }), context).sentence).toBe(
-    "You set the default exchange rate to 125 BDT per USD.",
+    "You set the default exchange rate to 125.00 BDT per USD.",
   );
   const target = describeAudit(
     event(

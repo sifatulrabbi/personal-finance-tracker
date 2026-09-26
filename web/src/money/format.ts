@@ -78,6 +78,13 @@ export function directionForKind(kind: TransactionKind): MoneyDirection {
   return "balance";
 }
 
+// An exchange rate without the stored padding: "122.500000" -> "122.50". Keeps every
+// significant digit and at least two decimals, as a string.
+export function rateLabel(rate: string) {
+  const [whole, fraction = ""] = rate.trim().split(".");
+  return `${whole}.${fraction.replace(/0+$/, "").padEnd(2, "0")}`;
+}
+
 // Kept for places that show a plain amount inside a sentence.
 export function moneyLabel(amount: string, currency: Currency | string) {
   return formatMoney(amount, currency, "balance");

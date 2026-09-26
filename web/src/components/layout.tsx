@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type SyntheticEvent,
 } from "react";
+import { Link } from "react-router-dom";
 import { cn } from "cn";
 import { CircleAlert, RotateCw, X } from "lucide-react";
 import {
@@ -229,7 +230,9 @@ export function ListRow({
   subtitle,
   trailing,
   meta,
+  below,
   onClick,
+  to,
   className,
   ...props
 }: {
@@ -239,10 +242,14 @@ export function ListRow({
   trailing?: ReactNode;
   // Small extra content under the trailing value, such as a badge.
   meta?: ReactNode;
+  // Full-width content under the title and trailing value, such as a usage bar.
+  below?: ReactNode;
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  // As a link to another page, when the row opens one.
+  to?: string;
   className?: string;
 } & Omit<React.HTMLAttributes<HTMLElement>, "title" | "onClick">) {
-  const inner = (
+  const main = (
     <>
       {leading ? <div className="shrink-0">{leading}</div> : null}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -261,18 +268,31 @@ export function ListRow({
       ) : null}
     </>
   );
+  const inner = below ? (
+    <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <div className="flex min-w-0 items-center gap-3">{main}</div>
+      <div className={cn("min-w-0", leading && "pl-13")}>{below}</div>
+    </div>
+  ) : (
+    main
+  );
   const classes = cn(
     "flex min-h-16 w-full min-w-0 items-center gap-3 px-4 py-3 text-left",
     className,
   );
+  const interactive =
+    "cursor-pointer transition-colors hover:bg-accent focus-visible:relative focus-visible:z-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
+  if (to)
+    return (
+      <Link to={to} className={cn(classes, interactive)} {...props}>
+        {inner}
+      </Link>
+    );
   if (onClick)
     return (
       <button
         type="button"
-        className={cn(
-          classes,
-          "cursor-pointer transition-colors hover:bg-accent focus-visible:relative focus-visible:z-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-        )}
+        className={cn(classes, interactive)}
         onClick={onClick}
         {...props}
       >
@@ -292,7 +312,7 @@ export function RowIcon({
   tone = "neutral",
 }: {
   children: ReactNode;
-  tone?: "neutral" | "income" | "transfer" | "warning";
+  tone?: "neutral" | "income" | "transfer" | "warning" | "danger" | "primary";
 }) {
   return (
     <div
@@ -303,9 +323,50 @@ export function RowIcon({
         tone === "income" && "bg-income/12 text-income",
         tone === "transfer" && "bg-transfer/12 text-transfer",
         tone === "warning" && "bg-warning/12 text-warning",
+        tone === "danger" && "bg-destructive/12 text-destructive",
+        tone === "primary" && "bg-primary/12 text-primary",
       )}
     >
       {children}
+    </div>
+  );
+}
+
+// A thin horizontal bar for "how much of this is used": spending against a target, a
+// card's debt against its limit, or a category's share. The percent comes from the
+// server or from an exact decimal comparison (money/compare.ts), never float money math.
+export function Meter({
+  percent,
+  label,
+  tone = "primary",
+  className,
+}: {
+  // 0 to 100.
+  percent: number;
+  label: string;
+  tone?: "primary" | "warning" | "danger" | "neutral";
+  className?: string;
+}) {
+  const value = Math.min(100, Math.max(0, percent));
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(value)}
+      className={cn("h-2 w-full min-w-0 overflow-hidden rounded-full bg-muted", className)}
+    >
+      <div
+        className={cn(
+          "h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none",
+          tone === "primary" && "bg-primary",
+          tone === "warning" && "bg-warning",
+          tone === "danger" && "bg-destructive",
+          tone === "neutral" && "bg-muted-foreground/60",
+        )}
+        style={{ width: `${value}%` }}
+      />
     </div>
   );
 }

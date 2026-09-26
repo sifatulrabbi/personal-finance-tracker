@@ -1,5 +1,5 @@
 import type { AuditEvent, Currency, Wallet } from "@/api/types";
-import { moneyLabel } from "@/money/format";
+import { moneyLabel, rateLabel } from "@/money/format";
 import { fullDate, monthLabel } from "./dates";
 
 // Turns a change-log entry into a sentence people can read ("You archived the wallet
@@ -125,8 +125,8 @@ export function describeAudit(event: AuditEvent, context: AuditContext): AuditDe
       };
     }
     case "rate": {
-      const previous = text(before.rate);
-      const next = text(after.rate);
+      const previous = text(before.rate) && rateLabel(text(before.rate));
+      const next = text(after.rate) && rateLabel(text(after.rate));
       return {
         sentence: previous
           ? `${who} changed the default exchange rate from ${previous} to ${next} BDT per USD.`
