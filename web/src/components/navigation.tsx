@@ -16,8 +16,19 @@ import {
 
 export function Navigation({ current }: { current: Page | undefined }) {
   const [open, setOpen] = useState(false);
+  // Choosing a page closes the drawer without its fade-out. Otherwise the new page shows
+  // under a dimmed overlay for about 200ms and looks like a flicker. Escape, the close
+  // button, and tapping outside keep the normal animation.
+  const [instant, setInstant] = useState(false);
+  const skipAnimation = instant ? { animation: "none" } : undefined;
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setInstant(false);
+        setOpen(next);
+      }}
+    >
       <DialogTrigger asChild>
         <Button
           variant="ghost"
@@ -29,8 +40,11 @@ export function Navigation({ current }: { current: Page | undefined }) {
         </Button>
       </DialogTrigger>
       <DialogPortal>
-        <DialogOverlay />
-        <DialogPrimitive.Content className="navigation-drawer fixed inset-y-0 z-50 flex w-80 min-w-0 flex-col gap-6 overflow-x-clip overflow-y-auto border-r bg-background px-4 shadow-lg outline-none">
+        <DialogOverlay style={skipAnimation} />
+        <DialogPrimitive.Content
+          style={skipAnimation}
+          className="navigation-drawer fixed inset-y-0 z-50 flex w-80 min-w-0 flex-col gap-6 overflow-x-clip overflow-y-auto border-r bg-background px-4 shadow-lg outline-none"
+        >
           <div className="flex items-center justify-between gap-2">
             <DialogTitle>Navigation</DialogTitle>
             <DialogClose asChild>
@@ -57,7 +71,10 @@ export function Navigation({ current }: { current: Page | undefined }) {
                   className: "h-12 w-full justify-start",
                 })}
                 aria-current={current === page ? "page" : undefined}
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setInstant(true);
+                  setOpen(false);
+                }}
               >
                 {page.name}
               </Link>
