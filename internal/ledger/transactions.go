@@ -53,6 +53,9 @@ type RecordFacts struct {
 	To            *Wallet // the to_wallet_id wallet; only read for transfers
 	// DefaultRate is the settings rate, "" when none is set.
 	DefaultRate string
+	// Prior is the revision a correction replaces, nil for a new record. A formula the correction
+	// omits is kept from it while it still equals the corrected amount.
+	Prior *Transaction
 }
 
 // PrepareRecord validates a new or corrected income, expense, or transfer and computes its stored
@@ -60,6 +63,11 @@ type RecordFacts struct {
 // always reports the same one first.
 func PrepareRecord(in TransactionInput, f RecordFacts) (Transaction, []Effect, error) {
 	r := Transaction{TransactionInput: in}
+	r.AmountFormula, r.ReceivedAmountFormula = "", ""
+	var prior Transaction
+	if f.Prior != nil {
+		prior = *f.Prior
+	}
 	if in.Kind != "income" && in.Kind != "expense" && in.Kind != "transfer" {
 		return r, nil, Invalid("kind", "Choose income, expense, or transfer.")
 	}
@@ -89,6 +97,9 @@ func PrepareRecord(in TransactionInput, f RecordFacts) (Transaction, []Effect, e
 		return r, nil, Invalid("amount", "Enter a positive amount with at most two decimal places.")
 	}
 	r.Amount = money.FormatMoney(amount)
+	if r.AmountFormula, err = recordFormula("amount_formula", in.AmountFormula, prior.AmountFormula, amount); err != nil {
+		return r, nil, err
+	}
 	var to Wallet
 	if in.Kind == "transfer" {
 		if in.ToWalletID == w.ID {
@@ -105,6 +116,8 @@ func PrepareRecord(in TransactionInput, f RecordFacts) (Transaction, []Effect, e
 		return r, nil, Invalid("to_wallet_id", "Only transfers have a destination wallet.")
 	} else if in.ReceivedAmount != "" {
 		return r, nil, Invalid("received_amount", "Only transfers have a received amount.")
+	} else if in.ReceivedAmountFormula != "" {
+		return r, nil, Invalid("received_amount_formula", "Only transfers have a received amount.")
 	}
 	rate, err := recordRate(in, w, to, f.DefaultRate)
 	if err != nil {
@@ -133,6 +146,9 @@ func PrepareRecord(in TransactionInput, f RecordFacts) (Transaction, []Effect, e
 		return r, nil, err
 	}
 	r.ReceivedAmount = money.FormatMoney(received)
+	if r.ReceivedAmountFormula, err = recordFormula("received_amount_formula", in.ReceivedAmountFormula, prior.ReceivedAmountFormula, received); err != nil {
+		return r, nil, err
+	}
 	// Without a rate, a USD transfer's BDT value is known only when BDT is received.
 	if w.Currency == "USD" && rate == 0 {
 		r.BDTAmount = ""

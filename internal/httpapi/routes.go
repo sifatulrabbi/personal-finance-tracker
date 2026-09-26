@@ -34,9 +34,10 @@ func (s *Server) walletRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/wallets/{id}/adjust", input(func(r *http.Request, in struct {
 		BalanceVersion int    `json:"balance_version"`
 		Balance        string `json:"balance"`
+		BalanceFormula string `json:"balance_formula"`
 		Reason         string `json:"reason"`
 	}) (any, error) {
-		return s.app.AdjustWallet(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.BalanceVersion, in.Balance, in.Reason)
+		return s.app.AdjustWallet(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.BalanceVersion, in.Balance, in.BalanceFormula, in.Reason)
 	}))
 }
 

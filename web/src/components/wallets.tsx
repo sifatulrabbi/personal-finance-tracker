@@ -524,6 +524,8 @@ function AdjustWallet(props: { wallet: Wallet; onSaved: () => void }) {
       body={(form) => ({
         balance_version: wallet.balance_version,
         balance: form.decimal("balance"),
+        // Kept on the adjustment as how the target was worked out (ADR 0014).
+        balance_formula: form.formula("balance") || undefined,
         reason: form.text("reason"),
       })}
       send={(body, key) => writes.adjustWallet(wallet.id, body, { key })}
@@ -547,6 +549,8 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
   );
   const [type, setType] = useState<WalletType>("physical");
   const [cardType, setCardType] = useState<"debit" | "credit">("debit");
+  // Controlled so the amount fields show the chosen currency's symbol and result.
+  const [currency, setCurrency] = useState<Currency>("BDT");
   const credit = type === "card" && cardType === "credit";
   // A debit card draws from a bank wallet and takes its currency; it has no opening balance.
   const debit = type === "card" && cardType === "debit";
@@ -562,8 +566,9 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
         currency: debit
           ? (banks.find((bank) => bank.id === form.text("bank_wallet_id"))?.currency ??
             "BDT")
-          : (form.text("currency") as Currency),
+          : currency,
         opening_balance: debit ? "" : form.decimal("opening_balance"),
+        opening_balance_formula: debit ? undefined : form.formula("opening_balance") || undefined,
         credit_limit: credit ? form.decimal("credit_limit") : "",
         details: form.text("details"),
         ...(debit ? { bank_wallet_id: form.text("bank_wallet_id") } : {}),
@@ -614,7 +619,8 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
           <Choice
             label="Currency"
             name="currency"
-            defaultValue="BDT"
+            value={currency}
+            onChange={(value) => setCurrency(value as Currency)}
             options={[
               { value: "BDT", label: "BDT · Bangladeshi taka" },
               { value: "USD", label: "USD · US dollar" },
@@ -623,13 +629,14 @@ function CreateWallet({ onSaved }: { onSaved: () => void }) {
           <MoneyField
             label={credit ? "Opening debt" : "Opening balance"}
             name="opening_balance"
+            currency={currency}
             allowNegative
             defaultValue="0"
           />
         </>
       )}
       {credit ? (
-        <MoneyField label="Credit limit" name="credit_limit" defaultValue="0" />
+        <MoneyField label="Credit limit" name="credit_limit" currency={currency} defaultValue="0" />
       ) : null}
       {debit ? (
         <FieldDescription>

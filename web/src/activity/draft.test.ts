@@ -3,6 +3,7 @@ import type { Transaction } from "@/api/types";
 import {
   buildInput,
   changedFields,
+  draftFieldFor,
   draftFromRecord,
   isCrossCurrency,
   newDraft,
@@ -155,5 +156,44 @@ describe("reapplying edits after someone else saved a newer version", () => {
 
   test("a correction starts from the record, with a fresh reason", () => {
     expect(draftFromRecord(stored)).toMatchObject({ amount: "200.00", category_id: "expense-groceries", reason: "" });
+  });
+});
+
+describe("calculated amounts (ADR 0014)", () => {
+  test("a calculation sends its rounded result and its canonical formula", () => {
+    const built = buildInput(draft({ amount: "120+45.50+300×2" }), bdt);
+    expect(built.ok && built.input).toMatchObject({ amount: "765.50", amount_formula: "120 + 45.50 + 300 * 2" });
+  });
+
+  test("a plain amount sends no formula", () => {
+    const built = buildInput(draft({ amount: "765.50" }), bdt);
+    expect(built.ok && "amount_formula" in built.input).toBe(false);
+  });
+
+  test("an invalid calculation is a field error, never sent", () => {
+    const built = buildInput(draft({ amount: "120+" }), bdt);
+    expect(built.ok).toBe(false);
+    if (!built.ok) expect(built.errors.amount).toContain("missing or extra");
+  });
+
+  test("a cross-currency received amount may be calculated", () => {
+    const built = buildInput(
+      draft({ kind: "transfer", to_wallet_id: "w2", amount: "1200", received_amount: "10 − 0.5", category_id: "" }),
+      { from: "BDT", to: "USD" },
+    );
+    expect(built.ok && built.input).toMatchObject({ received_amount: "9.50", received_amount_formula: "10 - 0.5" });
+  });
+
+  test("a correction starts from the calculation, shown with people's operators", () => {
+    const edited = draftFromRecord({ ...stored, amount: "765.50", amount_formula: "120 + 45.50 + 300 * 2" });
+    expect(edited.amount).toBe("120 + 45.50 + 300 × 2");
+    const built = buildInput(edited, bdt);
+    expect(built.ok && built.input).toMatchObject({ amount: "765.50", amount_formula: "120 + 45.50 + 300 * 2" });
+  });
+
+  test("a server error on a formula belongs to its amount field", () => {
+    expect(draftFieldFor("amount_formula")).toBe("amount");
+    expect(draftFieldFor("received_amount_formula")).toBe("received_amount");
+    expect(draftFieldFor("rate")).toBe("rate");
   });
 });

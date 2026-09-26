@@ -3,6 +3,8 @@ WORKDIR /src/web
 COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY web/ ./
+# The web and Go formula evaluators share one fixture file (ADR 0014).
+COPY internal/money/testdata/formulas.json /src/internal/money/testdata/formulas.json
 RUN bun run build && bun run test
 
 FROM golang:1.27.0-alpine AS backend

@@ -8,6 +8,7 @@ import { useWrites } from "@/cache/writes";
 import {
   buildInput,
   changedFields,
+  draftFieldFor,
   draftFromRecord,
   isCrossCurrency,
   newDraft,
@@ -25,6 +26,8 @@ import { recentFirst, recentPicks, rememberPick } from "@/activity/recent";
 import { dhakaDate } from "@/lib/dates";
 import { parseDecimalInput } from "@/money/decimal";
 import { currencySymbol } from "@/money/format";
+import { evaluateAmountInput } from "@/money/formula";
+import { CalcAmountInput } from "@/components/calc-amount-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -211,9 +214,11 @@ export function RecordForm({
     } catch (problem) {
       if (isApiError(problem) && problem.code === "stale_version" && base) {
         setConflict("stale");
-      } else if (isApiError(problem) && isDraftField(problem.field) && shown[problem.field]) {
-        setErrors({ [problem.field]: problem.message });
-        focusField(problem.field);
+      } else if (isApiError(problem) && isDraftField(draftFieldFor(problem.field)) && shown[draftFieldFor(problem.field) as DraftField]) {
+        // A formula error (amount_formula) is shown at its amount.
+        const field = draftFieldFor(problem.field) as DraftField;
+        setErrors({ [field]: problem.message });
+        focusField(field);
       } else {
         setFormError(errorMessage(problem, "Could not save. Your entry is still here; try again."));
       }
@@ -484,9 +489,10 @@ function FieldError({ id, children }: { id: string; children?: string }) {
   ) : null;
 }
 
-// Checks the typed text once the field loses focus, so a mistake shows before Save.
+// Checks the typed text once the field loses focus, so a mistake shows before Save. Amounts
+// (two decimals) may be calculations; rates are plain numbers.
 function checkOnBlur(value: string, maxFraction: number, onInvalid: (message: string) => void) {
-  const result = parseDecimalInput(value, { maxFraction });
+  const result = maxFraction === 2 ? evaluateAmountInput(value) : parseDecimalInput(value, { maxFraction });
   if (result.kind === "invalid") onInvalid(result.message);
 }
 
@@ -513,29 +519,18 @@ function AmountField({
       <label htmlFor={id} className="text-label">
         Amount
       </label>
-      <div className="relative min-w-0">
-        <span
-          aria-hidden
-          className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-title text-muted-foreground"
-        >
-          {currencySymbol[currency ?? "BDT"]}
-        </span>
-        <Input
-          id={id}
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          spellCheck={false}
-          enterKeyHint="done"
-          placeholder="0.00"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onBlur={(event) => checkOnBlur(event.currentTarget.value, 2, onInvalid)}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={describedBy || undefined}
-          className="h-16 pl-11 text-[2rem] leading-none font-semibold tabular-nums"
-        />
-      </div>
+      <CalcAmountInput
+        id={id}
+        large
+        currency={currency ?? "BDT"}
+        enterKeyHint="done"
+        placeholder="0.00"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={(event) => checkOnBlur(event.currentTarget.value, 2, onInvalid)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy || undefined}
+      />
       {hint ? (
         <p id={`${id}-hint`} className="text-sm text-muted-foreground">
           {hint}
@@ -576,30 +571,43 @@ function DecimalField({
       <label htmlFor={id} className="text-label">
         {label}
       </label>
-      <div className="relative min-w-0">
-        {currency ? (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-muted-foreground"
-          >
-            {currencySymbol[currency]}
-          </span>
-        ) : null}
-        <Input
+      {maxFraction === 2 ? (
+        <CalcAmountInput
           id={id}
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          spellCheck={false}
+          currency={currency}
           placeholder={placeholder}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onBlur={(event) => checkOnBlur(event.currentTarget.value, maxFraction, onInvalid)}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy || undefined}
-          className={cn("tabular-nums", currency && "pl-8")}
         />
-      </div>
+      ) : (
+        <div className="relative min-w-0">
+          {currency ? (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-base text-muted-foreground"
+            >
+              {currencySymbol[currency]}
+            </span>
+          ) : null}
+          <Input
+            id={id}
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={placeholder}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onBlur={(event) => checkOnBlur(event.currentTarget.value, maxFraction, onInvalid)}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy || undefined}
+            className={cn("tabular-nums", currency && "pl-8")}
+          />
+        </div>
+      )}
       {hint ? (
         <p id={`${id}-hint`} className="text-sm text-muted-foreground">
           {hint}

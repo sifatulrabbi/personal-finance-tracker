@@ -2,7 +2,9 @@ import {
   useId,
   useRef,
   useState,
+  type ChangeEvent,
   type ComponentProps,
+  type FocusEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -28,6 +30,8 @@ import { mutationKey, type MutationKey } from "@/api/idempotency";
 import type { Currency, Wallet } from "@/api/types";
 import { parseDecimalInput } from "@/money/decimal";
 import { currencySymbol } from "@/money/format";
+import { evaluateAmountInput } from "@/money/formula";
+import { CalcAmountInput } from "@/components/calc-amount-input";
 import { useInSheet } from "@/components/layout";
 import { notifySaved } from "@/components/feedback";
 
@@ -157,6 +161,9 @@ export function WalletChoice({
 // reads unparseable text (such as "1020,50") as empty, changes on mouse-wheel scroll, and
 // accepts forms like 1e3. The text is checked as a string when the field loses focus and
 // again on submit; an invalid value is always an error, never sent as blank.
+//
+// An amount (two decimals) also takes a calculation such as 120+45.50+300×2 and shows its
+// result (see CalcAmountInput). Rates stay plain numbers.
 export function MoneyField({
   label = "Amount",
   hint,
@@ -178,39 +185,45 @@ export function MoneyField({
   const id = useId();
   const errorID = `${id}-error`;
   const [error, setError] = useState("");
-  const input = (
-      <Input
-        id={id}
-        type="text"
-        inputMode="decimal"
-        autoComplete="off"
-        spellCheck={false}
-        required={required}
-        data-decimal-field=""
-        data-label={label}
-        data-max-fraction={maxFraction}
-        data-allow-negative={allowNegative ? "true" : "false"}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorID : undefined}
-        onBlur={(event) => {
-          const result = parseDecimalInput(event.currentTarget.value, {
-            maxFraction,
-            allowNegative,
-          });
-          setError(result.kind === "invalid" ? result.message : "");
-        }}
-        onChange={(event) => {
-          if (error) setError("");
-          onChange?.(event);
-        }}
-        className={cn(currency && "pl-8", className)}
-        {...props}
-      />
+  const calculates = maxFraction === 2;
+  const shared = {
+    id,
+    required,
+    "data-decimal-field": "",
+    "data-label": label,
+    "data-max-fraction": maxFraction,
+    "data-allow-negative": allowNegative ? "true" : "false",
+    "aria-invalid": error ? true : undefined,
+    "aria-describedby": error ? errorID : undefined,
+    onBlur: (event: FocusEvent<HTMLInputElement>) => {
+      const text = event.currentTarget.value;
+      const result = calculates
+        ? evaluateAmountInput(text, { allowNegative })
+        : parseDecimalInput(text, { maxFraction, allowNegative });
+      setError(result.kind === "invalid" ? result.message : "");
+    },
+    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+      if (error) setError("");
+      onChange?.(event);
+    },
+  };
+  const plain = (
+    <Input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      spellCheck={false}
+      {...shared}
+      className={cn(currency && "pl-8", className)}
+      {...props}
+    />
   );
   return (
     <Field data-invalid={error ? true : undefined}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      {currency ? (
+      {calculates ? (
+        <CalcAmountInput currency={currency} allowNegative={allowNegative} className={className} {...shared} {...props} />
+      ) : currency ? (
         <div className="relative min-w-0">
           <span
             aria-hidden
@@ -218,10 +231,10 @@ export function MoneyField({
           >
             {currencySymbol[currency]}
           </span>
-          {input}
+          {plain}
         </div>
       ) : (
-        input
+        plain
       )}
       {hint ? <FieldDescription>{hint}</FieldDescription> : null}
       {error ? <FieldError id={errorID}>{error}</FieldError> : null}
@@ -266,36 +279,44 @@ export class InputError extends Error {
 export type FormReader = {
   text(name: string): string;
   // Reads a MoneyField or RateField. Empty gives "" only when the field is optional;
-  // malformed text always throws an InputError.
+  // malformed text always throws an InputError. A calculation in an amount field gives its
+  // rounded result.
   decimal(name: string): string;
+  // The canonical calculation typed in an amount field, "" for a plain number. Send it only
+  // where a record keeps it (ADR 0014); elsewhere only the result is saved.
+  formula(name: string): string;
 };
 
 export function formReader(form: HTMLFormElement): FormReader {
   const data = new FormData(form);
   const text = (name: string) => String(data.get(name) ?? "");
+  const read = (name: string) => {
+    const element = form.elements.namedItem(name);
+    const input = element instanceof HTMLInputElement ? element : null;
+    const label = input?.dataset.label ?? name;
+    const allowNegative = input?.dataset.allowNegative === "true";
+    const result =
+      input?.dataset.calc !== undefined
+        ? evaluateAmountInput(text(name), { allowNegative })
+        : parseDecimalInput(text(name), { maxFraction: Number(input?.dataset.maxFraction ?? 2), allowNegative });
+    if (result.kind === "invalid") throw new InputError(name, `${label}: ${result.message}`);
+    if (result.kind === "empty") {
+      if (input?.required) throw new InputError(name, `${label}: enter a value.`);
+      return { value: "", formula: "" };
+    }
+    return { value: result.value, formula: (result as { formula?: string }).formula ?? "" };
+  };
   return {
     text,
-    decimal(name) {
-      const element = form.elements.namedItem(name);
-      const input = element instanceof HTMLInputElement ? element : null;
-      const label = input?.dataset.label ?? name;
-      const result = parseDecimalInput(text(name), {
-        maxFraction: Number(input?.dataset.maxFraction ?? 2),
-        allowNegative: input?.dataset.allowNegative === "true",
-      });
-      if (result.kind === "invalid")
-        throw new InputError(name, `${label}: ${result.message}`);
-      if (result.kind === "empty") {
-        if (input?.required) throw new InputError(name, `${label}: enter a value.`);
-        return "";
-      }
-      return result.value;
-    },
+    decimal: (name) => read(name).value,
+    formula: (name) => read(name).formula,
   };
 }
 
 function focusField(form: HTMLFormElement, name: string) {
-  const element = form.elements.namedItem(name);
+  // A server error on amount_formula (or balance_formula, ...) belongs to its amount field.
+  const element =
+    form.elements.namedItem(name) ?? form.elements.namedItem(name.replace(/_formula$/, ""));
   if (element instanceof HTMLElement) {
     element.setAttribute("aria-invalid", "true");
     element.addEventListener("input", () => element.removeAttribute("aria-invalid"), {

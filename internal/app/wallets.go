@@ -45,7 +45,7 @@ func (s *Service) recordOpening(tx Tx, actor, wid string, nw ledger.NewWallet) e
 	if e := tx.InsertTransaction(tid); e != nil {
 		return e
 	}
-	payload, e := json.Marshal(ledger.OpeningPayload(wid, nw.OpeningAmount, s.today()))
+	payload, e := json.Marshal(ledger.OpeningPayload(wid, nw.OpeningAmount, s.today(), nw.OpeningFormula))
 	if e != nil {
 		return e
 	}
@@ -65,17 +65,20 @@ func (s *Service) Wallets(ctx context.Context) ([]ledger.Wallet, error) {
 
 // AdjustWallet records the difference to a target balance. balanceVersion is the wallet's
 // BalanceVersion as read, so the target is refused if any balance effect happened since.
-func (s *Service) AdjustWallet(ctx context.Context, actor, key, wid string, balanceVersion int, target, reason string) (ledger.Transaction, error) {
+// formula is the optional calculation that gave target (ADR 0014).
+func (s *Service) AdjustWallet(ctx context.Context, actor, key, wid string, balanceVersion int, target, formula, reason string) (ledger.Transaction, error) {
 	return write(ctx, s, actor, key, "wallet.adjust", struct {
 		ID             string
 		Version        int
 		Target, Reason string
-	}{wid, balanceVersion, target, reason}, func(tx Tx) (ledger.Transaction, error) {
+		// omitempty keeps the fingerprint of a request without a formula as it was before.
+		Formula string `json:",omitempty"`
+	}{wid, balanceVersion, target, reason, formula}, func(tx Tx) (ledger.Transaction, error) {
 		w, e := tx.Wallet(wid)
 		if e != nil {
 			return ledger.Transaction{}, e
 		}
-		r, effects, e := ledger.Adjustment(w, balanceVersion, target, reason, s.today())
+		r, effects, e := ledger.Adjustment(w, balanceVersion, target, formula, reason, s.today())
 		if e != nil {
 			return r, e
 		}

@@ -26,6 +26,9 @@ type WalletInput struct {
 	// BankWalletID links a debit card to the bank wallet it draws from; required for new debit
 	// cards and not allowed on other wallets. See docs/adr/0011-debit-cards-view-a-bank-wallet.md.
 	BankWalletID string `json:"bank_wallet_id,omitempty"`
+	// OpeningBalanceFormula is the calculation that gave OpeningBalance, kept on the opening
+	// record as its amount_formula (ADR 0014).
+	OpeningBalanceFormula string `json:"opening_balance_formula,omitempty"`
 }
 
 type Wallet struct {
@@ -61,6 +64,10 @@ type TransactionInput struct {
 	Date           string `json:"date"`
 	Note           string `json:"note"`
 	Reason         string `json:"reason"`
+	// AmountFormula and ReceivedAmountFormula are the optional calculations that gave Amount and
+	// ReceivedAmount. Each is kept in canonical form only when it equals its amount (ADR 0014).
+	AmountFormula         string `json:"amount_formula,omitempty"`
+	ReceivedAmountFormula string `json:"received_amount_formula,omitempty"`
 }
 
 // Transaction is one revision of a record. Stored revision payloads are this struct marshaled.
@@ -72,6 +79,9 @@ type Transaction struct {
 	BDTAmount  string `json:"bdt_amount"`
 	ActorEmail string `json:"actor_email"`
 	CreatedAt  string `json:"created_at"`
+	// BalanceFormula is the calculation that gave a balance adjustment's target balance. An
+	// adjustment's amount is the difference, so its formula is kept apart from amount_formula.
+	BalanceFormula string `json:"balance_formula,omitempty"`
 }
 
 type Settings struct {
@@ -129,6 +139,8 @@ type PaymentInput struct {
 	Date     string `json:"date"`
 	Note     string `json:"note"`
 	Rate     string `json:"rate"`
+	// AmountFormula is the calculation that gave Amount; it becomes the expense's amount_formula.
+	AmountFormula string `json:"amount_formula,omitempty"`
 }
 
 // UpcomingBill is a future occurrence computed from an active schedule. It is not stored and has

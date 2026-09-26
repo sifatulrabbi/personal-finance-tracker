@@ -14,7 +14,7 @@ func (s *Service) CreateTransaction(ctx context.Context, actor, key string, in l
 }
 
 func (s *Service) createTransaction(tx Tx, actor string, in ledger.TransactionInput) (ledger.Transaction, error) {
-	r, effects, facts, e := prepare(tx, in)
+	r, effects, facts, e := prepare(tx, in, nil)
 	if e != nil {
 		return ledger.Transaction{}, e
 	}
@@ -33,7 +33,8 @@ func (s *Service) createTransaction(tx Tx, actor string, in ledger.TransactionIn
 }
 
 // prepare loads the records an income, expense, or transfer names and applies the ledger rules.
-func prepare(tx Tx, in ledger.TransactionInput) (ledger.Transaction, []ledger.Effect, ledger.RecordFacts, error) {
+// prior is the revision a correction replaces, nil for a new record.
+func prepare(tx Tx, in ledger.TransactionInput, prior *ledger.Transaction) (ledger.Transaction, []ledger.Effect, ledger.RecordFacts, error) {
 	var f ledger.RecordFacts
 	var e error
 	if cid, err := ledger.ResolveCategory(in.Kind, in.CategoryID); err == nil && cid != "" {
@@ -54,6 +55,7 @@ func prepare(tx Tx, in ledger.TransactionInput) (ledger.Transaction, []ledger.Ef
 		return ledger.Transaction{}, nil, f, e
 	}
 	f.DefaultRate = set.Rate
+	f.Prior = prior
 	r, effects, e := ledger.PrepareRecord(in, f)
 	return r, effects, f, e
 }
@@ -158,7 +160,7 @@ func (s *Service) correctTransaction(tx Tx, actor string, old ledger.Transaction
 	if e != nil {
 		return old, e
 	}
-	r, effects, facts, e := prepare(tx, in)
+	r, effects, facts, e := prepare(tx, in, &old)
 	if e != nil {
 		return r, e
 	}

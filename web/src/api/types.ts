@@ -51,6 +51,8 @@ export type WalletInput = {
   opening_balance: string;
   credit_limit: string;
   bank_wallet_id?: string;
+  // The calculation that gave opening_balance; kept on the opening record (ADR 0014).
+  opening_balance_formula?: string;
 };
 
 // The PUT body is decoded strictly into the Go Wallet struct, so send only input fields and
@@ -69,7 +71,13 @@ export type WalletUpdate = {
   version: number;
 };
 
-export type WalletAdjustment = { balance_version: number; balance: string; reason: string };
+export type WalletAdjustment = {
+  balance_version: number;
+  balance: string;
+  reason: string;
+  // The calculation that gave the target balance (ADR 0014).
+  balance_formula?: string;
+};
 
 export type Transaction = {
   id: string;
@@ -88,6 +96,11 @@ export type Transaction = {
   bdt_amount: string;
   actor_email: string;
   created_at: string;
+  // Canonical calculations that gave the amounts, when one was typed (ADR 0014). An
+  // adjustment's formula is for the target balance, since its amount is the difference.
+  amount_formula?: string;
+  received_amount_formula?: string;
+  balance_formula?: string;
 };
 
 export type TransactionInput = {
@@ -101,6 +114,8 @@ export type TransactionInput = {
   date: string;
   note: string;
   reason?: string;
+  amount_formula?: string;
+  received_amount_formula?: string;
 };
 
 export type TransactionCorrection = TransactionInput & { version: number };
@@ -167,6 +182,7 @@ export type PaymentInput = {
   date: string;
   rate: string;
   note: string;
+  amount_formula?: string;
 };
 export type SkipInput = { reason: string };
 

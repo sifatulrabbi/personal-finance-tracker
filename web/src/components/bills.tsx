@@ -696,6 +696,8 @@ function PaymentForm({
         // Empty means "use the expected amount" (ADR 0004). Text that does not parse, such
         // as "1020,50", throws here and is shown as an error; it is never sent as empty.
         amount: form.decimal("amount"),
+        // Kept on the payment record as how the amount was worked out (ADR 0014).
+        amount_formula: form.formula("amount") || undefined,
         wallet_id: walletID,
         date: form.text("date"),
         rate: currency === "USD" ? form.decimal("rate") : "",

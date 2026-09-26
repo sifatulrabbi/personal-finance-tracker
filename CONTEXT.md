@@ -20,6 +20,8 @@ A shared household record of money held, money owed, income, expenses, and unpai
 
 **Revision**: A preserved version of a transaction, identifying who changed it and what the record contained at that time.
 
+**Calculation**: The arithmetic a person typed to arrive at an amount, such as the items of a receipt. A record keeps it beside the amount as evidence of how the amount was reached; it must equal the amount and never moves a balance itself (ADR 0014).
+
 **Exchange rate**: The number of BDT corresponding to one USD. Each applicable transaction keeps its own rate, whether explicitly entered or copied from the default.
 
 **Recurring bill**: A weekly, monthly, or yearly schedule with an expected amount and a payment wallet. It is a plan, not proof of payment.
