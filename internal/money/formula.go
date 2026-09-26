@@ -55,8 +55,9 @@ func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 // normalizeFormula applies the input conveniences and rejects any character outside the grammar.
 func normalizeFormula(s string) (string, bool) {
-	s = strings.TrimSpace(strings.ReplaceAll(s, " ", " "))
-	s = strings.TrimSpace(strings.TrimPrefix(s, "="))
+	// Only spaces are trimmed, never tabs or line breaks, so both evaluators trim the same text.
+	s = strings.Trim(strings.ReplaceAll(s, "\u00a0", " "), " ")
+	s = strings.Trim(strings.TrimPrefix(s, "="), " ")
 	s = strings.NewReplacer("×", "*", "÷", "/", "−", "-").Replace(s)
 	// "0x10" reads as hexadecimal, not zero times ten: a number that is a lone 0 followed by x.
 	for i := 0; i+1 < len(s); i++ {
