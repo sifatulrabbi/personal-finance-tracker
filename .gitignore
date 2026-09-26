@@ -18,3 +18,4 @@ test-results/
 .DS_Store
 /cmd/simply-finance/simply-finance
 /simply-finance
+.claude
