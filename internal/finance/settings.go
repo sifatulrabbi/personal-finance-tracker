@@ -21,12 +21,14 @@ func settings(q querier) (Settings, error) {
 	}
 	return out, e
 }
-func (s *Store) Settings(ctx context.Context) (Settings, error) { return settings(s.db) }
+func (s *Store) Settings(ctx context.Context) (Settings, error) {
+	return read(ctx, s, func(tx dbtx) (Settings, error) { return settings(tx) })
+}
 func (s *Store) SetRate(ctx context.Context, actor, key, rate string, version int) (Settings, error) {
 	return write(ctx, s, actor, key, "settings.rate", struct {
 		Rate    string
 		Version int
-	}{rate, version}, func(tx *sql.Tx) (Settings, error) {
+	}{rate, version}, func(tx dbtx) (Settings, error) {
 		old, e := settings(tx)
 		if e != nil {
 			return old, e

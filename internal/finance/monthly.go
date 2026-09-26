@@ -3,7 +3,6 @@ package finance
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -61,7 +60,7 @@ func (s *Store) SetMonthlyTarget(ctx context.Context, actor, key, month, amount 
 	return write(ctx, s, actor, key, "monthly.target", struct {
 		Month, Amount string
 		Version       int
-	}{month, amount, version}, func(tx *sql.Tx) (MonthlyTarget, error) {
+	}{month, amount, version}, func(tx dbtx) (MonthlyTarget, error) {
 		if !validMonth(month) {
 			return MonthlyTarget{}, errMonth
 		}
@@ -83,6 +82,7 @@ func (s *Store) SetMonthlyTarget(ctx context.Context, actor, key, month, amount 
 		return out, s.audit(tx, actor, month, "monthly.target", old, out)
 	})
 }
+
 // decimalHundredths formats a count of hundredths, such as minor units, as a decimal string. The
 // sign is formatted separately because the summary's cash and debt totals can be negative.
 func decimalHundredths(n *big.Int) string {
@@ -98,20 +98,22 @@ func (s *Store) Monthly(ctx context.Context, month string) (MonthlySpending, err
 	if month == "" {
 		month = s.today()[:7]
 	}
-	out := MonthlySpending{Month: month, Categories: []CategorySpending{}}
 	if !validMonth(month) {
-		return out, errMonth
+		return MonthlySpending{Month: month, Categories: []CategorySpending{}}, errMonth
 	}
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return out, e
-	}
-	defer tx.Rollback()
+	return read(ctx, s, func(tx dbtx) (MonthlySpending, error) { return monthly(tx, month) })
+}
+
+// monthly sums the month's current, non-voided expenses at their saved BDT values from the typed
+// columns (ADR 0012), in arbitrary precision (ADR 0005).
+func monthly(tx dbtx, month string) (MonthlySpending, error) {
+	out := MonthlySpending{Month: month, Categories: []CategorySpending{}}
+	var e error
 	out.Target, e = monthlyTarget(tx, month)
 	if e != nil {
 		return out, e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT id,name FROM categories WHERE type='expense' ORDER BY name,id`)
+	rows, e := tx.Query(`SELECT id,name FROM categories WHERE type='expense' ORDER BY name,id`)
 	if e != nil {
 		return out, e
 	}
@@ -130,39 +132,30 @@ func (s *Store) Monthly(ctx context.Context, month string) (MonthlySpending, err
 	if e != nil {
 		return out, e
 	}
-	rows, e = tx.QueryContext(ctx, `SELECT r.payload FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version WHERE t.voided=0 AND json_extract(r.payload,'$.kind')='expense' AND substr(json_extract(r.payload,'$.date'),1,7)=?`, month)
+	// Dates are validated YYYY-MM-DD strings, so the month is one lexical range.
+	rows, e = tx.Query(`SELECT category_id,bdt_minor FROM transactions WHERE kind='expense' AND voided=0 AND date>=? AND date<=?`, month+"-01", month+"-31")
 	if e != nil {
 		return out, e
 	}
+	defer rows.Close()
 	total := new(big.Int)
 	for rows.Next() {
-		var body string
-		var r Transaction
-		if e = rows.Scan(&body); e != nil {
-			rows.Close()
+		var category sql.NullString
+		var n sql.NullInt64
+		if e = rows.Scan(&category, &n); e != nil {
 			return out, e
 		}
-		if e = json.Unmarshal([]byte(body), &r); e != nil {
-			rows.Close()
-			return out, e
+		if !n.Valid {
+			return out, fmt.Errorf("monthly: an expense in %s has no BDT value", month)
 		}
-		defaultCategory(&r)
-		n, err := ParseMoney(r.BDTAmount)
-		if err != nil {
-			rows.Close()
-			return out, err
-		}
-		a, ok := amounts[r.CategoryID]
+		a, ok := amounts[category.String]
 		if !ok {
-			rows.Close()
-			return out, fmt.Errorf("monthly: expense %s has unknown category", r.ID)
+			return out, fmt.Errorf("monthly: an expense in %s has unknown category %q", month, category.String)
 		}
-		a.Add(a, big.NewInt(n))
-		total.Add(total, big.NewInt(n))
+		a.Add(a, big.NewInt(n.Int64))
+		total.Add(total, big.NewInt(n.Int64))
 	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
+	if e = rows.Err(); e != nil {
 		return out, e
 	}
 	out.Spent = decimalHundredths(total)

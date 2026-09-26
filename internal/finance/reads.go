@@ -11,30 +11,26 @@ import (
 
 // Transaction reads one record's current revision with its author and revision time.
 func (s *Store) Transaction(ctx context.Context, tid string) (Transaction, error) {
-	var r Transaction
-	var body, email, created string
-	var version int
-	var voided bool
-	e := s.db.QueryRowContext(ctx, `SELECT r.payload,t.version,t.voided,u.email,r.created_at FROM transactions t JOIN transaction_revisions r ON r.transaction_id=t.id AND r.version=t.version JOIN users u ON u.id=r.actor_id WHERE t.id=?`, tid).Scan(&body, &version, &voided, &email, &created)
-	if errors.Is(e, sql.ErrNoRows) {
-		return r, ErrNotFound
-	}
-	if e != nil {
-		return r, e
-	}
-	if e = json.Unmarshal([]byte(body), &r); e != nil {
-		return r, e
-	}
-	defaultCategory(&r)
-	r.ID, r.Version, r.Voided, r.ActorEmail, r.CreatedAt = tid, version, voided, email, created
-	return r, nil
+	return read(ctx, s, func(tx dbtx) (Transaction, error) {
+		items, _, e := listTransactions(tx, listSelect+` WHERE t.id=?`, tid)
+		if e != nil {
+			return Transaction{}, e
+		}
+		if len(items) == 0 {
+			return Transaction{}, ErrNotFound
+		}
+		return items[0], nil
+	})
 }
 
 // Schedule reads one recurring schedule.
 func (s *Store) Schedule(ctx context.Context, sid string) (Schedule, error) {
+	return read(ctx, s, func(tx dbtx) (Schedule, error) { return schedule(tx, sid) })
+}
+func schedule(tx dbtx, sid string) (Schedule, error) {
 	var a Schedule
 	var body string
-	e := s.db.QueryRowContext(ctx, `SELECT id,payload,version,active FROM recurring_schedules WHERE id=?`, sid).Scan(&a.ID, &body, &a.Version, &a.Active)
+	e := tx.QueryRow(`SELECT id,payload,version,active FROM recurring_schedules WHERE id=?`, sid).Scan(&a.ID, &body, &a.Version, &a.Active)
 	if errors.Is(e, sql.ErrNoRows) {
 		return a, ErrNotFound
 	}
@@ -67,17 +63,22 @@ func (s *Store) Bills(ctx context.Context, status string, limit, offset int) ([]
 	if e := validPage(limit, offset); e != nil {
 		return nil, e
 	}
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return nil, e
-	}
-	defer tx.Rollback()
-	if status == "due" {
-		if e = s.materialize(tx); e != nil {
-			return nil, e
+	list := func(tx dbtx) ([]Bill, error) {
+		if status == "due" {
+			if e := s.materialize(tx); e != nil {
+				return nil, e
+			}
 		}
+		return bills(tx, status, order, limit, offset)
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT id,schedule_id,due_date,wallet_id,amount,name,note,status,COALESCE(transaction_id,''),category_id FROM bill_occurrences WHERE status=? ORDER BY `+order+` LIMIT ? OFFSET ?`, status, limit, offset)
+	// Listing due bills stores the ones that have come due, so it runs as a write.
+	if status == "due" {
+		return change(ctx, s, list)
+	}
+	return read(ctx, s, list)
+}
+func bills(tx dbtx, status, order string, limit, offset int) ([]Bill, error) {
+	rows, e := tx.Query(`SELECT id,schedule_id,due_date,wallet_id,amount,name,note,status,COALESCE(transaction_id,''),category_id FROM bill_occurrences WHERE status=? ORDER BY `+order+` LIMIT ? OFFSET ?`, status, limit, offset)
 	if e != nil {
 		return nil, e
 	}
@@ -92,10 +93,7 @@ func (s *Store) Bills(ctx context.Context, status string, limit, offset int) ([]
 	}
 	e = rows.Err()
 	rows.Close()
-	if e != nil {
-		return nil, e
-	}
-	return out, tx.Commit()
+	return out, e
 }
 
 // UpcomingBill is a future occurrence computed from an active schedule. It is not stored and has
@@ -117,7 +115,7 @@ const (
 
 // pending computes the occurrences of active schedules that are not stored yet, dated on or
 // before through. Stored occurrences end at each schedule's next_index, so nothing is repeated.
-func pending(tx *sql.Tx, through string) ([]UpcomingBill, error) {
+func pending(tx dbtx, through string) ([]UpcomingBill, error) {
 	all, e := schedules(tx)
 	if e != nil {
 		return nil, e
@@ -158,23 +156,20 @@ func (s *Store) Upcoming(ctx context.Context, days int) ([]UpcomingBill, error) 
 	if days < 1 || days > MaxUpcomingDays {
 		return nil, invalid("days", "Use a number of days from 1 to 366.")
 	}
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return nil, e
-	}
-	defer tx.Rollback()
-	all, e := pending(tx, s.addDays(days))
-	if e != nil {
-		return nil, e
-	}
-	today := s.today()
-	out := []UpcomingBill{}
-	for _, b := range all {
-		if b.DueDate > today && len(out) < MaxUpcomingBills {
-			out = append(out, b)
+	through, today := s.addDays(days), s.today()
+	return read(ctx, s, func(tx dbtx) ([]UpcomingBill, error) {
+		all, e := pending(tx, through)
+		if e != nil {
+			return nil, e
 		}
-	}
-	return out, nil
+		out := []UpcomingBill{}
+		for _, b := range all {
+			if b.DueDate > today && len(out) < MaxUpcomingBills {
+				out = append(out, b)
+			}
+		}
+		return out, nil
+	})
 }
 
 type CurrencyTotal struct {
@@ -211,8 +206,14 @@ const summaryUpcomingDays = 90
 // legacy debit card's own recorded balance counts until it is drained. Bills that have come due
 // but are not stored yet count as due.
 func (s *Store) Summary(ctx context.Context) (Summary, error) {
-	out := Summary{Today: s.today()}
-	wallets, e := s.Wallets(ctx)
+	today := s.today()
+	return read(ctx, s, func(tx dbtx) (Summary, error) { return summary(tx, today, s.addDays(summaryUpcomingDays)) })
+}
+
+// summary reads every figure from one snapshot, so the totals, spending, and recent records agree.
+func summary(tx dbtx, today, upcomingThrough string) (Summary, error) {
+	out := Summary{Today: today}
+	all, e := wallets(tx)
 	if e != nil {
 		return out, e
 	}
@@ -221,7 +222,7 @@ func (s *Store) Summary(ctx context.Context) (Summary, error) {
 	for _, currency := range []string{"BDT", "USD"} {
 		byCurrency[currency] = &sums{new(big.Int), new(big.Int), new(big.Int)}
 	}
-	for _, w := range wallets {
+	for _, w := range all {
 		t := byCurrency[w.Currency]
 		switch {
 		case w.CardType == "credit":
@@ -239,35 +240,29 @@ func (s *Store) Summary(ctx context.Context) (Summary, error) {
 		t := byCurrency[currency]
 		out.Totals = append(out.Totals, CurrencyTotal{currency, decimalHundredths(t.cash), decimalHundredths(t.debt), decimalHundredths(t.available)})
 	}
-	month, e := s.Monthly(ctx, "")
+	month, e := monthly(tx, today[:7])
 	if e != nil {
 		return out, e
 	}
 	out.Month = MonthSummary{month.Month, month.Spent, month.Target}
-	if out.Bills, e = s.billSummary(ctx); e != nil {
+	if out.Bills, e = billSummary(tx, today, upcomingThrough); e != nil {
 		return out, e
 	}
-	out.Recent, e = s.Transactions(ctx, 5, 0)
+	out.Recent, e = recentTransactions(tx, 5, 0)
 	return out, e
 }
 
-func (s *Store) billSummary(ctx context.Context) (BillSummary, error) {
+func billSummary(tx dbtx, today, upcomingThrough string) (BillSummary, error) {
 	var out BillSummary
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return out, e
-	}
-	defer tx.Rollback()
 	var oldest sql.NullString
-	if e = tx.QueryRowContext(ctx, `SELECT count(*),min(due_date) FROM bill_occurrences WHERE status='due'`).Scan(&out.DueCount, &oldest); e != nil {
+	if e := tx.QueryRow(`SELECT count(*),min(due_date) FROM bill_occurrences WHERE status='due'`).Scan(&out.DueCount, &oldest); e != nil {
 		return out, e
 	}
 	out.OldestDueDate = oldest.String
-	all, e := pending(tx, s.addDays(summaryUpcomingDays))
+	all, e := pending(tx, upcomingThrough)
 	if e != nil {
 		return out, e
 	}
-	today := s.today()
 	for _, b := range all {
 		if b.DueDate <= today {
 			out.DueCount++

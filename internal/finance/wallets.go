@@ -2,7 +2,6 @@ package finance
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 )
@@ -14,7 +13,7 @@ func (s *Store) AdjustWallet(ctx context.Context, actor, key, wid string, balanc
 		ID             string
 		Version        int
 		Target, Reason string
-	}{wid, balanceVersion, target, reason}, func(tx *sql.Tx) (Transaction, error) {
+	}{wid, balanceVersion, target, reason}, func(tx dbtx) (Transaction, error) {
 		var r Transaction
 		w, e := wallet(tx, wid)
 		if e != nil {
@@ -42,11 +41,7 @@ func (s *Store) AdjustWallet(ctx context.Context, actor, key, wid string, balanc
 		if w.legacyDebit() && desired != 0 {
 			return r, invalid("balance", "This debit card is not linked to a bank wallet. It can only be adjusted to zero.")
 		}
-		var current int64
-		if e = tx.QueryRow(`SELECT COALESCE(SUM(delta),0) FROM wallet_entries WHERE wallet_id=?`, wid).Scan(&current); e != nil {
-			return r, e
-		}
-		delta := desired - current
+		delta := desired - w.balance
 		if delta == 0 {
 			return r, invalid("balance", "The wallet already has this balance.")
 		}
@@ -71,7 +66,7 @@ func (s *Store) UpdateWallet(ctx context.Context, actor, key string, in Wallet) 
 		Archived                                                               bool
 		Version                                                                int
 	}{in.ID, in.Name, in.Type, in.CardType, in.Currency, in.Details, in.CreditLimit, in.BankWalletID, in.Archived, in.Version}
-	return write(ctx, s, actor, key, "wallet.update", request, func(tx *sql.Tx) (Wallet, error) {
+	return write(ctx, s, actor, key, "wallet.update", request, func(tx dbtx) (Wallet, error) {
 		old, e := wallet(tx, in.ID)
 		if e != nil {
 			return old, e
@@ -115,11 +110,19 @@ type AuditEvent struct {
 	CreatedAt  string          `json:"created_at"`
 }
 
+// Audit is the deprecated offset list of the change log; new clients use AuditPage.
 func (s *Store) Audit(ctx context.Context, limit, offset int) ([]AuditEvent, error) {
 	if e := validPage(limit, offset); e != nil {
 		return nil, e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT a.id,u.email,a.entity_id,a.action,a.before_json,a.after_json,a.created_at FROM audit_events a JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT ? OFFSET ?`, limit, offset)
+	return read(ctx, s, func(tx dbtx) ([]AuditEvent, error) {
+		return auditEvents(tx, `ORDER BY a.id DESC LIMIT ? OFFSET ?`, limit, offset)
+	})
+}
+
+// auditEvents reads change-log events; tail holds the query's WHERE, ORDER BY, and LIMIT clauses.
+func auditEvents(tx dbtx, tail string, args ...any) ([]AuditEvent, error) {
+	rows, e := tx.Query(`SELECT a.id,u.email,a.entity_id,a.action,a.before_json,a.after_json,a.created_at FROM audit_events a JOIN users u ON u.id=a.actor_id `+tail, args...)
 	if e != nil {
 		return nil, e
 	}
