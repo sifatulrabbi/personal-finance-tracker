@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { navigate, submitLogin } from "./login";
 
 test("inline categories remain available after canceling a record", async ({
