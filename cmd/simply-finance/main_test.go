@@ -159,6 +159,15 @@ func TestServeDoesNotPrepareDatabase(t *testing.T) {
 	}
 }
 
+func TestServeRejectsMalformedTrustedProxies(t *testing.T) {
+	t.Setenv("AUTH_USERS_JSON", `[]`)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8,proxy.local")
+	_, err := execute("serve", "--database", filepath.Join(t.TempDir(), "unused.sqlite"))
+	if err == nil || !strings.Contains(err.Error(), "TRUSTED_PROXY_CIDRS") {
+		t.Fatalf("want a TRUSTED_PROXY_CIDRS error, got %v", err)
+	}
+}
+
 func TestHashPasswordCommand(t *testing.T) {
 	for _, password := range []string{"short", strings.Repeat("x", 73), "test-household-password\n"} {
 		cmd := newCommand()

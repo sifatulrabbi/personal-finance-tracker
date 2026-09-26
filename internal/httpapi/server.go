@@ -10,13 +10,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"io"
 	"mime"
-	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"simply-finance/internal/finance"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -30,19 +29,17 @@ type Config struct {
 	Origin          string
 	InsecureCookies bool
 	Now             func() time.Time
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For header names the client for
+	// login throttling. Empty means the connecting address is the client.
+	TrustedProxies []netip.Prefix
 }
 type Server struct {
-	store    *finance.Store
-	config   Config
-	users    map[string]Credential
-	dummy    []byte
-	compare  func(hash, password []byte) error
-	mu       sync.Mutex
-	attempts map[string]attempt
-}
-type attempt struct {
-	count int
-	until time.Time
+	store   *finance.Store
+	config  Config
+	users   map[string]Credential
+	dummy   []byte
+	compare func(hash, password []byte) error
+	limiter *loginLimiter
 }
 type actorKey struct{}
 
@@ -64,7 +61,7 @@ func newServer(store *finance.Store, config Config) (*Server, error) {
 	if config.InsecureCookies != (origin.Scheme == "http") {
 		return nil, finance.ErrInvalid
 	}
-	s := &Server{store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword, attempts: map[string]attempt{}}
+	s := &Server{store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword}
 	if len(config.Users) == 0 || len(config.Users) > 100 {
 		return nil, finance.ErrInvalid
 	}
@@ -86,9 +83,12 @@ func newServer(store *finance.Store, config Config) (*Server, error) {
 		s.users[email] = u
 	}
 	allowed := map[string]string{}
+	emails := []string{}
 	for email, u := range s.users {
 		allowed[email] = digest(u.PasswordHash)
+		emails = append(emails, email)
 	}
+	s.limiter = newLoginLimiter(config.Now, config.TrustedProxies, emails)
 	if e = store.ReconcileSessions(context.Background(), allowed); e != nil {
 		return nil, e
 	}
@@ -292,24 +292,25 @@ func (s *Server) cookie(w http.ResponseWriter, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{Name: "sf_session", Value: value, Path: "/", HttpOnly: true, Secure: !s.config.InsecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: maxAge})
 }
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	host, _, e := net.SplitHostPort(r.RemoteAddr)
-	if e != nil {
-		host = r.RemoteAddr
-	}
-	if !s.allowLogin(host) {
-		w.Header().Set("Retry-After", "60")
-		writeError(w, errRateLimited)
-		return
-	}
 	var in struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	if e = decode(w, r, &in); e != nil {
+	if e := decode(w, r, &in); e != nil {
 		respond(w, nil, e)
 		return
 	}
-	email, _ := finance.NormalizeEmail(in.Email)
+	email, e := finance.NormalizeEmail(in.Email)
+	account := email
+	if e != nil {
+		account = "invalid email"
+	}
+	address := s.limiter.clientKey(r)
+	if wait := s.limiter.begin(address, account); wait > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
+		writeError(w, errRateLimited)
+		return
+	}
 	credential, exists := s.users[email]
 	hash := s.dummy
 	if exists {
@@ -327,6 +328,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, errLoginFailed)
 		return
 	}
+	s.limiter.succeeded(address, account)
 	user, e := s.store.EnsureUser(r.Context(), email, credential.Name)
 	if e != nil {
 		respond(w, nil, e)
@@ -350,26 +352,6 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cookie(w, token, 7*24*3600)
 	respond(w, user, nil)
-}
-func (s *Server) allowLogin(host string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := s.config.Now()
-	for k, v := range s.attempts {
-		if !v.until.After(now) {
-			delete(s.attempts, k)
-		}
-	}
-	a, ok := s.attempts[host]
-	if !ok {
-		if len(s.attempts) >= 1024 {
-			return false
-		}
-		a.until = now.Add(time.Minute)
-	}
-	a.count++
-	s.attempts[host] = a
-	return a.count <= 10
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	c, e := r.Cookie("sf_session")

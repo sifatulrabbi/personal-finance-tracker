@@ -43,7 +43,7 @@ var (
 	errMediaType        = &finance.Error{Code: codeUnsupportedMediaType, Message: "Send the request body as application/json."}
 	errRouteNotFound    = &finance.Error{Code: finance.CodeNotFound, Message: "No API endpoint matches this path."}
 	errMethodNotAllowed = &finance.Error{Code: codeMethodNotAllowed, Message: "This endpoint does not accept this method."}
-	errRateLimited      = &finance.Error{Code: codeRateLimited, Message: "Too many sign-in attempts. Try again in a minute."}
+	errRateLimited      = &finance.Error{Code: codeRateLimited, Message: "Too many sign-in attempts. Wait for the time in the Retry-After header, then try again."}
 	errInternal         = &finance.Error{Code: codeInternal, Message: "Something went wrong on the server. Try again."}
 )
 

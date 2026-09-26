@@ -21,6 +21,10 @@ func serve(path string) error {
 	if err := json.Unmarshal([]byte(os.Getenv("AUTH_USERS_JSON")), &users); err != nil {
 		return errors.New("AUTH_USERS_JSON must be a JSON array of emails and password_hash values")
 	}
+	proxies, err := httpapi.ParseTrustedProxies(os.Getenv("TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		return errors.New("TRUSTED_PROXY_CIDRS must be a comma-separated list of IP addresses or CIDR ranges")
+	}
 	store, err := finance.Open(path, time.Now)
 	if err != nil {
 		return fmt.Errorf("open existing database (run migrate explicitly to initialize it): %w", err)
@@ -29,6 +33,7 @@ func serve(path string) error {
 	handler, err := httpapi.New(store, httpapi.Config{
 		Users: users, Origin: env("APP_ORIGIN", "http://localhost:47831"),
 		InsecureCookies: os.Getenv("ALLOW_INSECURE_COOKIES") == "true",
+		TrustedProxies:  proxies,
 	})
 	if err != nil {
 		if errors.Is(err, finance.ErrInvalid) {

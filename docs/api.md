@@ -23,7 +23,7 @@ Every error response is JSON: `{"error":{"code":"<code>","message":"<human text>
 | `duplicate_name` | 409 | A category with this name and type exists. |
 | `already_settled` | 409 | The bill was already paid or skipped, or the record was already voided. |
 | `unsupported_media_type` | 415 | Send `Content-Type: application/json`. |
-| `rate_limited` | 429 | Too many login attempts; wait for `Retry-After` seconds. |
+| `rate_limited` | 429 | Too many failed logins from this client or for this account; wait for `Retry-After` seconds (ADR 0009). |
 | `internal` | 500 | Unexpected server fault. Retry later with the same `Idempotency-Key`, which cannot apply a write twice. |
 
 Unauthenticated requests to any `/api/v1` path, including unknown ones, get 401 before routing.

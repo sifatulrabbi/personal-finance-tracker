@@ -214,11 +214,11 @@ func TestLoginRateLimitUsesTheJSONEnvelope(t *testing.T) {
 	var status int
 	var header http.Header
 	var body []byte
-	for i := 0; i < 11; i++ {
+	for i := 0; i < 6; i++ {
 		status, header, body = c.send("POST", "/login", `{"email":"sifatul@example.test","password":"wrong"}`, nil)
 	}
 	c.expect("rate limited", 429, "rate_limited", "", status, header, body, "")
-	if header.Get("Retry-After") != "60" {
+	if header.Get("Retry-After") != "30" {
 		t.Errorf("Retry-After %q", header.Get("Retry-After"))
 	}
 }
