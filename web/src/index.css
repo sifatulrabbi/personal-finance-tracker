@@ -163,6 +163,14 @@
   }
 }
 
+/* vaul slides sheets for 0.5s by default, which feels slow for a form opened many times
+   a day. Its own styles are injected at runtime, so these selectors are more specific. */
+[data-slot="drawer-content"][data-vaul-drawer],
+[data-slot="drawer-overlay"][data-vaul-overlay] {
+  animation-duration: 0.3s;
+  transition-duration: 0.3s;
+}
+
 /* Motion is decoration here, so it is dropped for people who ask for less. Animations
    still run for a moment, so Radix and vaul receive their animationend events. */
 @media (prefers-reduced-motion: reduce) {

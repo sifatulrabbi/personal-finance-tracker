@@ -108,10 +108,10 @@ function PageHeader({ title }: { title: string }) {
     <header
       className={cn(
         "sticky top-0 z-30 bg-background",
-        "pt-[max(0.5rem,var(--safe-area-top))] pr-[max(1rem,var(--safe-area-right))] pl-[max(1rem,var(--safe-area-left))] lg:px-8",
+        "pt-[max(0.5rem,var(--safe-area-top))] pr-[max(1rem,var(--safe-area-right))] pl-[max(1rem,var(--safe-area-left))] lg:px-0",
       )}
     >
-      <div className="mx-auto flex h-14 w-full max-w-3xl min-w-0 items-center justify-between gap-3">
+      <div className="mx-auto flex h-14 w-full max-w-3xl min-w-0 items-center justify-between gap-3 lg:h-16 lg:px-8">
         {/* Receives focus when the element that opened a sheet no longer exists. */}
         <h1
           data-page-heading=""
