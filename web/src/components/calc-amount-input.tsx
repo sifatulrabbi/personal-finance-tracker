@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { cn } from "cn";
 import { Delete } from "lucide-react";
 import type { Currency } from "@/api/types";
@@ -9,6 +9,8 @@ import { evaluateAmountInput } from "@/money/formula";
 
 // Phones and tablets: their decimal keypad has no + × ÷ or brackets, so the field offers them.
 export const coarsePointerQuery = "(pointer: coarse)";
+// How long the keys stay after the field loses focus; longer than a tap's click delay.
+const keysLingerMs = 300;
 
 const operatorKeys = [
   { label: "+", insert: "+", name: "Plus" },
@@ -18,6 +20,33 @@ const operatorKeys = [
   { label: "(", insert: "(", name: "Open bracket" },
   { label: ")", insert: ")", name: "Close bracket" },
 ] as const;
+
+// One operator key. It acts on pointer down, like a keyboard key, and cancels the default so
+// focus (and the phone keyboard) stays in the field. WebKit fires no click after a cancelled
+// pointer down, so the click is only a fallback, ignored after a pointer press.
+function CalcKey({ name, onPress, children }: { name: string; onPress: () => void; children: ReactNode }) {
+  const pressedByPointer = useRef(false);
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label={name}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        pressedByPointer.current = true;
+        onPress();
+      }}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => {
+        if (!pressedByPointer.current) onPress();
+        pressedByPointer.current = false;
+      }}
+      className="flex h-11 touch-manipulation items-center justify-center rounded-md border bg-muted text-xl font-medium text-foreground select-none active:bg-accent"
+    >
+      {children}
+    </button>
+  );
+}
 
 // Sets the value the way typing does, so React's onChange runs for controlled and
 // uncontrolled inputs alike.
@@ -86,13 +115,16 @@ export function CalcAmountInput({
     const next = editAtCaret(element.value, start, end, insert);
     if (next.value !== element.value) setTypedValue(element, next.value);
     if (document.activeElement !== element) element.focus();
+    // React re-renders with the value the input already has, so it leaves this caret alone. A
+    // deferred restore would undo a caret move made right after the key.
     element.setSelectionRange(next.caret, next.caret);
-    // React may re-render after the event; put the caret back where the key left it.
-    requestAnimationFrame(() => element.setSelectionRange(next.caret, next.caret));
   }
 
-  // Keeps focus (and the phone keyboard) in the field while a key is pressed.
-  const keepFocus = (event: { preventDefault(): void }) => event.preventDefault();
+  // The keys stay a moment after the field loses focus: hiding them at once moves everything
+  // below up while the tap that moved focus is still landing, so it would miss its target
+  // (Save, a wallet chip).
+  const hideKeys = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(hideKeys.current), []);
 
   return (
     <div className="flex min-w-0 flex-col gap-2">
@@ -118,11 +150,13 @@ export function CalcAmountInput({
           data-calc=""
           aria-describedby={[describedBy, preview ? previewID : ""].filter(Boolean).join(" ") || undefined}
           onFocus={(event) => {
+            window.clearTimeout(hideKeys.current);
             setFocused(true);
             onFocus?.(event);
           }}
           onBlur={(event) => {
-            setFocused(false);
+            window.clearTimeout(hideKeys.current);
+            hideKeys.current = window.setTimeout(() => setFocused(false), keysLingerMs);
             onBlur?.(event);
           }}
           onChange={(event) => {
@@ -141,30 +175,13 @@ export function CalcAmountInput({
       {coarse && focused ? (
         <div role="group" aria-label="Calculator keys" data-slot="calc-keys" className="grid grid-cols-7 gap-1.5">
           {operatorKeys.map((key) => (
-            <button
-              key={key.name}
-              type="button"
-              tabIndex={-1}
-              aria-label={key.name}
-              onPointerDown={keepFocus}
-              onMouseDown={keepFocus}
-              onClick={() => press(key.insert)}
-              className="flex h-11 items-center justify-center rounded-md border bg-muted text-xl font-medium text-foreground select-none active:bg-accent"
-            >
+            <CalcKey key={key.name} name={key.name} onPress={() => press(key.insert)}>
               {key.label}
-            </button>
+            </CalcKey>
           ))}
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label="Delete"
-            onPointerDown={keepFocus}
-            onMouseDown={keepFocus}
-            onClick={() => press(null)}
-            className="flex h-11 items-center justify-center rounded-md border bg-muted text-foreground select-none active:bg-accent"
-          >
+          <CalcKey name="Delete" onPress={() => press(null)}>
             <Delete aria-hidden className="size-5" />
-          </button>
+          </CalcKey>
         </div>
       ) : null}
       <p

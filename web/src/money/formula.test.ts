@@ -102,6 +102,15 @@ describe("evaluateAmountInput", () => {
     for (const text of ["5+", "2^3", "sqrt(4)", "1/0", "(1+2"]) expect(evaluateAmountInput(text).kind).toBe("invalid");
   });
 
+  // Regression (e2e): "2^3" was not seen as a calculation, so it got the plain-number hint
+  // "Enter digits only" instead of naming the operators that work.
+  test("a calculation with an unsupported operator names the supported ones", () => {
+    for (const text of ["2^3", "10%3"]) {
+      const result = evaluateAmountInput(text);
+      expect(result.kind === "invalid" && result.message).toBe("Use only numbers, + − × ÷ and brackets.");
+    }
+  });
+
   test("calculatedFrom lists each kept calculation", () => {
     expect(calculatedFrom({})).toEqual([]);
     expect(calculatedFrom({ amount_formula: "120 + 45.50 + 300 * 2" })).toEqual(["Calculated from 120 + 45.50 + 300 × 2"]);

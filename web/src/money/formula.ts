@@ -269,7 +269,7 @@ export type AmountInput =
 // Text that is meant as a calculation rather than a mistyped number.
 function looksLikeFormula(text: string) {
   const t = text.replace(/ /g, " ").trim();
-  return t.startsWith("=") || /[+*/()×÷xX]/.test(t) || /.[-−]/.test(t);
+  return t.startsWith("=") || /[+*/()×÷xX^%]/.test(t) || /.[-−]/.test(t);
 }
 
 // Reads an amount field. A plain number keeps parseDecimalInput's behavior exactly; anything
