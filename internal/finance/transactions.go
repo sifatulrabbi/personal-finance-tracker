@@ -164,16 +164,20 @@ func (s *Store) prepare(tx *sql.Tx, in TransactionInput) (Transaction, []effect,
 	return r, []effect{{w.ID, delta}}, nil
 }
 
-// keepArchivedBalances rejects a change whose net effect on any archived wallet is not zero. A new
-// record may not touch an archived wallet at all; a correction may keep one when that wallet's
-// balance stays the same (note, date, category, or a USD rate that only changes the BDT value).
+// keepArchivedBalances rejects a change that would move the balance of an archived wallet the
+// record names. A new record may not use an archived wallet at all; a correction may keep one when
+// its balance stays the same (note, date, category, or a USD rate that only changes the BDT value).
+// Moving a record off an archived wallet is allowed: like void, it is an explicit repair that takes
+// the record away from the closed account, and the corrected record no longer names that wallet.
 func keepArchivedBalances(tx *sql.Tx, in TransactionInput, before, after []effect, message string) error {
 	net := map[string]int64{}
 	for _, ef := range after {
 		net[ef.walletID] += ef.delta
 	}
 	for _, ef := range before {
-		net[ef.walletID] -= ef.delta
+		if _, named := net[ef.walletID]; named {
+			net[ef.walletID] -= ef.delta
+		}
 	}
 	changed := []string{}
 	for wid, delta := range net {

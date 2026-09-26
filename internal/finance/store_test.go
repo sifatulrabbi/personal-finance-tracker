@@ -167,7 +167,6 @@ func TestCorrectionsOnArchivedWalletsMustNotChangeTheirBalance(t *testing.T) {
 		field string
 	}{
 		"amount on archived":     {onClosed.ID, finance.TransactionInput{Kind: "expense", WalletID: closed.ID, Amount: "90", Date: "2026-09-13"}, "wallet_id"},
-		"move off archived":      {onClosed.ID, finance.TransactionInput{Kind: "expense", WalletID: open.ID, Amount: "100", Date: "2026-09-13"}, "wallet_id"},
 		"move onto archived":     {onOpen.ID, finance.TransactionInput{Kind: "expense", WalletID: closed.ID, Amount: "50", Date: "2026-09-14"}, "wallet_id"},
 		"transfer into archived": {transfer.ID, finance.TransactionInput{Kind: "transfer", WalletID: open.ID, ToWalletID: closed.ID, Amount: "20", Date: "2026-09-14"}, "to_wallet_id"},
 	} {
@@ -184,10 +183,17 @@ func TestCorrectionsOnArchivedWalletsMustNotChangeTheirBalance(t *testing.T) {
 	if after := balances(t, s); fmt.Sprint(after) != fmt.Sprint(before) {
 		t.Fatalf("archived balances moved: %v -> %v", before, after)
 	}
-	if _, e = s.ReviseTransaction(ctx, u.ID, "void-closed", onClosed.ID, 2, finance.TransactionInput{Reason: "Duplicate"}, true); e != nil {
-		t.Fatalf("void on archived wallet: %v", e)
+	// Moving a record off an archived wallet is an explicit repair, like void, so it is allowed.
+	if _, e = s.ReviseTransaction(ctx, u.ID, "move-off", onClosed.ID, 2, finance.TransactionInput{Kind: "expense", WalletID: open.ID, Amount: "100", Date: "2026-09-13"}, false); e != nil {
+		t.Fatalf("move off archived wallet: %v", e)
 	}
 	if b := balances(t, s)[closed.ID]; b != "1010.00" {
+		t.Fatalf("balance after moving off %s", b)
+	}
+	if _, e = s.ReviseTransaction(ctx, u.ID, "void-transfer", transfer.ID, 1, finance.TransactionInput{Reason: "Duplicate"}, true); e != nil {
+		t.Fatalf("void on archived wallet: %v", e)
+	}
+	if b := balances(t, s)[closed.ID]; b != "1000.00" {
 		t.Fatalf("void balance %s", b)
 	}
 }
