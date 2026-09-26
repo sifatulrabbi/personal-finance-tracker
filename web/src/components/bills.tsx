@@ -463,6 +463,7 @@ function BillHistory({ wallets }: { wallets: Wallet[] }) {
           <ToggleGroup
             type="single"
             aria-label="Show bills"
+            className="w-56 max-w-full"
             value={status}
             onValueChange={(next) => next && setStatus(next as "paid" | "skipped")}
           >

@@ -391,16 +391,21 @@ export function WalletDetail({ id }: { id: string }) {
         </CardContent>
       </Card>
       <Section title="Recent activity">
-        <EmptyState
-          icon={<ListIcon />}
-          title="Records for this wallet are coming soon"
-          description="Until then, every record, including this wallet's, is in Activity."
-          action={
-            <Button asChild variant="outline">
-              <Link to="/activity">Open Activity</Link>
-            </Button>
-          }
-        />
+        {/* A per-wallet record list arrives with the Activity redesign; until then, a
+            clear way to the full list. */}
+        <List>
+          <ListRow
+            to="/activity"
+            leading={
+              <RowIcon>
+                <ListIcon />
+              </RowIcon>
+            }
+            title="Open Activity"
+            subtitle="A list of this wallet's own records is coming here soon."
+            trailing={<ChevronRight aria-hidden className="size-5 text-muted-foreground" />}
+          />
+        </List>
       </Section>
       <WalletEditors editor={editor} wallets={wallets} detail={wallet} />
     </>
