@@ -11,6 +11,7 @@ import {
   signOut,
   toast,
 } from "./login";
+import { loadMoreWithKeyboard } from "./records";
 import type { Page } from "@playwright/test";
 
 // Regression tests for the measured bugs in the UX audit (.planning/overhaul/ux-audit.md,
@@ -44,7 +45,7 @@ test("Activity keeps loaded older records after a save", async ({ page }) => {
   const rows = page.getByText(/^Old record \d+$/);
   // The first page of 50 also holds today's opening-balance record.
   await expect(rows).toHaveCount(49);
-  await page.getByRole("button", { name: "Load older records" }).click();
+  await loadMoreWithKeyboard(page);
   await expect(rows).toHaveCount(60);
 
   await page.getByRole("button", { name: "Add record", exact: true }).click();
@@ -80,7 +81,8 @@ test("a new record appears from the save response without reloading every endpoi
     await route.continue();
   });
   await page.getByRole("button", { name: "Save record", exact: true }).click();
-  await expect(page.getByText("Shown at once", { exact: true })).toBeVisible({
+  // Looked up in the list: the closing sheet still holds the typed note for a moment.
+  await expect(page.getByTestId("activity-row").getByText("Shown at once", { exact: true })).toBeVisible({
     timeout: 1500,
   });
   await page.waitForTimeout(500);

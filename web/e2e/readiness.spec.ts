@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import { editTarget, navigate, payBill, submitLogin, toast } from "./login";
+import { typeAmount, walletRadio } from "./records";
 
 test("archived wallets are never silently replaced in transfers or bills", async ({
   page,
@@ -65,17 +66,25 @@ test("archived wallets are never silently replaced in transfers or bills", async
   // Each test starts on a fresh database, so the record is on the first page.
   await page.getByText(note, { exact: true }).click();
   await page.getByRole("button", { name: "Correct record" }).click();
-  await expect(page.getByLabel("To wallet", { exact: true })).toHaveValue(
-    destination.id,
-  );
-  await expect(
-    page.getByRole("button", { name: "Save correction" }),
-  ).toBeDisabled();
-  await page.getByLabel("To wallet", { exact: true }).selectOption(other.id);
-  await page
+  const sheet = page.getByRole("dialog");
+  // The archived destination stays selected and visible; it is never silently replaced.
+  const archived = walletRadio(sheet, "To wallet", `Archived destination ${info.project.name}`);
+  await expect(archived).toBeChecked();
+  await expect(archived).toBeDisabled();
+  await expect(sheet.getByText(/is archived/)).toBeVisible();
+  // Changing the amount would move the archived wallet's balance: the server refuses, and
+  // its message is shown at the destination field.
+  await typeAmount(sheet, "120");
+  await sheet.getByRole("button", { name: "Save correction" }).click();
+  const toWallet = sheet.getByRole("group", { name: "To wallet", exact: true });
+  await expect(toWallet.getByText(/archived wallet's balance/)).toBeVisible();
+  await expect(sheet).toBeVisible();
+  await typeAmount(sheet, "100");
+  await walletRadio(sheet, "To wallet", `Replacement ${info.project.name}`).check();
+  await sheet
     .getByLabel("Reason for correction")
     .fill("Explicitly move to replacement");
-  await page.getByRole("button", { name: "Save correction" }).click();
+  await sheet.getByRole("button", { name: "Save correction" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const history = await (
     await page.request.get(`/api/v1/transactions/${transaction.id}/history`)
