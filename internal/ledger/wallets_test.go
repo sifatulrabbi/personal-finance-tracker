@@ -46,7 +46,7 @@ func TestValidateNewWallet(t *testing.T) {
 	if e != nil || cc.OpeningEffect != -30000 || cc.OpeningAmount != 30000 || cc.CreditLimit != 100000 || cc.Input.Currency != "BDT" {
 		t.Fatalf("a credit opening balance is debt: %+v %v", cc, e)
 	}
-	p := ledger.OpeningPayload("w", -500, "2026-09-14")
+	p := ledger.OpeningPayload("w", -500, "2026-09-14", "")
 	if p["kind"] != "opening" || p["amount"] != "-5.00" || p["wallet_id"] != "w" || p["date"] != "2026-09-14" || len(p) != 4 {
 		t.Fatalf("opening payload: %+v", p)
 	}
@@ -103,7 +103,7 @@ func TestValidateWalletUpdate(t *testing.T) {
 func TestAdjustmentRecordsTheDifference(t *testing.T) {
 	bank := bankBDT
 	bank.BalanceMinor, bank.BalanceVersion = 10000, 4
-	r, effects, e := ledger.Adjustment(bank, 4, "75.50", "counted", "2026-09-14")
+	r, effects, e := ledger.Adjustment(bank, 4, "75.50", "", "counted", "2026-09-14")
 	if e != nil || r.Kind != "adjustment" || r.Amount != "-24.50" || r.Note != "Balance set to 75.50" || r.Date != "2026-09-14" || r.Reason != "counted" || r.Version != 1 {
 		t.Fatalf("adjustment: %+v %v", r, e)
 	}
@@ -112,13 +112,13 @@ func TestAdjustmentRecordsTheDifference(t *testing.T) {
 	}
 	card := credit
 	card.BalanceMinor = -10000
-	r, effects, e = ledger.Adjustment(card, 0, "150", "statement", "2026-09-14")
+	r, effects, e = ledger.Adjustment(card, 0, "150", "", "statement", "2026-09-14")
 	if e != nil || r.Amount != "-50.00" || effects[0].Delta != -5000 || r.Note != "Balance set to 150.00" {
 		t.Fatalf("a credit target is the debt owed: %+v %+v %v", r, effects, e)
 	}
 	drained := legacy
 	drained.BalanceMinor = 700
-	if _, effects, e = ledger.Adjustment(drained, 0, "0", "drain", "2026-09-14"); e != nil || effects[0].Delta != -700 || effects[0].WalletID != "legacy" {
+	if _, effects, e = ledger.Adjustment(drained, 0, "0", "", "drain", "2026-09-14"); e != nil || effects[0].Delta != -700 || effects[0].WalletID != "legacy" {
 		t.Fatalf("legacy card to zero: %+v %v", effects, e)
 	}
 	for name, tc := range map[string]struct {
@@ -136,7 +136,7 @@ func TestAdjustmentRecordsTheDifference(t *testing.T) {
 		"already that":       {bank, 4, "100", "x", "validation_failed", "balance"},
 		"difference too big": {ledger.Wallet{ID: "w", Currency: "BDT", BalanceMinor: -9_000_000_000_000}, 0, "90000000000", "x", "validation_failed", "balance"},
 	} {
-		_, _, e := ledger.Adjustment(tc.w, tc.version, tc.target, tc.reason, "2026-09-14")
+		_, _, e := ledger.Adjustment(tc.w, tc.version, tc.target, "", tc.reason, "2026-09-14")
 		if code, field := fieldOf(e); code != tc.code || field != tc.field {
 			t.Errorf("%s: %s/%s %v", name, code, field, e)
 		}

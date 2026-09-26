@@ -127,7 +127,7 @@ INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta) VALUES('open'
 	if _, e = s.CreateSchedule(ctx, u.ID, "schedule", ledger.ScheduleInput{Name: "Rent", WalletID: "debit", Amount: "1", Frequency: "monthly", StartDate: "2026-09-01"}); !errors.Is(e, ledger.ErrInvalid) {
 		t.Errorf("schedule on a legacy debit card: %v", e)
 	}
-	if _, e = s.AdjustWallet(ctx, u.ID, "adjust-up", "debit", card.BalanceVersion, "4500", "Count"); !errors.Is(e, ledger.ErrInvalid) {
+	if _, e = s.AdjustWallet(ctx, u.ID, "adjust-up", "debit", card.BalanceVersion, "4500", "", "Count"); !errors.Is(e, ledger.ErrInvalid) {
 		t.Errorf("adjust a legacy card to a non-zero balance: %v", e)
 	}
 	// Repairs of existing records stay available.
@@ -140,7 +140,7 @@ INSERT INTO wallet_entries(transaction_id,version,wallet_id,delta) VALUES('open'
 		t.Fatal(e)
 	}
 	card, _ = s.Wallet(ctx, "debit")
-	if _, e = s.AdjustWallet(ctx, u.ID, "zero", "debit", card.BalanceVersion, "0", "Same money as the bank account"); e != nil {
+	if _, e = s.AdjustWallet(ctx, u.ID, "zero", "debit", card.BalanceVersion, "0", "", "Same money as the bank account"); e != nil {
 		t.Fatal(e)
 	}
 	card, _ = s.Wallet(ctx, "debit")

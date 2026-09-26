@@ -131,7 +131,7 @@ func BillPayment(b Bill, in PaymentInput, f PaymentFacts) (TransactionInput, err
 	if in.Date == "" {
 		in.Date = b.DueDate
 	}
-	return TransactionInput{Kind: "expense", WalletID: in.WalletID, Amount: in.Amount, Date: in.Date, Note: b.Name + ": " + in.Note, Rate: in.Rate, CategoryID: b.CategoryID}, nil
+	return TransactionInput{Kind: "expense", WalletID: in.WalletID, Amount: in.Amount, Date: in.Date, Note: b.Name + ": " + in.Note, Rate: in.Rate, CategoryID: b.CategoryID, AmountFormula: in.AmountFormula}, nil
 }
 
 // CheckSkip applies the rules for skipping a bill.

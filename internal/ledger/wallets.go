@@ -58,6 +58,8 @@ type NewWallet struct {
 	HasOpening bool
 	// OpeningAmount is the opening record's amount as entered, before the credit-card sign.
 	OpeningAmount int64
+	// OpeningFormula is the canonical calculation that gave OpeningAmount, "" for none.
+	OpeningFormula string
 }
 
 // ValidateNewWallet checks a new wallet. bank is the wallet in.BankWalletID names, loaded by the
@@ -122,10 +124,14 @@ func ValidateNewWallet(in WalletInput, bank *Wallet) (NewWallet, error) {
 	if in.CardType != "credit" && limit != 0 {
 		return out, Invalid("credit_limit", "Only credit cards have a credit limit.")
 	}
-	if in.CardType == "debit" && opening != 0 {
+	if in.CardType == "debit" && (opening != 0 || in.OpeningBalanceFormula != "") {
 		return out, Invalid("opening_balance", "A debit card has no balance of its own. Record the balance on its bank wallet.")
 	}
-	out = NewWallet{Input: in, CreditLimit: limit, HasOpening: in.CardType != "debit", OpeningAmount: opening, OpeningEffect: opening}
+	formula, err := CheckFormula("opening_balance_formula", in.OpeningBalanceFormula, opening)
+	if err != nil {
+		return out, err
+	}
+	out = NewWallet{Input: in, CreditLimit: limit, HasOpening: in.CardType != "debit", OpeningAmount: opening, OpeningEffect: opening, OpeningFormula: formula}
 	if in.CardType == "credit" {
 		out.OpeningEffect = -opening
 	}
@@ -134,8 +140,13 @@ func ValidateNewWallet(in WalletInput, bank *Wallet) (NewWallet, error) {
 
 // OpeningPayload is the stored revision payload of a wallet's opening balance. It predates the
 // Transaction payload shape and has no id, version, or author; the transaction row supplies them.
-func OpeningPayload(walletID string, amount int64, date string) map[string]any {
-	return map[string]any{"kind": "opening", "wallet_id": walletID, "amount": money.FormatMoney(amount), "date": date}
+// A formula is stored as amount_formula only when there is one, so other payloads are unchanged.
+func OpeningPayload(walletID string, amount int64, date, formula string) map[string]any {
+	p := map[string]any{"kind": "opening", "wallet_id": walletID, "amount": money.FormatMoney(amount), "date": date}
+	if formula != "" {
+		p["amount_formula"] = formula
+	}
+	return p
 }
 
 // ValidateWalletUpdate checks an edit of old's metadata and returns the new credit limit. Only the
@@ -165,7 +176,8 @@ func ValidateWalletUpdate(old, in Wallet) (int64, error) {
 // Adjustment returns the balance adjustment record that brings w to target, dated today, and its
 // effect. balanceVersion is w's BalanceVersion as read, so the target is refused if any balance
 // effect happened since. For a credit card the target is the debt owed.
-func Adjustment(w Wallet, balanceVersion int, target, reason, today string) (Transaction, []Effect, error) {
+// formula is the optional calculation that gave target; it must equal the target as typed.
+func Adjustment(w Wallet, balanceVersion int, target, formula, reason, today string) (Transaction, []Effect, error) {
 	var r Transaction
 	if w.BalanceVersion != balanceVersion {
 		return r, nil, ErrStaleVersion
@@ -183,6 +195,10 @@ func Adjustment(w Wallet, balanceVersion int, target, reason, today string) (Tra
 	if err != nil {
 		return r, nil, Invalid("balance", "Enter a balance with at most two decimal places.")
 	}
+	balanceFormula, err := CheckFormula("balance_formula", formula, entered)
+	if err != nil {
+		return r, nil, err
+	}
 	desired := entered
 	if w.CardType == "credit" {
 		desired = -desired
@@ -197,6 +213,6 @@ func Adjustment(w Wallet, balanceVersion int, target, reason, today string) (Tra
 	if delta > money.MaxMoney || delta < -money.MaxMoney {
 		return r, nil, Invalid("balance", "This adjustment is larger than the supported limit.")
 	}
-	r = Transaction{Version: 1, TransactionInput: TransactionInput{Kind: "adjustment", WalletID: w.ID, Amount: money.FormatMoney(delta), Date: today, Reason: reason, Note: "Balance set to " + money.FormatMoney(entered)}}
+	r = Transaction{Version: 1, TransactionInput: TransactionInput{Kind: "adjustment", WalletID: w.ID, Amount: money.FormatMoney(delta), Date: today, Reason: reason, Note: "Balance set to " + money.FormatMoney(entered)}, BalanceFormula: balanceFormula}
 	return r, []Effect{{w.ID, delta, "wallet_id"}}, nil
 }

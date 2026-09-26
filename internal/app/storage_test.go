@@ -54,7 +54,7 @@ func mixedHousehold(t *testing.T, s *apptest.Household, u ledger.User) map[strin
 		t.Fatal(e)
 	}
 	bank, _ := s.Wallet(ctx, w["bank"].ID)
-	if _, e = s.AdjustWallet(ctx, u.ID, "count", bank.ID, bank.BalanceVersion, "15000", "Counted"); e != nil {
+	if _, e = s.AdjustWallet(ctx, u.ID, "count", bank.ID, bank.BalanceVersion, "15000", "", "Counted"); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = s.CreateSchedule(ctx, u.ID, "rent", ledger.ScheduleInput{Name: "Rent", WalletID: w["bank"].ID, Amount: "700", Frequency: "monthly", StartDate: "2026-09-01"}); e != nil {
