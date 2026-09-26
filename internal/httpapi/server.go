@@ -167,6 +167,26 @@ func (s *Server) handler() http.Handler {
 		return s.store.AdjustWallet(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.BalanceVersion, in.Balance, in.Reason)
 	}))
 	private.HandleFunc("GET /api/v1/transactions", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if cursorPaged(r, "wallet_id", "kind", "category_id", "from", "to", "include_voided") {
+			l, e := cursorLimit(r)
+			if e != nil {
+				respond(w, nil, e)
+				return
+			}
+			f := finance.TransactionFilter{WalletID: q.Get("wallet_id"), Kind: q.Get("kind"), CategoryID: q.Get("category_id"), From: q.Get("from"), To: q.Get("to")}
+			switch q.Get("include_voided") {
+			case "", "false":
+			case "true":
+				f.IncludeVoided = true
+			default:
+				respond(w, nil, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use true or false.", Field: "include_voided"})
+				return
+			}
+			v, e := s.store.TransactionsPage(r.Context(), f, q.Get("cursor"), l)
+			respond(w, v, e)
+			return
+		}
 		l, o, e := page(r)
 		if e != nil {
 			respond(w, nil, e)
@@ -251,6 +271,16 @@ func (s *Server) handler() http.Handler {
 		return s.store.SkipBill(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Reason)
 	}))
 	private.HandleFunc("GET /api/v1/audit", func(w http.ResponseWriter, r *http.Request) {
+		if cursorPaged(r) {
+			l, e := cursorLimit(r)
+			if e != nil {
+				respond(w, nil, e)
+				return
+			}
+			v, e := s.store.AuditPage(r.Context(), r.URL.Query().Get("cursor"), l)
+			respond(w, v, e)
+			return
+		}
 		l, o, e := page(r)
 		if e != nil {
 			respond(w, nil, e)
@@ -331,6 +361,32 @@ func page(r *http.Request) (int, int, error) {
 		}
 	}
 	return l, o, nil
+}
+
+// cursorPaged reports whether a list request opted into the cursor-paged form, which answers
+// {"items":[...],"next_cursor":...}: it sends page=cursor, a cursor, or any of the list's filters.
+// Without them the list keeps its original bare-array, offset-paged answer for older clients.
+func cursorPaged(r *http.Request, filters ...string) bool {
+	q := r.URL.Query()
+	for _, name := range append([]string{"page", "cursor"}, filters...) {
+		if q.Has(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// cursorLimit validates a cursor-paged request's page and offset parameters and returns its limit.
+func cursorLimit(r *http.Request) (int, error) {
+	q := r.URL.Query()
+	if q.Has("page") && q.Get("page") != "cursor" {
+		return 0, &finance.Error{Code: finance.CodeValidationFailed, Message: "Use page=cursor, or leave page out.", Field: "page"}
+	}
+	if q.Has("offset") {
+		return 0, &finance.Error{Code: finance.CodeValidationFailed, Message: "A cursor-paged list does not take an offset. Send the previous page's next_cursor as cursor.", Field: "offset"}
+	}
+	l, _, e := page(r)
+	return l, e
 }
 func digest(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
 func (s *Server) cookie(w http.ResponseWriter, value string, maxAge int) {
