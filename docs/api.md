@@ -28,6 +28,8 @@ Every error response is JSON: `{"error":{"code":"<code>","message":"<human text>
 
 Unauthenticated requests to any `/api/v1` path, including unknown ones, get 401 before routing.
 
+Every API and `/healthz` response carries an `X-Request-ID` header. The server logs one structured line per request with that ID, the method, the matched route pattern (for example `PUT /api/v1/wallets/{id}`), the status, the duration, and the acting user's ID. It never logs bodies, cookies, other headers, record IDs from the path, or query values. Quote the request ID when reporting a problem.
+
 ## Endpoints
 
 | Method | Path | Purpose |

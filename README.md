@@ -51,6 +51,8 @@ For hosting, put an HTTPS reverse proxy in front of port 47831. Set `APP_ORIGIN`
 
 Login attempts are throttled per client address and per account (ADR 0009). Behind a reverse proxy, set `TRUSTED_PROXY_CIDRS` (for example in `.env`, which the Compose file passes through) to a comma-separated list of the proxy's addresses or CIDR ranges as the container sees them; for a proxy on the Docker host this is usually the Docker bridge gateway. Only then is the right-most untrusted `X-Forwarded-For` address used as the client. Leave it empty when nothing sits in front of the server, and never list a range that untrusted clients can connect from, or they can choose their own throttling key.
 
+The server writes one structured access-log line per API request to standard error (`docker compose logs finance`), with a request ID that is also returned in the `X-Request-ID` response header. It records the method, route pattern, status, duration, and acting user ID, and never request bodies, cookies, or query values.
+
 Startup rejects HTTPS origins with insecure cookies enabled, and HTTP origins without the explicit development opt-in. `/healthz` checks that SQLite can read application settings within two seconds and returns 503 if unavailable. This is not a write-capacity or disk-space check; monitor free space on the hosting server separately.
 
 ## Backup and restore

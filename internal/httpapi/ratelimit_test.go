@@ -81,6 +81,7 @@ const goodPassword = "correct horse battery"
 // attempts from anyone locked the whole household out. With the proxy trusted, the limit follows
 // the right-most untrusted X-Forwarded-For address, which a client cannot forge by prepending.
 func TestLoginLimitFollowsTheClientBehindATrustedProxy(t *testing.T) {
+	t.Parallel() // real bcrypt comparisons are slow under the race detector
 	p := limitServer(t, "10.0.0.0/8")
 	proxy := "10.0.0.2:5000"
 	locked := false
@@ -99,6 +100,7 @@ func TestLoginLimitFollowsTheClientBehindATrustedProxy(t *testing.T) {
 
 // An untrusted peer's X-Forwarded-For is ignored, so a client cannot pick its own limit key.
 func TestLoginLimitIgnoresForwardedHeaderFromUntrustedPeers(t *testing.T) {
+	t.Parallel() // real bcrypt comparisons are slow under the race detector
 	p := limitServer(t, "10.0.0.0/8")
 	locked := false
 	for i := 0; i < 40 && !locked; i++ {
@@ -112,6 +114,7 @@ func TestLoginLimitIgnoresForwardedHeaderFromUntrustedPeers(t *testing.T) {
 
 // IPv6 clients are limited per /64, so rotating addresses inside one allocation does not help.
 func TestLoginLimitGroupsIPv6AddressesByPrefix(t *testing.T) {
+	t.Parallel() // real bcrypt comparisons are slow under the race detector
 	p := limitServer(t, "")
 	locked := false
 	for i := 0; i < 40 && !locked; i++ {
@@ -126,6 +129,7 @@ func TestLoginLimitGroupsIPv6AddressesByPrefix(t *testing.T) {
 // Per-account limit with growing waits: wrong passwords for one account from many addresses lock
 // that account only, and each wait after the lock is longer than the one before.
 func TestLoginLimitPerAccountBacksOffAndSparesOtherAccounts(t *testing.T) {
+	t.Parallel() // real bcrypt comparisons are slow under the race detector
 	p := limitServer(t, "")
 	var status, first int
 	for i := 0; i < 20; i++ {
@@ -160,6 +164,7 @@ func TestLoginLimitPerAccountBacksOffAndSparesOtherAccounts(t *testing.T) {
 // Regression (S2): successful logins counted toward the limit. Now they don't, and a success
 // clears the account's earlier failures.
 func TestSuccessfulLoginsDoNotCountAndResetTheAccount(t *testing.T) {
+	t.Parallel() // real bcrypt comparisons are slow under the race detector
 	p := limitServer(t, "")
 	for i := 0; i < 25; i++ {
 		if status, _ := p.login("192.0.2.1:1000", "", "wife@example.test", goodPassword); status != 200 {

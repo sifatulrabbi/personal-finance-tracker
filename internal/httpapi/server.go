@@ -9,6 +9,7 @@ import (
 	"errors"
 	"golang.org/x/crypto/bcrypt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/netip"
@@ -32,6 +33,8 @@ type Config struct {
 	// TrustedProxies are the reverse proxies whose X-Forwarded-For header names the client for
 	// login throttling. Empty means the connecting address is the client.
 	TrustedProxies []netip.Prefix
+	// Logger receives the access log; nil uses slog.Default().
+	Logger *slog.Logger
 }
 type Server struct {
 	store   *finance.Store
@@ -40,6 +43,7 @@ type Server struct {
 	dummy   []byte
 	compare func(hash, password []byte) error
 	limiter *loginLimiter
+	logger  *slog.Logger
 }
 type actorKey struct{}
 
@@ -54,6 +58,9 @@ func newServer(store *finance.Store, config Config) (*Server, error) {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
+	if config.Logger == nil {
+		config.Logger = slog.Default()
+	}
 	origin, e := url.Parse(config.Origin)
 	if e != nil || origin.Host == "" || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || origin.User != nil {
 		return nil, finance.ErrInvalid
@@ -61,7 +68,7 @@ func newServer(store *finance.Store, config Config) (*Server, error) {
 	if config.InsecureCookies != (origin.Scheme == "http") {
 		return nil, finance.ErrInvalid
 	}
-	s := &Server{store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword}
+	s := &Server{store: store, config: config, users: map[string]Credential{}, compare: bcrypt.CompareHashAndPassword, logger: config.Logger}
 	if len(config.Users) == 0 || len(config.Users) > 100 {
 		return nil, finance.ErrInvalid
 	}
@@ -253,7 +260,7 @@ func (s *Server) handler() http.Handler {
 		respond(w, v, e)
 	})
 	mux.Handle("/api/", s.authenticate(jsonErrors(private)))
-	return s.security(jsonErrors(mux))
+	return s.accessLog(s.security(jsonErrors(mux)))
 }
 func actor(r *http.Request) finance.User { return r.Context().Value(actorKey{}).(finance.User) }
 func key(r *http.Request) string         { return r.Header.Get("Idempotency-Key") }
@@ -372,6 +379,9 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, e)
 		return
 	}
+	if a := entry(r); a != nil {
+		a.actorID = user.ID
+	}
 	var raw [32]byte
 	if _, e = rand.Read(raw[:]); e != nil {
 		respond(w, nil, e)
@@ -415,6 +425,9 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		if !ok || digest(credential.PasswordHash) != hash {
 			respond(w, nil, finance.ErrUnauthorized)
 			return
+		}
+		if a := entry(r); a != nil {
+			a.actorID = u.ID
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey{}, u)))
 	})

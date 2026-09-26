@@ -84,6 +84,9 @@ func writeError(w http.ResponseWriter, e error) {
 func jsonErrors(mux *http.ServeMux) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fallback, pattern := mux.Handler(r)
+		if a := entry(r); a != nil && pattern != "" {
+			a.route = pattern
+		}
 		if pattern != "" {
 			mux.ServeHTTP(w, r)
 			return
