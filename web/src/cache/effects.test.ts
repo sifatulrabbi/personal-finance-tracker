@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { InfiniteQueryObserver, QueryClient } from "@tanstack/react-query";
 import { createFakeClient } from "@/api/fake";
-import type { Bill, MonthlySpending, Transaction, TransactionFilters, TransactionPage, Wallet } from "@/api/types";
+import { ApiError } from "@/api/errors";
+import type { Bill, Category, MonthlySpending, Transaction, TransactionFilters, TransactionPage, Wallet } from "@/api/types";
 import { keys, pageSize } from "./keys";
 import { matchesFilters, placeTransaction, type TransactionPages } from "./effects";
 import { createWrites } from "./writes";
@@ -75,7 +76,7 @@ function seeded() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(keys.wallets, [wallet]);
   client.setQueryData(all, infinite(pagesOf(60)));
-  client.setQueryData(keys.categories, [{ id: "others-expense", name: "Others", type: "expense" }]);
+  client.setQueryData(keys.categories, [{ id: "others-expense", name: "Others", type: "expense", version: 1 }]);
   client.setQueryData(keys.settings, { rate: "125", version: 1, timezone: "Asia/Dhaka", default_currency: "BDT" });
   client.setQueryData(keys.schedules, []);
   client.setQueryData<Bill[]>(keys.dueBills, [
@@ -183,11 +184,32 @@ describe("writes update the cache from the server's record", () => {
 
   test("a new category is appended without touching wallets or records", async () => {
     const client = seeded();
-    const fake = createFakeClient({ createCategory: async () => ({ id: "c9", name: "Pets", type: "income" }) });
+    const fake = createFakeClient({ createCategory: async () => ({ id: "c9", name: "Pets", type: "income", version: 1 }) });
     await createWrites(fake.client, client).createCategory({ name: "Pets", type: "income" }, { key: "k4" });
     expect(client.getQueryData<unknown[]>(keys.categories)).toHaveLength(2);
     expect(invalidated(client, keys.wallets)).toBe(false);
     expect(invalidated(client, keys.monthly("2026-09"))).toBe(false);
+  });
+
+  test("a renamed category replaces its name everywhere it is listed", async () => {
+    const client = seeded();
+    const renamed = { id: "others-expense", name: "Misc", type: "expense" as const, version: 2 };
+    const fake = createFakeClient({ renameCategory: async () => renamed });
+    await createWrites(fake.client, client).renameCategory("others-expense", { name: "Misc", version: 1 }, { key: "k5" });
+    expect(fake.callsTo("renameCategory")[0]?.args.slice(0, 2)).toEqual(["others-expense", { name: "Misc", version: 1 }]);
+    expect(client.getQueryData<Category[]>(keys.categories)).toEqual([renamed]);
+    expect(invalidated(client, keys.monthly("2026-09"))).toBe(true);
+    expect(invalidated(client, keys.wallets)).toBe(false);
+  });
+
+  test("a stale category rename reloads the categories for the next attempt", async () => {
+    const client = seeded();
+    const stale = new ApiError({ status: 409, code: "stale_version", message: "changed", fromServer: true });
+    const fake = createFakeClient({ renameCategory: async () => Promise.reject(stale) });
+    await expect(
+      createWrites(fake.client, client).renameCategory("others-expense", { name: "Misc", version: 1 }, { key: "k6" }),
+    ).rejects.toBe(stale);
+    expect(invalidated(client, keys.categories)).toBe(true);
   });
 
   test("a wallet edit replaces that wallet only", async () => {

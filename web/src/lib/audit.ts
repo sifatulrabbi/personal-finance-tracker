@@ -108,6 +108,11 @@ export function describeAudit(event: AuditEvent, context: AuditContext): AuditDe
         sentence: `${who} added the ${after.type === "income" ? "income" : "expense"} category ${quote(after.name)}.`,
         details: [],
       };
+    case "category.rename":
+      return {
+        sentence: `${who} renamed the ${after.type === "income" ? "income" : "expense"} category ${quote(before.name)} to ${quote(after.name)}.`,
+        details: [],
+      };
     case "monthly.target": {
       const month = monthLabel(event.entity_id);
       const previous = targetText(before);

@@ -1,10 +1,11 @@
-import { expect, test } from "./fixtures";
+import { apiWrite, dhakaToday, expect, test } from "./fixtures";
 import {
   chooseMonth,
   editTarget,
   mainNavigation,
   navigate,
   payBill,
+  signIn,
   submitLogin,
   toast,
 } from "./login";
@@ -193,4 +194,40 @@ test("categories preserve record drafts and monthly shares use actual spending",
       .getByText(`Eating out ${info.project.name}`, { exact: true })
       .first(),
   ).toBeVisible();
+});
+
+test("a renamed category relabels its records and survives a partner's rename", async ({ page }) => {
+  await page.goto("/");
+  await signIn(page);
+  const wallet = await apiWrite(page, "/wallets", { name: "Cash", type: "physical", opening_balance: "1000" });
+  await apiWrite(page, "/transactions", {
+    kind: "expense",
+    wallet_id: wallet.id,
+    amount: "120",
+    date: dhakaToday(),
+    note: "Weekly vegetables",
+    category_id: "expense-groceries",
+  });
+  await page.reload();
+  await navigate(page, "Settings");
+  const expenses = page.getByRole("region", { name: "Expense categories", exact: true });
+  await expenses.getByRole("button", { name: "Rename Groceries", exact: true }).click();
+  await expenses.getByLabel("Rename Groceries", { exact: true }).fill("Bazaar");
+  await expenses.getByRole("button", { name: "Save name", exact: true }).click();
+  await expect(toast(page, "Category renamed")).toBeVisible();
+  await expect(expenses.getByText("Bazaar", { exact: true })).toBeVisible();
+  await expect(expenses.getByText("Groceries", { exact: true })).toHaveCount(0);
+
+  await apiWrite(page, "/categories/expense-maid", { name: "House help", version: 1 }, "PUT");
+  await expenses.getByRole("button", { name: "Rename Maid", exact: true }).click();
+  await expenses.getByLabel("Rename Maid", { exact: true }).fill("Cleaner");
+  await expenses.getByRole("button", { name: "Save name", exact: true }).click();
+  await expect(expenses.getByRole("alert")).toContainText("changed");
+  await expenses.getByRole("button", { name: "Save name", exact: true }).click();
+  await expect(expenses.getByRole("button", { name: "Rename Cleaner", exact: true })).toBeVisible();
+  await expect(expenses.getByText("House help", { exact: true })).toHaveCount(0);
+
+  await navigate(page, "Activity");
+  const row = page.getByTestId("activity-row").filter({ hasText: "Weekly vegetables" });
+  await expect(row).toContainText("Bazaar");
 });

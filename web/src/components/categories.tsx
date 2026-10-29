@@ -3,7 +3,7 @@ import { errorMessage } from "@/api/errors";
 import { mutationKey, type MutationKey } from "@/api/idempotency";
 import type { Category } from "@/api/types";
 import { useWrites } from "@/cache/writes";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { List, Section } from "@/components/layout";
 import {
@@ -125,6 +125,60 @@ export function CategoryChoice({
   );
 }
 
+// A category's name, renamed in place. Its records keep the category, so they show the
+// new name too.
+function CategoryRow({ category }: { category: Category }) {
+  const writes = useWrites();
+  const [renaming, setRenaming] = useState(false);
+  if (renaming)
+    return (
+      <div className="min-w-0 px-4 py-3">
+        <SaveForm
+          label="Save name"
+          saved="Category renamed"
+          // The version is part of the body, so a retry after a conflict is a new request.
+          body={(form) => ({ name: form.text("category_name"), version: category.version })}
+          send={(body, key) => writes.renameCategory(category.id, body, { key })}
+          onSaved={() => setRenaming(false)}
+          secondary={
+            <Button type="button" variant="ghost" onClick={() => setRenaming(false)}>
+              Cancel
+            </Button>
+          }
+        >
+          <TextField
+            label={`Rename ${category.name}`}
+            name="category_name"
+            defaultValue={category.name}
+            maxLength={120}
+            required
+            autoFocus
+          />
+        </SaveForm>
+      </div>
+    );
+  return (
+    <div className="flex min-h-12 min-w-0 items-center justify-between gap-3 py-1 pr-1 pl-4">
+      <span className="min-w-0 break-words whitespace-pre-wrap">{category.name}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        {category.id === `others-${category.type}` ? (
+          <span className="text-caption font-normal text-muted-foreground">Default</span>
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`Rename ${category.name}`}
+          title="Rename"
+          onClick={() => setRenaming(true)}
+        >
+          <Pencil />
+        </Button>
+      </span>
+    </div>
+  );
+}
+
 export function CategorySettings({ categories }: { categories: Category[] }) {
   const writes = useWrites();
   return (
@@ -137,17 +191,7 @@ export function CategorySettings({ categories }: { categories: Category[] }) {
             <Section title={title}>
               <List>
                 {members.map((c) => (
-                  <div
-                    key={c.id}
-                    className="flex min-h-12 min-w-0 items-center justify-between gap-3 px-4 py-2.5"
-                  >
-                    <span className="min-w-0 break-words whitespace-pre-wrap">{c.name}</span>
-                    {c.id === `others-${type}` ? (
-                      <span className="shrink-0 text-caption font-normal text-muted-foreground">
-                        Default
-                      </span>
-                    ) : null}
-                  </div>
+                  <CategoryRow key={c.id} category={c} />
                 ))}
                 <div className="min-w-0 bg-muted/40 px-4 py-3">
                   {/* Not keyed by the category count: creating one category must not wipe

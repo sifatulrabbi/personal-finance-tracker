@@ -112,3 +112,12 @@ test("an entry the client does not know yet is still a sentence, never raw JSON"
     details: [],
   });
 });
+
+test("a category rename names the old and new name", () => {
+  const described = describeAudit(
+    event("category.rename", { id: "c1", name: "Food", type: "expense", version: 1 }, { id: "c1", name: "Eating out", type: "expense", version: 2 }, { actor_email: "partner@example.test" }),
+    context,
+  );
+  expect(described.sentence).toBe("partner renamed the expense category “Food” to “Eating out”.");
+  expect(described.details).toEqual([]);
+});

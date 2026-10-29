@@ -2,8 +2,10 @@ import { useMemo } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { ApiClient, WriteOptions } from "@/api/client";
 import { useApi } from "@/api/context";
+import { isApiError } from "@/api/errors";
 import type {
   CategoryInput,
+  CategoryRename,
   MonthlyTargetUpdate,
   PaymentInput,
   ScheduleInput,
@@ -63,6 +65,16 @@ export function createWrites(api: ApiClient, client: QueryClient) {
       const category = await api.createCategory(input, o);
       effects.categoryCreated(client, category);
       return category;
+    },
+    async renameCategory(id: string, input: CategoryRename, o: WriteOptions) {
+      try {
+        const category = await api.renameCategory(id, input, o);
+        effects.categoryRenamed(client, category);
+        return category;
+      } catch (problem) {
+        if (isApiError(problem) && problem.code === "stale_version") effects.categoriesStale(client);
+        throw problem;
+      }
     },
     async updateSettings(input: SettingsUpdate, o: WriteOptions) {
       const settings = await api.updateSettings(input, o);

@@ -174,6 +174,18 @@ export const effects = {
     // Monthly lists every expense category, including unused ones.
     if (category.type === "expense") refetch(client, keys.monthlyAll);
   },
+  // Records name their category by ID, so every list shows the new name from this cache.
+  categoryRenamed(client: QueryClient, category: Category) {
+    client.setQueryData<Category[]>(keys.categories, (list) => upsert(list, category));
+    // The server orders categories by name, and monthly rows carry the name it read.
+    refetch(client, keys.categories);
+    if (category.type === "expense") refetch(client, keys.monthlyAll);
+    markStale(client, keys.audit);
+  },
+  // Someone else renamed it first: load their name and version.
+  categoriesStale(client: QueryClient) {
+    refetch(client, keys.categories);
+  },
   settingsUpdated(client: QueryClient, settings: Settings) {
     client.setQueryData(keys.settings, settings);
     markStale(client, keys.audit);

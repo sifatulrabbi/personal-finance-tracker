@@ -4,6 +4,7 @@ import type {
   BillStatus,
   Category,
   CategoryInput,
+  CategoryRename,
   LoginInput,
   MonthlySpending,
   MonthlyTarget,
@@ -62,6 +63,7 @@ export interface ApiClient {
 
   categories(): Promise<Category[]>;
   createCategory(input: CategoryInput, options: WriteOptions): Promise<Category>;
+  renameCategory(id: string, input: CategoryRename, options: WriteOptions): Promise<Category>;
 
   settings(): Promise<Settings>;
   updateSettings(input: SettingsUpdate, options: WriteOptions): Promise<Settings>;

@@ -103,6 +103,7 @@ export function createHttpClient(options: HttpClientOptions = {}): ApiClient {
 
     categories: () => get("/categories"),
     createCategory: (input, o) => request("POST", "/categories", input, o),
+    renameCategory: (id, input, o) => request("PUT", `/categories/${enc(id)}`, input, o),
 
     settings: () => get("/settings"),
     updateSettings: (input, o) => request("PUT", "/settings", input, o),

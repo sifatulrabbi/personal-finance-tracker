@@ -19,8 +19,9 @@ export type User = { id: string; email: string; name: string };
 
 export type LoginInput = { email: string; password: string };
 
-export type Category = { id: string; name: string; type: CategoryType };
+export type Category = { id: string; name: string; type: CategoryType; version: number };
 export type CategoryInput = { name: string; type: CategoryType };
+export type CategoryRename = { name: string; version: number };
 
 export type Wallet = {
   id: string;
