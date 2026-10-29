@@ -119,6 +119,18 @@ func TestSettingsCategoryAndProfileRules(t *testing.T) {
 			t.Errorf("%+v: %q", in, got)
 		}
 	}
+	food := ledger.Category{CategoryInput: ledger.CategoryInput{Name: "Food", Type: "expense"}, ID: "c1", Version: 3}
+	if got, e := ledger.RenameCategory(food, 3, " Eating out "); e != nil || got != (ledger.Category{CategoryInput: ledger.CategoryInput{Name: " Eating out ", Type: "expense"}, ID: "c1", Version: 4}) {
+		t.Fatalf("rename: %+v %v", got, e)
+	}
+	if _, e := ledger.RenameCategory(food, 2, "Eating out"); !errors.Is(e, ledger.ErrStaleVersion) {
+		t.Fatalf("stale rename: %v", e)
+	}
+	for _, bad := range []string{"", "  ", strings.Repeat("x", 121)} {
+		if _, field := fieldOf(func() error { _, e := ledger.RenameCategory(food, 3, bad); return e }()); field != "name" {
+			t.Errorf("rename to %q: %q", bad, field)
+		}
+	}
 	if email, e := ledger.NormalizeEmail("  Sifatul@Example.TEST "); e != nil || email != "sifatul@example.test" {
 		t.Fatalf("normalize: %q %v", email, e)
 	}

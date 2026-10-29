@@ -77,6 +77,12 @@ func (s *Server) householdRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/categories", input(func(r *http.Request, in ledger.CategoryInput) (any, error) {
 		return s.app.CreateCategory(r.Context(), actor(r).ID, key(r), in)
 	}))
+	mux.HandleFunc("PUT /api/v1/categories/{id}", input(func(r *http.Request, in struct {
+		Name    string `json:"name"`
+		Version int    `json:"version"`
+	}) (any, error) {
+		return s.app.RenameCategory(r.Context(), actor(r).ID, key(r), r.PathValue("id"), in.Version, in.Name)
+	}))
 	mux.HandleFunc("GET /api/v1/monthly", query(func(r *http.Request) (any, error) { return s.app.Monthly(r.Context(), r.URL.Query().Get("month")) }))
 	mux.HandleFunc("PUT /api/v1/monthly/{month}/target", input(func(r *http.Request, in struct {
 		Amount  string `json:"amount"`

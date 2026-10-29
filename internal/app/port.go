@@ -72,10 +72,12 @@ type Tx interface {
 	Settings() (ledger.Settings, error)
 	SetRate(rate int64) error
 	Categories() ([]ledger.Category, error)
+	Category(id string) (ledger.Category, error)
 	ExpenseCategories() ([]ledger.CategorySpending, error)
 	CategoryExists(id, kind string) (bool, error)
-	CategoryNameTaken(kind, name string) (bool, error)
+	CategoryNameTaken(kind, name, exceptID string) (bool, error)
 	InsertCategory(c ledger.Category) error
+	RenameCategory(c ledger.Category) error
 
 	// Transactions: a row per record, its revisions, and its wallet entries.
 	InsertTransaction(id string) error

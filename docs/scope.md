@@ -9,7 +9,7 @@
 - Cross-currency transfers record sent and received amounts. A fee is an expense, not part of transfer income. Bank and debit-card representations must not duplicate the same cash balance.
 - Weekly, monthly, and yearly recurring bills. Display due items without sending notifications. Users confirm payment manually with an optional replacement amount and note. Empty amount means the expected amount; charges are included manually in the final amount.
 - A mobile-first React, TypeScript, shadcn/ui, and Tailwind web client. No separate desktop design work.
-- Flat income and expense categories with one category per income or expense, category creation in Settings and record forms, and Others defaults. Recurring bills carry an expense category.
+- Flat income and expense categories with one category per income or expense, category creation in Settings and record forms, renaming in Settings, and Others defaults. Recurring bills carry an expense category.
 - Monthly actual spending in BDT, category shares of that spending, and a single versioned monthly target. No category-level budgets.
 - A locally buildable Docker image, persistent SQLite storage, reproducible tests, and concise setup and recovery instructions.
 

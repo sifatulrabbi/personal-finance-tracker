@@ -98,7 +98,8 @@ type CategoryInput struct {
 
 type Category struct {
 	CategoryInput
-	ID string `json:"id"`
+	ID      string `json:"id"`
+	Version int    `json:"version"`
 }
 
 // ScheduleInput is also the stored schedule payload.

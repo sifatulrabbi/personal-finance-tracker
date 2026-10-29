@@ -8,4 +8,4 @@ INSERT INTO categories(id,type,name) VALUES
  ('expense-transportation','expense','Transportation'),
  ('expense-wifi-and-mobile','expense','WiFi and Mobile'),
  ('expense-household-misc','expense','Household misc')
-ON CONFLICT(type,name) DO NOTHING;
+ON CONFLICT DO NOTHING;

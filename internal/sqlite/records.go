@@ -182,16 +182,23 @@ func (tx records) SetRate(rate int64) error {
 	return e
 }
 
+func scanCategory(row scanner) (ledger.Category, error) {
+	var c ledger.Category
+	e := row.Scan(&c.ID, &c.Type, &c.Name, &c.Version)
+	return c, e
+}
+
 func (tx records) Categories() ([]ledger.Category, error) {
-	rows, e := tx.Query(`SELECT id,type,name FROM categories ORDER BY type,name,id`)
+	rows, e := tx.Query(`SELECT id,type,name,version FROM categories ORDER BY type,name,id`)
 	if e != nil {
 		return nil, e
 	}
-	return collect(rows, func(row scanner) (ledger.Category, error) {
-		var c ledger.Category
-		e := row.Scan(&c.ID, &c.Type, &c.Name)
-		return c, e
-	})
+	return collect(rows, scanCategory)
+}
+
+func (tx records) Category(id string) (ledger.Category, error) {
+	c, e := scanCategory(tx.QueryRow(`SELECT id,type,name,version FROM categories WHERE id=?`, id))
+	return c, notFound(e)
 }
 
 // ExpenseCategories lists every expense category in display order, with no spending yet.
@@ -213,14 +220,19 @@ func (tx records) CategoryExists(id, kind string) (bool, error) {
 	return count == 1, e
 }
 
-func (tx records) CategoryNameTaken(kind, name string) (bool, error) {
+func (tx records) CategoryNameTaken(kind, name, exceptID string) (bool, error) {
 	var count int
-	e := tx.QueryRow(`SELECT count(*) FROM categories WHERE type=? AND name=?`, kind, name).Scan(&count)
+	e := tx.QueryRow(`SELECT count(*) FROM categories WHERE type=? AND name=? AND id<>?`, kind, name, exceptID).Scan(&count)
 	return count != 0, e
 }
 
 func (tx records) InsertCategory(c ledger.Category) error {
-	_, e := tx.Exec(`INSERT INTO categories(id,type,name) VALUES(?,?,?)`, c.ID, c.Type, c.Name)
+	_, e := tx.Exec(`INSERT INTO categories(id,type,name,version) VALUES(?,?,?,?)`, c.ID, c.Type, c.Name, c.Version)
+	return e
+}
+
+func (tx records) RenameCategory(c ledger.Category) error {
+	_, e := tx.Exec(`UPDATE categories SET name=?,version=? WHERE id=?`, c.Name, c.Version, c.ID)
 	return e
 }
 

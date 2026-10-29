@@ -49,6 +49,7 @@ Every API and `/healthz` response carries an `X-Request-ID` header. The server l
 | GET | `/transactions/{id}/history` | Read all preserved revisions and author emails. |
 | GET, PUT | `/settings` | Read defaults or set `rate` with `version`. |
 | GET, POST | `/categories` | List categories or create one with `name` and `type` (`income` or `expense`). Writes require an idempotency key. |
+| PUT | `/categories/{id}` | Rename a category with `name` and the `version` it was read at. Its ID and type never change, so its records show the new name. A stale version returns `stale_version`; a name used by another category of the same type returns `duplicate_name`. |
 | GET | `/monthly?month=YYYY-MM` | Read spending, category shares, and target. Omit the month for the current Asia/Dhaka month. A month without its own target shows the latest earlier saved target; reading never writes. |
 | PUT | `/monthly/{month}/target` | Set one BDT `amount` with the current target `version` and an idempotency key. Zero is allowed. |
 | GET, POST | `/schedules` | List or create recurring bills. A new schedule may start at most 366 days before today (Asia/Dhaka), which bounds its catch-up of past bills. |

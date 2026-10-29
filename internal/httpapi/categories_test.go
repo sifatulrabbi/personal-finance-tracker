@@ -38,6 +38,9 @@ func TestCategoryAndMonthlyHTTP(t *testing.T) {
 			t.Fatal(status)
 		}
 	}
+	if status, _ := request(t, c, "PUT", server.URL+"/api/v1/categories/others-expense", map[string]any{"name": "Misc", "version": 1}, "signed-out"); status != 401 {
+		t.Fatalf("signed-out rename %d", status)
+	}
 	status, body := request(t, c, "POST", server.URL+"/api/v1/login", map[string]string{"email": "sifatul@example.test", "password": "correct horse battery"}, "")
 	if status != 200 {
 		t.Fatalf("login %d %s", status, body)
@@ -49,6 +52,21 @@ func TestCategoryAndMonthlyHTTP(t *testing.T) {
 	var category ledger.Category
 	if e = json.Unmarshal(body, &category); e != nil {
 		t.Fatal(e)
+	}
+	status, body = request(t, c, "PUT", server.URL+"/api/v1/categories/"+category.ID, map[string]any{"name": "Meals", "version": category.Version}, "rename")
+	if status != 200 {
+		t.Fatalf("rename %d %s", status, body)
+	}
+	if e = json.Unmarshal(body, &category); e != nil || category.Name != "Meals" || category.Version != 2 {
+		t.Fatalf("renamed: %+v %v", category, e)
+	}
+	status, _ = request(t, c, "PUT", server.URL+"/api/v1/categories/"+category.ID, map[string]any{"name": "Food", "version": 1}, "stale-rename")
+	if status != 409 {
+		t.Fatalf("stale rename %d", status)
+	}
+	status, _ = request(t, c, "PUT", server.URL+"/api/v1/categories/no-such-category", map[string]any{"name": "Food", "version": 1}, "unknown-rename")
+	if status != 404 {
+		t.Fatalf("unknown rename %d", status)
 	}
 	status, body = request(t, c, "POST", server.URL+"/api/v1/wallets", ledger.WalletInput{Name: "Cash", Type: "physical", OpeningBalance: "1000"}, "wallet")
 	if status != 200 {

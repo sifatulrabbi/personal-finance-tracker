@@ -33,7 +33,7 @@ func TestDefaultCategorySeedPreservesExistingIDs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = db.Exec(`INSERT INTO categories VALUES('existing-id','expense','Groceries'),('income-id','income','Groceries')`); err != nil {
+	if _, err = db.Exec(`INSERT INTO categories(id,type,name) VALUES('existing-id','expense','Groceries'),('income-id','income','Groceries')`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -67,5 +67,36 @@ func TestDefaultCategorySeedPreservesExistingIDs(t *testing.T) {
 				t.Errorf("missing %s", name)
 			}
 		}
+	}
+}
+
+// Regression: the seed's conflict target named only (type,name), so a renamed default kept its
+// seeded ID and rerunning the seed failed on that ID instead of leaving the rename alone.
+func TestDefaultCategorySeedKeepsARenamedDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "renamed.sqlite")
+	s, err := openPrepared(t, path, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err = s.RenameCategory(ctx, user(t, s).ID, "rename", "expense-groceries", 1, "Bazaar"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Seed(ctx); err != nil {
+		t.Fatalf("reseed after rename: %v", err)
+	}
+	all, err := s.Categories(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, c := range all {
+		names[c.Name] = c.ID
+	}
+	if names["Bazaar"] != "expense-groceries" {
+		t.Fatalf("rename lost: %+v", all)
+	}
+	if id, back := names["Groceries"]; back {
+		t.Fatalf("seed recreated Groceries as %s", id)
 	}
 }

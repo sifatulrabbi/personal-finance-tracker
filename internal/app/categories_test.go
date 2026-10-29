@@ -140,3 +140,117 @@ func TestCategoriesKeepNamesAndEnforceTransactionType(t *testing.T) {
 		t.Fatalf("transfer: %v", e)
 	}
 }
+
+func TestRenamedCategoryRelabelsItsRecordsAndSpending(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	food, e := s.CreateCategory(ctx, u.ID, "food", ledger.CategoryInput{Name: "Food", Type: "expense"})
+	if e != nil || food.Version != 1 {
+		t.Fatalf("create: %+v %v", food, e)
+	}
+	w := createWallet(t, s, u, "Cash", "BDT", "", "1000")
+	r, e := s.CreateTransaction(ctx, u.ID, "lunch", ledger.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "100", Date: "2026-09-14", CategoryID: food.ID})
+	if e != nil {
+		t.Fatal(e)
+	}
+	renamed, e := s.RenameCategory(ctx, u.ID, "rename", food.ID, 1, "Eating out")
+	want := ledger.Category{CategoryInput: ledger.CategoryInput{Name: "Eating out", Type: "expense"}, ID: food.ID, Version: 2}
+	if e != nil || renamed != want {
+		t.Fatalf("rename: %+v %v", renamed, e)
+	}
+	if again, e := s.RenameCategory(ctx, u.ID, "rename", food.ID, 1, "Eating out"); e != nil || again != want {
+		t.Fatalf("retry replays: %+v %v", again, e)
+	}
+	all, e := s.Categories(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, c := range all {
+		if c.ID == food.ID && c != want {
+			t.Fatalf("listed: %+v", c)
+		}
+	}
+	month, e := s.Monthly(ctx, "2026-09")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, c := range month.Categories {
+		if c.CategoryID == food.ID && (c.Name != "Eating out" || c.Spent != "100.00") {
+			t.Fatalf("monthly: %+v", c)
+		}
+	}
+	if got, e := s.Transaction(ctx, r.ID); e != nil || got.CategoryID != food.ID || got.Version != 1 {
+		t.Fatalf("record rewritten: %+v %v", got, e)
+	}
+	events, e := s.Audit(ctx, 1, 0)
+	if e != nil || len(events) != 1 || events[0].Action != "category.rename" || events[0].EntityID != food.ID {
+		t.Fatalf("audit: %+v %v", events, e)
+	}
+}
+
+func TestCategoryRenameRefusesStaleDuplicateAndUnknown(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	food, e := s.CreateCategory(ctx, u.ID, "food", ledger.CategoryInput{Name: "Food", Type: "expense"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.RenameCategory(ctx, u.ID, "duplicate", food.ID, 1, "Groceries"); !errors.Is(e, ledger.ErrDuplicateName) {
+		t.Fatalf("duplicate in type: %v", e)
+	}
+	if _, e = s.CreateCategory(ctx, u.ID, "salary", ledger.CategoryInput{Name: "Salary", Type: "income"}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.RenameCategory(ctx, u.ID, "other-type", food.ID, 1, "Salary"); e != nil {
+		t.Fatalf("name used by the other type: %v", e)
+	}
+	if _, e = s.RenameCategory(ctx, u.ID, "stale", food.ID, 1, "Meals"); !errors.Is(e, ledger.ErrStaleVersion) {
+		t.Fatalf("stale: %v", e)
+	}
+	if same, e := s.RenameCategory(ctx, u.ID, "same", food.ID, 2, "Salary"); e != nil || same.Version != 3 {
+		t.Fatalf("own name: %+v %v", same, e)
+	}
+	if _, e = s.RenameCategory(ctx, u.ID, "unknown", "no-such-category", 1, "Meals"); !errors.Is(e, ledger.ErrNotFound) {
+		t.Fatalf("unknown: %v", e)
+	}
+	if others, e := s.RenameCategory(ctx, u.ID, "others", "others-expense", 1, "Misc"); e != nil || others.Name != "Misc" {
+		t.Fatalf("default keeps its ID under a new name: %+v %v", others, e)
+	}
+	w := createWallet(t, s, u, "Cash", "BDT", "", "1000")
+	r, e := s.CreateTransaction(ctx, u.ID, "default", ledger.TransactionInput{Kind: "expense", WalletID: w.ID, Amount: "1", Date: "2026-09-14"})
+	if e != nil || r.CategoryID != "others-expense" {
+		t.Fatalf("default after rename: %+v %v", r, e)
+	}
+}
+
+func TestConcurrentCategoryRenamesKeepOneWinner(t *testing.T) {
+	s := openStore(t)
+	u := user(t, s)
+	food, e := s.CreateCategory(ctx, u.ID, "food", ledger.CategoryInput{Name: "Food", Type: "expense"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	var wg sync.WaitGroup
+	results := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, e := s.RenameCategory(ctx, u.ID, fmt.Sprint("rename-", i), food.ID, 1, fmt.Sprint("Food ", i))
+			results <- e
+		}(i)
+	}
+	wg.Wait()
+	close(results)
+	successes := 0
+	for e := range results {
+		if e == nil {
+			successes++
+		} else if !errors.Is(e, ledger.ErrStaleVersion) {
+			t.Fatal(e)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("renamed %d times", successes)
+	}
+}

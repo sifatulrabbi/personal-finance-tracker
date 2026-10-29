@@ -24,10 +24,28 @@ func ValidateCategory(in CategoryInput) error {
 	if in.Type != "income" && in.Type != "expense" {
 		return Invalid("type", "Choose income or expense.")
 	}
-	if strings.TrimSpace(in.Name) == "" || len(in.Name) > 120 {
+	return validCategoryName(in.Name)
+}
+
+func validCategoryName(name string) error {
+	if strings.TrimSpace(name) == "" || len(name) > 120 {
 		return Invalid("name", "Enter a name of at most 120 bytes.")
 	}
 	return nil
+}
+
+// RenameCategory checks a rename against the category the writer read. The type and ID never
+// change, so every record keeps its category and shows the new name (ADR 0015).
+func RenameCategory(old Category, version int, name string) (Category, error) {
+	if old.Version != version {
+		return old, ErrStaleVersion
+	}
+	if e := validCategoryName(name); e != nil {
+		return old, e
+	}
+	out := old
+	out.Name, out.Version = name, old.Version+1
+	return out, nil
 }
 
 // NormalizeEmail lowercases and trims an email address and accepts only a bare address.

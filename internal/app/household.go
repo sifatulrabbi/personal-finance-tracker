@@ -48,11 +48,11 @@ func (s *Service) Categories(ctx context.Context) ([]ledger.Category, error) {
 
 func (s *Service) CreateCategory(ctx context.Context, actor, key string, in ledger.CategoryInput) (ledger.Category, error) {
 	return write(ctx, s, actor, key, "category.create", in, func(tx Tx) (ledger.Category, error) {
-		out := ledger.Category{CategoryInput: in, ID: newID()}
+		out := ledger.Category{CategoryInput: in, ID: newID(), Version: 1}
 		if e := ledger.ValidateCategory(in); e != nil {
 			return out, e
 		}
-		taken, e := tx.CategoryNameTaken(in.Type, in.Name)
+		taken, e := tx.CategoryNameTaken(in.Type, in.Name, "")
 		if e != nil {
 			return out, e
 		}
@@ -63,6 +63,35 @@ func (s *Service) CreateCategory(ctx context.Context, actor, key string, in ledg
 			return out, e
 		}
 		return out, tx.Audit(actor, out.ID, "category.create", nil, out, s.instant())
+	})
+}
+
+// RenameCategory changes a category's name in place. Its records keep the category's ID, so
+// they and their history show the new name.
+func (s *Service) RenameCategory(ctx context.Context, actor, key, id string, version int, name string) (ledger.Category, error) {
+	return write(ctx, s, actor, key, "category.rename", struct {
+		ID, Name string
+		Version  int
+	}{id, name, version}, func(tx Tx) (ledger.Category, error) {
+		old, e := tx.Category(id)
+		if e != nil {
+			return old, e
+		}
+		out, e := ledger.RenameCategory(old, version, name)
+		if e != nil {
+			return old, e
+		}
+		taken, e := tx.CategoryNameTaken(out.Type, out.Name, out.ID)
+		if e != nil {
+			return old, e
+		}
+		if taken {
+			return old, ledger.ErrDuplicateName
+		}
+		if e = tx.RenameCategory(out); e != nil {
+			return old, e
+		}
+		return out, tx.Audit(actor, out.ID, "category.rename", old, out, s.instant())
 	})
 }
 
