@@ -202,7 +202,14 @@ test("wide screens get a sidebar with the same destinations and a centered dialo
       "page",
     );
   }
-  await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+  const theme = page.getByRole("radiogroup", { name: "Theme" });
+  await expect(theme).toBeVisible();
+  // Regression: the labelled buttons overflowed the sidebar; they are icons with names.
+  for (const name of ["Light", "Dark", "System"]) {
+    const choice = theme.getByRole("radio", { name, exact: true });
+    await expect(choice).toHaveText("");
+    expect(await choice.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  }
   await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Add record", exact: true }).click();

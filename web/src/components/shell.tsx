@@ -365,9 +365,8 @@ export function ThemeChoice() {
       onValueChange={(value) => value && setPreference(value as ThemePreference)}
     >
       {themeOptions.map(({ value, label, icon: Icon }) => (
-        <ToggleGroupItem key={value} value={value} aria-label={label}>
+        <ToggleGroupItem key={value} value={value} aria-label={label} title={label}>
           <Icon aria-hidden />
-          <span>{label}</span>
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
