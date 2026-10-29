@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CircleAlert,
   CreditCard,
+  HandCoins,
   Landmark,
   Pencil,
   Plus,
@@ -50,6 +51,7 @@ import {
 } from "@/components/layout";
 import { Money } from "@/components/money";
 import { ActivityFeed } from "@/components/activity-feed";
+import { useAddRecord } from "@/components/add-record";
 import { useHeaderTitle } from "@/components/shell";
 
 const types: { value: WalletType; label: string }[] = [
@@ -246,6 +248,7 @@ export function WalletDetail({ id }: { id: string }) {
   const query = useWallet(id);
   const list = useWallets();
   const editor = useEditor<Editor>();
+  const addRecord = useAddRecord();
   const wallet = query.data;
   useHeaderTitle(wallet?.name);
   if (!wallet) {
@@ -356,6 +359,12 @@ export function WalletDetail({ id }: { id: string }) {
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2 border-t pt-4">
+            {credit && !wallet.archived ? (
+              <Button size="sm" onClick={(e) => addRecord.open(e, { payCardID: wallet.id })}>
+                <HandCoins data-icon="inline-start" />
+                Pay card
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               size="sm"

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { Transaction } from "@/api/types";
+import type { Transaction, Wallet } from "@/api/types";
 import {
   buildInput,
+  cardPaymentDraft,
   changedFields,
   draftFieldFor,
   draftFromRecord,
@@ -195,5 +196,51 @@ describe("calculated amounts (ADR 0014)", () => {
     expect(draftFieldFor("amount_formula")).toBe("amount");
     expect(draftFieldFor("received_amount_formula")).toBe("received_amount");
     expect(draftFieldFor("rate")).toBe("rate");
+  });
+});
+
+describe("paying a credit card", () => {
+  function wallet(overrides: Partial<Wallet>): Wallet {
+    return {
+      id: "w",
+      name: "Wallet",
+      type: "bank",
+      card_type: "",
+      currency: "BDT",
+      details: "",
+      credit_limit: "0.00",
+      balance: "0.00",
+      archived: false,
+      version: 1,
+      balance_version: 1,
+      ...overrides,
+    };
+  }
+  const card = wallet({ id: "card", type: "card", card_type: "credit", credit_limit: "50000.00", balance: "-12500.50", debt: "12500.50" });
+  const otherCard = wallet({ id: "other-card", type: "card", card_type: "credit", debt: "0.00" });
+  const bank = wallet({ id: "bank" });
+  const cash = wallet({ id: "cash", type: "physical" });
+
+  test("is a transfer into the card for what it owes, from the first wallet that holds cash", () => {
+    expect(cardPaymentDraft(card, [card, otherCard, bank, cash], "2026-10-29")).toEqual({
+      ...newDraft({ kind: "transfer", wallet_id: "bank", date: "2026-10-29" }),
+      to_wallet_id: "card",
+      amount: "12500.50",
+    });
+  });
+
+  test("leaves the source empty when only cards are available", () => {
+    expect(cardPaymentDraft(card, [card, otherCard], "2026-10-29").wallet_id).toBe("");
+  });
+
+  test("leaves the amount empty when nothing is owed", () => {
+    for (const debt of ["0.00", "-20.00"])
+      expect(cardPaymentDraft({ ...card, debt }, [bank], "2026-10-29").amount).toBe("");
+  });
+
+  test("puts what is owed in the received amount when the source has another currency", () => {
+    const usd = wallet({ id: "usd", type: "digital", currency: "USD" });
+    const paid = cardPaymentDraft(card, [usd, bank], "2026-10-29");
+    expect(paid).toMatchObject({ wallet_id: "usd", amount: "", received_amount: "12500.50" });
   });
 });

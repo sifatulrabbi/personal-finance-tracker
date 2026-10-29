@@ -7,6 +7,7 @@ import type { Category, Currency, Settings, Transaction, Wallet } from "@/api/ty
 import { useWrites } from "@/cache/writes";
 import {
   buildInput,
+  cardPaymentDraft,
   changedFields,
   draftFieldFor,
   draftFromRecord,
@@ -87,6 +88,7 @@ export function RecordForm({
   settings,
   record,
   initialKind,
+  payCard,
   onSaved,
 }: {
   wallets: Wallet[];
@@ -94,6 +96,8 @@ export function RecordForm({
   settings: Settings;
   record?: Transaction;
   initialKind?: RecordKind;
+  // Starts a repayment of this credit card instead of an empty record.
+  payCard?: Wallet;
   onSaved: (record: Transaction) => void;
 }) {
   const writes = useWrites();
@@ -109,11 +113,11 @@ export function RecordForm({
   // load the latest version after a conflict.
   const [base, setBase] = useState(record);
   const baseDraft = useMemo(() => (base ? draftFromRecord(base) : undefined), [base]);
-  const [draft, setDraft] = useState<RecordDraft>(() =>
-    record
-      ? draftFromRecord(record)
-      : newDraft({ kind: initialKind, wallet_id: active[0]?.id, date: today }),
-  );
+  const [draft, setDraft] = useState<RecordDraft>(() => {
+    if (record) return draftFromRecord(record);
+    if (payCard) return cardPaymentDraft(payCard, active, today);
+    return newDraft({ kind: initialKind, wallet_id: active[0]?.id, date: today });
+  });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState("");
   const [conflict, setConflict] = useState<"none" | "stale" | "loading" | "reloaded">("none");

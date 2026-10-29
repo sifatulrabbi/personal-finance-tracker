@@ -1,4 +1,5 @@
-import type { Currency, Transaction, TransactionInput } from "@/api/types";
+import type { Currency, Transaction, TransactionInput, Wallet } from "@/api/types";
+import { compareDecimal } from "@/money/compare";
 import { parseDecimalInput } from "@/money/decimal";
 import { displayFormula, evaluateAmountInput } from "@/money/formula";
 
@@ -64,6 +65,20 @@ export function newDraft(values: { kind?: RecordKind; wallet_id?: string; date: 
     received_amount: "",
     rate: "",
     reason: "",
+  };
+}
+
+// A card repayment is a transfer into the card (CONTEXT.md). It starts from the first of
+// `sources` that holds cash and asks for what the card owes, in the card's currency.
+export function cardPaymentDraft(card: Wallet, sources: Wallet[], date: string): RecordDraft {
+  const from = sources.find((w) => w.id !== card.id && w.card_type !== "credit");
+  const owed = card.debt && compareDecimal(card.debt, "0") > 0 ? card.debt : "";
+  const sameCurrency = !from || from.currency === card.currency;
+  return {
+    ...newDraft({ kind: "transfer", wallet_id: from?.id, date }),
+    to_wallet_id: card.id,
+    amount: sameCurrency ? owed : "",
+    received_amount: sameCurrency ? "" : owed,
   };
 }
 

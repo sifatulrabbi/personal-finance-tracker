@@ -8,8 +8,10 @@ import { RecordForm } from "@/components/record-form";
 import type { RecordKind } from "@/activity/draft";
 import { Skeleton } from "@/components/ui/skeleton";
 
+type Start = { kind?: RecordKind; payCardID?: string };
+
 type AddRecord = {
-  open(event?: SyntheticEvent<HTMLElement>, options?: { kind?: RecordKind }): void;
+  open(event?: SyntheticEvent<HTMLElement>, options?: Start): void;
 };
 
 const AddRecordContext = createContext<AddRecord | null>(null);
@@ -17,11 +19,12 @@ const AddRecordContext = createContext<AddRecord | null>(null);
 // One Add record sheet for the whole app, opened from the tab bar or the sidebar on any
 // page. Its data loads only once it has been opened.
 export function AddRecordProvider({ children }: { children: ReactNode }) {
-  const editor = useEditor<{ kind?: RecordKind }>();
+  const editor = useEditor<Start>();
   const value = useMemo<AddRecord>(
-    () => ({ open: (event, options) => editor.open({ kind: options?.kind }, event) }),
+    () => ({ open: (event, options) => editor.open({ ...options }, event) }),
     [editor.open],
   );
+  const paying = Boolean(editor.value?.payCardID);
   return (
     <AddRecordContext.Provider value={value}>
       {children}
@@ -29,10 +32,14 @@ export function AddRecordProvider({ children }: { children: ReactNode }) {
         open={editor.isOpen}
         onClose={editor.close}
         returnFocus={editor.trigger}
-        title="Add record"
-        description="Moving money between wallets is a transfer, not spending."
+        title={paying ? "Pay credit card" : "Add record"}
+        description={
+          paying
+            ? "Paying a card moves money into it from a wallet. It lowers the debt and is not spending."
+            : "Moving money between wallets is a transfer, not spending."
+        }
       >
-        {editor.value ? <AddRecordContent kind={editor.value.kind} onDone={editor.close} /> : null}
+        {editor.value ? <AddRecordContent start={editor.value} onDone={editor.close} /> : null}
       </Modal>
     </AddRecordContext.Provider>
   );
@@ -44,7 +51,7 @@ export function useAddRecord() {
   return value;
 }
 
-function AddRecordContent({ kind, onDone }: { kind?: RecordKind; onDone: () => void }) {
+function AddRecordContent({ start, onDone }: { start: Start; onDone: () => void }) {
   const wallets = useWallets();
   const categories = useCategories();
   const settings = useSettings();
@@ -89,7 +96,8 @@ function AddRecordContent({ kind, onDone }: { kind?: RecordKind; onDone: () => v
       wallets={wallets.data}
       categories={categories.data}
       settings={settings.data}
-      initialKind={kind}
+      initialKind={start.kind}
+      payCard={wallets.data.find((wallet) => wallet.id === start.payCardID)}
       onSaved={onDone}
     />
   );

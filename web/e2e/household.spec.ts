@@ -1,16 +1,17 @@
-import { expect, test } from "./fixtures";
+import { apiWrite, dhakaToday, expect, test } from "./fixtures";
 import {
   mainNavigation,
   navigate,
   openSheet,
   openWallet,
   payBill,
+  signIn,
   signOut,
   submitLogin,
   toast,
   walletRow,
 } from "./login";
-import { addRecord } from "./records";
+import { addRecord, kindRadio, walletRadio } from "./records";
 
 test("mobile household can record money and confirm bills", async ({
   page,
@@ -295,4 +296,30 @@ test("a debit card links to its bank and spends from the bank's balance", async 
   await openWallet(page, `Debit ${suffix}`);
   await expect(page.getByTestId("wallet-detail")).toContainText(`Spends from Bank ${suffix}`);
   await expect(page.getByRole("button", { name: "Adjust balance" })).toHaveCount(0);
+});
+
+test("a credit card is paid from its own page as a transfer that clears the debt", async ({ page }) => {
+  await page.goto("/");
+  await signIn(page);
+  await apiWrite(page, "/wallets", { name: "Card", type: "card", card_type: "credit", credit_limit: "50000" });
+  const card = (await (await page.request.get("/api/v1/wallets")).json()).find((w: { name: string }) => w.name === "Card");
+  await apiWrite(page, "/wallets", { name: "Bank", type: "bank", opening_balance: "10000" });
+  await apiWrite(page, "/transactions", { kind: "expense", wallet_id: card.id, amount: "2500", date: dhakaToday(), note: "Groceries on card" });
+  await page.reload();
+  await navigate(page, "Wallets");
+  await openWallet(page, "Card");
+  await expect(page.getByTestId("wallet-detail").getByTestId("wallet-balance")).toHaveText("৳2,500.00");
+  await page.getByRole("button", { name: "Pay card", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Pay credit card" });
+  await expect(kindRadio(sheet, "transfer")).toBeChecked();
+  await expect(walletRadio(sheet, "From wallet", "Bank")).toBeChecked();
+  await expect(walletRadio(sheet, "To wallet", "Card")).toBeChecked();
+  await expect(sheet.getByLabel("Amount", { exact: true })).toHaveValue("2500.00");
+  await sheet.getByRole("button", { name: "Save record", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("wallet-detail").getByTestId("wallet-balance")).toHaveText("৳0.00");
+  await navigate(page, "Wallets");
+  await expect(walletRow(page, "Bank").getByTestId("wallet-balance")).toHaveText("৳7,500.00");
+  await navigate(page, "Monthly spending");
+  await expect(page.getByTestId("monthly-total")).toHaveText("৳2,500.00");
 });
